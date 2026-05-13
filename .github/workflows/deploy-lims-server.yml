@@ -1,6 +1,8 @@
 # 构建并推送 ghcr.io/<owner>/lims-uniapp-server ，再通过 SSH 在服务器拉取并重启。
 #
-# Secrets：DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_PASSWORD, DEPLOY_PATH
+# Variables：DEPLOY_HOST, DEPLOY_USER, DEPLOY_PATH（Settings → Secrets and variables → Actions → Variables）
+# Secrets：DEPLOY_SSH_PASSWORD
+# 未设置 DEPLOY_HOST 时跳过 deploy，仅构建推送镜像，避免 “missing server host”。
 # 私有镜像需在服务器 docker login ghcr.io（见 deploy/README.md）。
 #
 # 本工作流假定仓库根目录即为 lims-uniapp-server（paths 相对仓库根）。
@@ -61,15 +63,17 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: |
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      vars.DEPLOY_HOST != ''
     steps:
       - uses: appleboy/ssh-action@v1.2.0
         env:
           IMAGE_FULL_SHA: ${{ needs.build-and-push.outputs.image_full_sha }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ vars.DEPLOY_USER }}
           password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
           envs: IMAGE_FULL_SHA,DEPLOY_PATH
           script_stop: true

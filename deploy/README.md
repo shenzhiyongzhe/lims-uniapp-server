@@ -30,17 +30,24 @@
 
 工作流文件：`.github/workflows/deploy-lims-server.yml`（相对**当前服务端仓库**根目录）。假定远程仓库根目录即为本后端项目；构建上下文默认为 `.`（变量 `DOCKER_CONTEXT` 可覆盖为 monorepo 子目录路径）。
 
-**Secrets**（Settings → Secrets and variables → Actions）：
+**Variables**（Settings → Secrets and variables → Actions → **Variables**）— 用于 SSH 地址与路径，且便于在工作流 `if` 中判断是否执行 deploy：
 
 | 名称 | 说明 |
 |------|------|
-| `DEPLOY_HOST` | 服务器主机名或 IP |
+| `DEPLOY_HOST` | 服务器主机名或 IP（**必填**才会执行 deploy；未设置则只构建推送镜像） |
 | `DEPLOY_USER` | SSH 用户（需能执行 `docker` / `docker compose`） |
-| `DEPLOY_SSH_PASSWORD` | SSH **密码**登录（已不使用密钥） |
 | `DEPLOY_PATH` | 服务器上包含 `docker-compose.prod.yml` 与 `.env` 的绝对路径 |
 
+**Secrets**（仅敏感项）：
+
+| 名称 | 说明 |
+|------|------|
+| `DEPLOY_SSH_PASSWORD` | SSH 密码 |
+
+若曾把 `DEPLOY_HOST` 建在 **Secrets** 里，`host` 在部分情况下不会参与 `if` 判断，且漏配时会报 `missing server host`；请改用上表 **Variables** 填写 `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PATH`。
+
 推送至 `main` / `master` 且变更 `src/`、`prisma/`、`Dockerfile`、`package.json` 等时会构建镜像并推送至  
-`ghcr.io/<小写 owner>/lims-uniapp-server`（`:latest` 与 `:<git-sha>`），随后 SSH 登录服务器执行 `docker compose -f docker-compose.prod.yml pull` 与 `up -d`。
+`ghcr.io/<小写 owner>/lims-uniapp-server`（`:latest` 与 `:<git-sha>`）。若已配置 Variable **`DEPLOY_HOST`**，则会继续 SSH 到服务器执行 `docker compose -f docker-compose.prod.yml pull` 与 `up -d`；否则仅完成镜像推送。
 
 **若镜像为私有仓库**：在服务器执行一次 `docker login ghcr.io`（使用 GitHub 用户名 + 具有 `read:packages` 的 PAT）。
 
