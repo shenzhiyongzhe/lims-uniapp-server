@@ -21,6 +21,12 @@ export class LoanAccountsService {
     private readonly assetManagementService: AssetManagementService,
   ) {}
 
+  private toNumber(value?: unknown): number {
+    if (value === null || value === undefined) return 0;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
   private isOverdue(date: Date): boolean {
     const now = new Date();
     const todayStart = new Date(
@@ -78,14 +84,12 @@ export class LoanAccountsService {
     }>;
   }) {
     const schedules = loan.repaymentSchedules || [];
-    const sumNumber = (value?: unknown) =>
-      value !== null && value !== undefined ? Number(value) : 0;
 
     if (loan.status === 'settled' || loan.status === 'blacklist') {
-      const receivingAmount = sumNumber(loan.receiving_amount);
-      const paidCapital = sumNumber(loan.paid_capital);
-      const paidInterest = sumNumber(loan.paid_interest);
-      const totalFines = sumNumber(loan.total_fines);
+      const receivingAmount = this.toNumber(loan.receiving_amount);
+      const paidCapital = this.toNumber(loan.paid_capital);
+      const paidInterest = this.toNumber(loan.paid_interest);
+      const totalFines = this.toNumber(loan.total_fines);
       return {
         receivingAmount,
         paidCapital,
@@ -98,33 +102,33 @@ export class LoanAccountsService {
     }
 
     const totalCapital = schedules.reduce(
-      (sum, schedule) => sum + sumNumber(schedule.capital),
+      (sum, schedule) => sum + this.toNumber(schedule.capital),
       0,
     );
     const totalInterest = schedules.reduce(
-      (sum, schedule) => sum + sumNumber(schedule.interest),
+      (sum, schedule) => sum + this.toNumber(schedule.interest),
       0,
     );
     const paidCapital = schedules.reduce(
-      (sum, schedule) => sum + sumNumber(schedule.paid_capital),
+      (sum, schedule) => sum + this.toNumber(schedule.paid_capital),
       0,
     );
     const paidInterest = schedules.reduce(
-      (sum, schedule) => sum + sumNumber(schedule.paid_interest),
+      (sum, schedule) => sum + this.toNumber(schedule.paid_interest),
       0,
     );
     const remainingCapital = Math.max(totalCapital - paidCapital, 0);
     const remainingInterest = Math.max(totalInterest - paidInterest, 0);
     const totalFines = schedules.reduce(
-      (sum, schedule) => sum + sumNumber(schedule.fines),
+      (sum, schedule) => sum + this.toNumber(schedule.fines),
       0,
     );
     const receivingAmount = schedules.reduce(
       (sum, schedule) =>
         sum +
-        sumNumber(schedule.paid_capital) +
-        sumNumber(schedule.paid_interest) +
-        sumNumber(schedule.fines),
+        this.toNumber(schedule.paid_capital) +
+        this.toNumber(schedule.paid_interest) +
+        this.toNumber(schedule.fines),
       0,
     );
     const unpaidCapital = remainingCapital;
@@ -529,64 +533,202 @@ export class LoanAccountsService {
     const { status, settlement_capital, settlement_date } = dto;
 
     if (status === 'settled' || status === 'blacklist') {
-      if (
-        !settlement_date ||
-        !/^\d{4}-\d{2}-\d{2}$/.test(settlement_date)
-      ) {
-        throw new Error('结清或拉黑时必须提供有效的结清/拉黑日期');
-      }
-    }
+      const EARLY_REMARK = '提前结清';
+      const EARLY_REMARK_LEGACY = 'EARLY_SET';
 
-    await this.prisma.$transaction(async (tx) => {
-      const loan = await tx.loanAccount.findUnique({ where: { id } });
-      if (!loan) {
-        throw new Error('贷款记录不存在');
-      }
-
-      const data: Record<string, unknown> = {
-        status,
-        status_changed_at: new Date(),
-      };
-
-      if (status === 'settled' || status === 'blacklist') {
-        if (settlement_capital !== undefined && settlement_capital !== null) {
-          data.early_settlement_capital = settlement_capital;
+      await this.prisma.$transaction(async (tx) => {
+        const loan = await tx.loanAccount.findUnique({
+          where: { id },
+          include: {
+            repaymentSchedules: { orderBy: { period: 'asc' } },
+          },
+        });
+        if (!loan) {
+          throw new Error('贷款记录不存在');
         }
 
-        const m = settlement_date!.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-        if (!m) {
-          throw new Error('结清/拉黑日期格式无效');
+        const schedules = loan.repaymentSchedules;
+
+        let settlementDate: Date;
+        const rawDate = settlement_date?.trim();
+        if (rawDate) {
+          const dateMatch = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (dateMatch) {
+            const [, year, month, day] = dateMatch;
+            settlementDate = new Date(
+              Date.UTC(Number(year), Number(month) - 1, Number(day)),
+            );
+          } else {
+            const parsed = new Date(rawDate);
+            if (Number.isNaN(parsed.getTime())) {
+              throw new Error('结清/拉黑日期无效');
+            }
+            settlementDate = new Date(
+              Date.UTC(
+                parsed.getUTCFullYear(),
+                parsed.getUTCMonth(),
+                parsed.getUTCDate(),
+              ),
+            );
+          }
+        } else {
+          const now = new Date();
+          settlementDate = new Date(
+            Date.UTC(
+              now.getUTCFullYear(),
+              now.getUTCMonth(),
+              now.getUTCDate(),
+            ),
+          );
         }
-        const cutoff = new Date(
-          Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])),
+
+        const settlementDateStart = new Date(
+          Date.UTC(
+            settlementDate.getUTCFullYear(),
+            settlementDate.getUTCMonth(),
+            settlementDate.getUTCDate(),
+            0,
+            0,
+            0,
+            0,
+          ),
+        );
+        const settlementDateEnd = new Date(
+          Date.UTC(
+            settlementDate.getUTCFullYear(),
+            settlementDate.getUTCMonth(),
+            settlementDate.getUTCDate(),
+            23,
+            59,
+            59,
+            999,
+          ),
         );
 
-        const schedules = await tx.repaymentSchedule.findMany({
-          where: { loan_id: id },
-          select: { id: true, due_start_date: true, status: true },
-        });
+        const prevTotalReceiving = schedules.reduce(
+          (sum, s) => sum + this.toNumber(s.paid_amount),
+          0,
+        );
+        const prevPaidCapital = schedules.reduce(
+          (sum, s) => sum + this.toNumber(s.paid_capital),
+          0,
+        );
+        const prevPaidInterest = schedules.reduce(
+          (sum, s) => sum + this.toNumber(s.paid_interest),
+          0,
+        );
 
-        for (const s of schedules) {
-          if (s.status === 'paid') {
-            continue;
+        const schedulesToTerminate = schedules.filter((s) => {
+          if (s.status === 'active' || s.status === 'paid') {
+            return false;
           }
           const d = new Date(s.due_start_date);
-          const dayUtc = new Date(
+          const dayStart = new Date(
             Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
           );
-          if (dayUtc.getTime() >= cutoff.getTime()) {
-            await tx.repaymentSchedule.update({
-              where: { id: s.id },
-              data: { status: 'terminated' },
+          return dayStart.getTime() >= settlementDateStart.getTime();
+        });
+
+        if (schedulesToTerminate.length > 0) {
+          await tx.repaymentSchedule.updateMany({
+            where: {
+              loan_id: id,
+              id: { in: schedulesToTerminate.map((s) => s.id) },
+            },
+            data: { status: 'terminated' },
+          });
+        }
+
+        const manualCapitalRaw =
+          settlement_capital !== undefined && settlement_capital !== null
+            ? Number(settlement_capital)
+            : NaN;
+        const manualCapital = Number.isFinite(manualCapitalRaw)
+          ? manualCapitalRaw
+          : 0;
+        const hasManualSettlement = manualCapital > 0;
+        const settlementAmount = hasManualSettlement ? manualCapital : 0;
+        const receivingAmount = prevTotalReceiving + settlementAmount;
+
+        let paidCapital: number;
+        if (hasManualSettlement) {
+          paidCapital = prevPaidCapital + manualCapital;
+        } else {
+          paidCapital = schedules.reduce(
+            (sum, s) => sum + this.toNumber(s.paid_capital),
+            0,
+          );
+        }
+
+        if (settlementAmount > 0) {
+          const existingRecord = await tx.repaymentRecord.findFirst({
+            where: {
+              loan_id: id,
+              remark: { in: [EARLY_REMARK, EARLY_REMARK_LEGACY] },
+            },
+          });
+          const recordPayload = {
+            paid_amount: settlementAmount,
+            paid_at: new Date(),
+            paid_capital: hasManualSettlement ? manualCapital : null,
+            actual_collector_id: loan.collector_id,
+            remark: EARLY_REMARK,
+          };
+          if (existingRecord) {
+            await tx.repaymentRecord.update({
+              where: { id: existingRecord.id },
+              data: recordPayload,
+            });
+          } else {
+            await tx.repaymentRecord.create({
+              data: {
+                loan_id: id,
+                user_id: loan.user_id,
+                ...recordPayload,
+              },
             });
           }
         }
-      }
 
-      await tx.loanAccount.update({
-        where: { id },
-        data,
+        const updateData: Record<string, unknown> = {
+          status,
+          status_changed_at: new Date(),
+          receiving_amount: receivingAmount,
+          due_end_date: settlementDateEnd,
+          paid_capital: paidCapital,
+          paid_interest: prevPaidInterest,
+        };
+
+        if (
+          settlement_capital !== undefined &&
+          settlement_capital !== null
+        ) {
+          updateData.early_settlement_capital = manualCapital;
+        }
+
+        await tx.loanAccount.update({
+          where: { id },
+          data: updateData,
+        });
       });
+      return;
+    }
+
+    const loan = await this.prisma.loanAccount.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!loan) {
+      throw new Error('贷款记录不存在');
+    }
+
+    const updateData: Record<string, unknown> = { status };
+    if (status === 'negotiated') {
+      updateData.status_changed_at = new Date();
+    }
+    await this.prisma.loanAccount.update({
+      where: { id },
+      data: updateData,
     });
   }
 

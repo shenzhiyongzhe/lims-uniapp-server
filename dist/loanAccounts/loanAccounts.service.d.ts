@@ -10,6 +10,7 @@ export declare class LoanAccountsService {
     private readonly loanPredictionService;
     private readonly assetManagementService;
     constructor(prisma: PrismaService, loanPredictionService: LoanPredictionService, assetManagementService: AssetManagementService);
+    private toNumber;
     private isOverdue;
     private determineScheduleStatus;
     private computeLoanStatistics;
@@ -36,6 +37,14 @@ export declare class LoanAccountsService {
         role: string;
     }): Promise<{
         data: ({
+            collector: {
+                id: number;
+                nickname: string | null;
+            };
+            risk_controller: {
+                id: number;
+                nickname: string | null;
+            };
             user: {
                 id: number;
                 createdAt: Date;
@@ -45,14 +54,6 @@ export declare class LoanAccountsService {
                 overdue_time: number | null;
                 is_high_risk: boolean | null;
             };
-            collector: {
-                id: number;
-                nickname: string | null;
-            };
-            risk_controller: {
-                id: number;
-                nickname: string | null;
-            };
             repaymentSchedules: {
                 id: number;
                 capital: import("@prisma/client/runtime/library").Decimal | null;
@@ -61,10 +62,10 @@ export declare class LoanAccountsService {
                 status: import("@prisma/client").$Enums.RepaymentScheduleStatus;
                 paid_capital: import("@prisma/client/runtime/library").Decimal | null;
                 paid_interest: import("@prisma/client/runtime/library").Decimal | null;
-                period: number;
-                loan_id: number;
-                due_amount: import("@prisma/client/runtime/library").Decimal;
                 paid_amount: import("@prisma/client/runtime/library").Decimal | null;
+                loan_id: number;
+                period: number;
+                due_amount: import("@prisma/client/runtime/library").Decimal;
                 paid_at: Date | null;
                 fines: import("@prisma/client/runtime/library").Decimal | null;
                 collected_by_type: import("@prisma/client").$Enums.CollectionSource | null;
@@ -75,6 +76,7 @@ export declare class LoanAccountsService {
             id: number;
             user_id: number;
             loan_amount: import("@prisma/client/runtime/library").Decimal;
+            receiving_amount: import("@prisma/client/runtime/library").Decimal | null;
             to_hand_ratio: import("@prisma/client/runtime/library").Decimal | null;
             capital: import("@prisma/client/runtime/library").Decimal;
             interest: import("@prisma/client/runtime/library").Decimal;
@@ -85,16 +87,13 @@ export declare class LoanAccountsService {
             total_periods: number;
             repaid_periods: number;
             daily_repayment: number;
-            risk_controller_id: number;
-            collector_id: number;
-            receiving_amount: import("@prisma/client/runtime/library").Decimal | null;
             company_cost: number;
-            ownership: string | null;
-            apply_times: number;
-            note: string | null;
             created_at: Date;
-            updated_at: Date | null;
             created_by: number;
+            updated_at: Date | null;
+            collector_id: number;
+            risk_controller_id: number;
+            apply_times: number;
             paid_capital: import("@prisma/client/runtime/library").Decimal;
             status_changed_at: Date | null;
             total_fines: import("@prisma/client/runtime/library").Decimal;
@@ -103,7 +102,9 @@ export declare class LoanAccountsService {
             last_edit_fines: import("@prisma/client/runtime/library").Decimal | null;
             last_edit_pay_capital: import("@prisma/client/runtime/library").Decimal | null;
             last_edit_pay_interest: import("@prisma/client/runtime/library").Decimal | null;
+            note: string | null;
             overdue_count: number;
+            ownership: string | null;
         })[];
         total: number;
         statistics: {
