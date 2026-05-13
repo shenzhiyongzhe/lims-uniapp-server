@@ -1,0 +1,49 @@
+import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
+import { LoanAccountsModule } from './loanAccounts/loanAccounts.module';
+import { StatisticsModule } from './statistics/statistics.module';
+import { RepaymentRecordsModule } from './repayment-records/repayment-records.module';
+import { AssetManagementModule } from './asset-management/asset-management.module';
+import { MobileTerminalModule } from './mobile-terminal/mobile-terminal.module';
+import { UsersModule } from './users/users.module';
+import { LoanPredictionModule } from './loan-prediction/loan-prediction.module';
+import { AdminsModule } from './admins/admins.module';
+import { RepaymentSchedulesModule } from './repayment-schedules/repayment-schedules.module';
+import { ScheduleTasksModule } from './schedule/schedule-tasks.module';
+import { buildPinoParams } from './logger/pino-params.factory';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) =>
+        buildPinoParams(configService),
+    }),
+    ScheduleModule.forRoot(),
+    PrismaModule,
+    AuthModule,
+    LoanAccountsModule,
+    StatisticsModule,
+    RepaymentRecordsModule,
+    AssetManagementModule,
+    MobileTerminalModule,
+    UsersModule,
+    LoanPredictionModule,
+    AdminsModule,
+    RepaymentSchedulesModule,
+    ScheduleTasksModule,
+  ],
+  controllers: [AppController],
+  providers: [AppService],
+})
+export class AppModule {}

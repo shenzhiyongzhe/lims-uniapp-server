@@ -1,0 +1,311 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int               @id @default(autoincrement())
+  username         String            @db.VarChar(10)
+  overtime         Int?              @default(0)
+  overdue_time     Int?              @default(0)
+  is_high_risk     Boolean?          @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime?         @updatedAt
+  loanAccounts     LoanAccount[]
+  repaymentRecords RepaymentRecord[]
+
+  @@map("users")
+}
+
+model Admin {
+  id                            Int                            @id @default(autoincrement())
+  email                         String?                        @db.VarChar(100)
+  role                          ManagementRoles
+  openid                        String?                        @unique @db.VarChar(100)
+  nickname                      String?                        @db.VarChar(100)
+  avatar_url                    String?                        @db.VarChar(255)
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime?                      @updatedAt
+  failed_login_attempts         Int                            @default(0)
+  locked_until                  DateTime?
+  last_login_at                 DateTime?
+  last_login_ip                 String?                        @db.VarChar(45)
+  token_version                 Int                            @default(1)
+  assetReductionHistory         AssetReductionHistory[]        @relation("AssetReductionHistory")
+  collectorAssetManagement      CollectorAssetManagement?
+  dailyStatistics               DailyStatistics[]
+  loanAccountRoles              LoanAccountRole[]
+  loanAccountsAsCollector       LoanAccount[]                  @relation("CollectorLoanAccounts")
+  loanAccountsAsRiskController  LoanAccount[]                  @relation("RiskControllerLoanAccounts")
+  repaymentRecords              RepaymentRecord[]
+  riskControllerAssetManagement RiskControllerAssetManagement?
+
+  @@map("admins")
+}
+
+model LoanAccount {
+  id                       Int                 @id @default(autoincrement())
+  user_id                  Int
+  loan_amount              Decimal             @db.Decimal(10, 2)
+  receiving_amount         Decimal?            @db.Decimal(10, 2)
+  to_hand_ratio            Decimal?            @db.Decimal(10, 2)
+  capital                  Decimal             @db.Decimal(10, 2)
+  interest                 Decimal             @db.Decimal(10, 2)
+  due_start_date           DateTime            @db.Date
+  due_end_date             DateTime            @db.Date
+  status                   LoanAccountStatus   @default(pending)
+  handling_fee             Decimal             @db.Decimal(10, 2)
+  total_periods            Int
+  repaid_periods           Int                 @default(0)
+  daily_repayment          Int                 @default(0)
+  company_cost             Int                 @default(0)
+  created_at               DateTime            @default(now())
+  created_by               Int
+  updated_at               DateTime?           @updatedAt
+  collector_id             Int
+  risk_controller_id       Int
+  apply_times              Int                 @default(0)
+  paid_capital             Decimal             @default(0.00) @db.Decimal(10, 2)
+  status_changed_at        DateTime?
+  total_fines              Decimal             @default(0.00) @db.Decimal(10, 2)
+  paid_interest            Decimal             @default(0.00) @db.Decimal(10, 2)
+  early_settlement_capital Decimal?            @db.Decimal(10, 2)
+  last_edit_fines          Decimal?            @db.Decimal(10, 2)
+  last_edit_pay_capital    Decimal?            @db.Decimal(10, 2)
+  last_edit_pay_interest   Decimal?            @db.Decimal(10, 2)
+  note                     String?             @db.VarChar(300)
+  overdue_count            Int                 @default(0)
+  ownership                String?             @db.VarChar(2)
+  loanAccountRoles         LoanAccountRole[]
+  collector                Admin               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
+  risk_controller          Admin               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
+  user                     User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  repaymentRecords         RepaymentRecord[]
+  repaymentSchedules       RepaymentSchedule[]
+
+  @@index([collector_id], map: "loan_accounts_collector_id_fkey")
+  @@index([risk_controller_id], map: "loan_accounts_risk_controller_id_fkey")
+  @@index([user_id], map: "loan_accounts_user_id_fkey")
+  @@map("loan_accounts")
+}
+
+model LoanAccountRole {
+  id              Int         @id @default(autoincrement())
+  loan_account_id Int
+  admin_id        Int
+  role_type       String      @db.VarChar(20)
+  created_at      DateTime    @default(now())
+  admin           Admin       @relation(fields: [admin_id], references: [id])
+  loan_account    LoanAccount @relation(fields: [loan_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([loan_account_id, admin_id, role_type])
+  @@index([admin_id], map: "loan_account_roles_admin_id_fkey")
+  @@index([loan_account_id])
+  @@map("loan_account_roles")
+}
+
+model RepaymentSchedule {
+  id                  Int                     @id @default(autoincrement())
+  loan_id             Int
+  period              Int
+  due_start_date      DateTime                @db.Date
+  due_amount          Decimal                 @db.Decimal(10, 2)
+  capital             Decimal?                @db.Decimal(10, 2)
+  interest            Decimal?                @db.Decimal(10, 2)
+  status              RepaymentScheduleStatus @default(pending)
+  paid_amount         Decimal?                @db.Decimal(10, 2)
+  paid_at             DateTime?
+  fines               Decimal?                @default(0.00) @db.Decimal(10, 2)
+  collected_by_type   CollectionSource?
+  operator_admin_id   Int?
+  operator_admin_name String?                 @db.VarChar(50)
+  paid_capital        Decimal?                @default(0.00) @db.Decimal(10, 2)
+  paid_interest       Decimal?                @default(0.00) @db.Decimal(10, 2)
+  overdueRecords      OverdueRecord?
+  repaymentRecords    RepaymentRecord[]
+  loan_account        LoanAccount             @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+
+  @@index([loan_id], map: "repayment_schedules_loan_id_fkey")
+  @@map("repayment_schedules")
+}
+
+model RepaymentRecord {
+  id                    Int                @id @default(autoincrement())
+  loan_id               Int
+  user_id               Int
+  paid_amount           Decimal?           @db.Decimal(10, 2)
+  paid_at               DateTime           @default(now())
+  paid_capital          Decimal?           @db.Decimal(10, 2)
+  paid_fines            Decimal?           @db.Decimal(10, 2)
+  paid_interest         Decimal?           @db.Decimal(10, 2)
+  repayment_schedule_id Int?
+  actual_collector_id   Int?
+  actual_collector      Admin?             @relation(fields: [actual_collector_id], references: [id])
+  loan_account          LoanAccount        @relation(fields: [loan_id], references: [id])
+  repayment_schedule    RepaymentSchedule? @relation(fields: [repayment_schedule_id], references: [id])
+  user                  User               @relation(fields: [user_id], references: [id])
+
+  @@index([actual_collector_id], map: "repayment_records_actual_collector_id_fkey")
+  @@index([loan_id], map: "repayment_records_loan_id_fkey")
+  @@index([repayment_schedule_id], map: "repayment_records_repayment_schedule_id_fkey")
+  @@index([user_id], map: "repayment_records_user_id_fkey")
+  @@map("repayment_records")
+}
+
+model OverdueRecord {
+  id           Int               @id @default(autoincrement())
+  user_id      Int
+  loan_id      Int
+  schedule_id  Int               @unique
+  collector    String            @db.VarChar(10)
+  overdue_date DateTime
+  created_at   DateTime          @default(now())
+  schedule     RepaymentSchedule @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+
+  @@index([collector, overdue_date])
+  @@index([overdue_date])
+  @@index([user_id, overdue_date])
+  @@map("overdue_records")
+}
+
+model DailyStatistics {
+  id                          Int      @id @default(autoincrement())
+  date                        DateTime @db.Date
+  created_at                  DateTime @default(now())
+  updated_at                  DateTime @updatedAt
+  admin_id                    Int
+  admin_name                  String   @db.VarChar(10)
+  role                        String   @db.VarChar(20)
+  total_fines                 Decimal  @default(0.00) @db.Decimal(12, 2)
+  total_handling_fee          Decimal  @default(0.00) @db.Decimal(12, 2)
+  active_count                Int      @default(0)
+  last_month_blacklist_count  Int      @default(0)
+  last_month_fines            Decimal  @default(0.00) @db.Decimal(12, 2)
+  last_month_handling_fee     Decimal  @default(0.00) @db.Decimal(12, 2)
+  this_month_blacklist_count  Int      @default(0)
+  this_month_fines            Decimal  @default(0.00) @db.Decimal(12, 2)
+  this_month_handling_fee     Decimal  @default(0.00) @db.Decimal(12, 2)
+  this_month_negotiated_count Int      @default(0)
+  this_month_new_amount       Decimal  @default(0.00) @db.Decimal(12, 2)
+  this_month_settled_amount   Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_blacklist_count       Int      @default(0)
+  today_collection            Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_fines                 Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_handling_fee          Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_negotiated_count      Int      @default(0)
+  today_new_amount            Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_paid_count            Int      @default(0)
+  today_pending_count         Int      @default(0)
+  today_settled_amount        Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_unpaid_amount         Decimal  @default(0.00) @db.Decimal(12, 2)
+  total_amount                Decimal  @default(0.00) @db.Decimal(12, 2)
+  total_blacklist_count       Int      @default(0)
+  total_in_stock_amount       Decimal  @default(0.00) @db.Decimal(12, 2)
+  total_in_stock_count        Int      @default(0)
+  total_negotiated_count      Int      @default(0)
+  total_received_amount       Decimal  @default(0.00) @db.Decimal(12, 2)
+  yesterday_collection        Decimal  @default(0.00) @db.Decimal(12, 2)
+  yesterday_overdue_count     Int      @default(0)
+  admin                       Admin    @relation(fields: [admin_id], references: [id])
+
+  @@unique([admin_id, date, role])
+  @@index([date])
+  @@index([admin_id])
+  @@map("daily_statistics")
+}
+
+
+
+model CollectorAssetManagement {
+  id                   Int      @id @default(autoincrement())
+  admin_id             Int      @unique
+  total_handling_fee   Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_fines          Decimal  @default(0.00) @db.Decimal(10, 2)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+  reduced_fines        Decimal  @default(0.00) @db.Decimal(10, 2)
+  reduced_handling_fee Decimal  @default(0.00) @db.Decimal(10, 2)
+  admin                Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+
+  @@map("collector_asset_management")
+}
+
+model RiskControllerAssetManagement {
+  id             Int      @id @default(autoincrement())
+  admin_id       Int      @unique
+  total_amount   Decimal  @default(0.00) @db.Decimal(10, 2)
+  reduced_amount Decimal  @default(0.00) @db.Decimal(10, 2)
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+  admin          Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+
+  @@map("risk_controller_asset_management")
+}
+
+model LoanFieldPrediction {
+  id           Int      @id @default(autoincrement())
+  field_name   String   @db.VarChar(50)
+  value        Decimal  @db.Decimal(10, 2)
+  frequency    Int      @default(1)
+  last_used_at DateTime @default(now())
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@unique([field_name, value])
+  @@index([field_name, frequency])
+  @@index([field_name, value])
+  @@map("loan_field_predictions")
+}
+
+model AssetReductionHistory {
+  id                        Int      @id @default(autoincrement())
+  admin_id                  Int
+  asset_type                String   @db.VarChar(50)
+  field_name                String   @db.VarChar(50)
+  old_value                 Decimal  @db.Decimal(10, 2)
+  input_value               Decimal  @db.Decimal(10, 2)
+  new_value                 Decimal  @db.Decimal(10, 2)
+  updated_by_admin_id       Int?
+  updated_by_admin_username String?  @db.VarChar(50)
+  created_at                DateTime @default(now())
+  updated_at                DateTime @updatedAt
+  admin                     Admin    @relation("AssetReductionHistory", fields: [admin_id], references: [id], onDelete: Cascade)
+
+  @@index([admin_id], map: "asset_reduction_history_admin_id_fkey")
+  @@map("asset_reduction_history")
+}
+
+enum ManagementRoles {
+  ADMIN
+  RISK_CONTROLLER
+  COLLECTOR
+  PENDING
+}
+
+enum LoanAccountStatus {
+  pending
+  active
+  overdue
+  settled
+  unsettled
+  negotiated
+  to_be_processed
+  blacklist
+}
+
+enum RepaymentScheduleStatus {
+  pending
+  active
+  overdue
+  paid
+  terminated
+}
+
+enum CollectionSource {
+  grabbed
+  manual
+}

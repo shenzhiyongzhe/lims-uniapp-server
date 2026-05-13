@@ -1,0 +1,42 @@
+import { RepaymentScheduleStatus, LoanAccountStatus } from '@prisma/client';
+export declare class UserInfo {
+    id: number;
+    username: string;
+    overtime: number;
+    overdue_time: number;
+    is_high_risk: boolean;
+}
+export declare class LoanAccountInfo {
+    id: number;
+    user_id: number;
+    loan_amount: number;
+    capital: number;
+    interest: number;
+    due_start_date: Date;
+    due_end_date: Date;
+    status: LoanAccountStatus;
+    handling_fee: number;
+    total_periods: number;
+    repaid_periods: number;
+    daily_repayment: number;
+    risk_controller: string;
+    collector: string;
+    lender: string;
+    user?: UserInfo;
+}
+export declare class RepaymentScheduleResponseDto {
+    id: number;
+    loan_id: number;
+    period: number;
+    due_start_date: Date;
+    due_amount: number;
+    capital?: number;
+    interest?: number;
+    remaining_capital?: number;
+    remaining_interest?: number;
+    fines?: number;
+    status: RepaymentScheduleStatus;
+    paid_amount?: number;
+    paid_at?: Date;
+    loan_account?: LoanAccountInfo;
+}
