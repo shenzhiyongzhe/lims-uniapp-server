@@ -24,12 +24,34 @@ function resolveNodeEnv(config: ConfigService): string {
   );
 }
 
+/** Pino 内置 level；误把 NODE_ENV 写进 LOG_LEVEL 时会报 “must be included in custom levels” */
+const PINO_BUILTIN_LEVELS = new Set([
+  'trace',
+  'debug',
+  'info',
+  'warn',
+  'error',
+  'fatal',
+  'silent',
+]);
+
+function normalizeLogLevel(
+  raw: string | undefined,
+  nodeEnv: string,
+): string {
+  const fallback = nodeEnv === 'production' ? 'info' : 'debug';
+  if (raw == null || typeof raw !== 'string') return fallback;
+  const s = raw.trim().toLowerCase();
+  if (s === 'production') return 'info';
+  if (s === 'development') return 'debug';
+  if (PINO_BUILTIN_LEVELS.has(s)) return s;
+  return fallback;
+}
+
 function resolveLogLevel(config: ConfigService, nodeEnv: string): string {
-  return (
-    config.get<string>('LOG_LEVEL') ??
-    process.env.LOG_LEVEL ??
-    (nodeEnv === 'production' ? 'info' : 'debug')
-  );
+  const fromConfig = config.get<string>('LOG_LEVEL');
+  const fromEnv = process.env.LOG_LEVEL;
+  return normalizeLogLevel(fromConfig ?? fromEnv, nodeEnv);
 }
 
 export function buildPinoParams(config: ConfigService): Params {

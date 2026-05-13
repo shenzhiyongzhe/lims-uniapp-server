@@ -19,10 +19,32 @@ function resolveNodeEnv(config) {
         process.env.NODE_ENV ??
         'development');
 }
+const PINO_BUILTIN_LEVELS = new Set([
+    'trace',
+    'debug',
+    'info',
+    'warn',
+    'error',
+    'fatal',
+    'silent',
+]);
+function normalizeLogLevel(raw, nodeEnv) {
+    const fallback = nodeEnv === 'production' ? 'info' : 'debug';
+    if (raw == null || typeof raw !== 'string')
+        return fallback;
+    const s = raw.trim().toLowerCase();
+    if (s === 'production')
+        return 'info';
+    if (s === 'development')
+        return 'debug';
+    if (PINO_BUILTIN_LEVELS.has(s))
+        return s;
+    return fallback;
+}
 function resolveLogLevel(config, nodeEnv) {
-    return (config.get('LOG_LEVEL') ??
-        process.env.LOG_LEVEL ??
-        (nodeEnv === 'production' ? 'info' : 'debug'));
+    const fromConfig = config.get('LOG_LEVEL');
+    const fromEnv = process.env.LOG_LEVEL;
+    return normalizeLogLevel(fromConfig ?? fromEnv, nodeEnv);
 }
 function buildPinoParams(config) {
     const nodeEnv = resolveNodeEnv(config);
