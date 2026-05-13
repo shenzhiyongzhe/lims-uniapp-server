@@ -17,4 +17,5 @@ export declare class UpdateLoanAccountDto {
     company_cost?: number;
     apply_times?: number;
     note?: string;
+    ownership?: string;
 }

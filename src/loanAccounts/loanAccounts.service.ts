@@ -229,15 +229,25 @@ export class LoanAccountsService {
   }
 
   async update(id: number, data: UpdateLoanAccountDto): Promise<LoanAccount> {
-    return await this.prisma.$transaction(async (tx) => {
+    let prevCollectorId: number | undefined;
+    let prevRiskId: number | undefined;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
       const oldLoan = await tx.loanAccount.findUnique({
         where: { id },
-        select: { due_start_date: true },
+        select: {
+          due_start_date: true,
+          collector_id: true,
+          risk_controller_id: true,
+        },
       });
 
       if (!oldLoan) {
         throw new Error('贷款记录不存在');
       }
+
+      prevCollectorId = oldLoan.collector_id;
+      prevRiskId = oldLoan.risk_controller_id;
 
       const updateData: any = {};
       let newDueStartDate: Date | null = null;
@@ -280,8 +290,11 @@ export class LoanAccountsService {
       if (data.risk_controller_id !== undefined) updateData.risk_controller_id = data.risk_controller_id;
       if (data.collector_id !== undefined) updateData.collector_id = data.collector_id;
       if (data.note !== undefined) updateData.note = data.note;
+      if (data.ownership !== undefined) {
+        updateData.ownership = data.ownership === '' ? null : data.ownership;
+      }
 
-      const updated = await tx.loanAccount.update({
+      const updatedRow = await tx.loanAccount.update({
         where: { id },
         data: updateData,
         include: {
@@ -368,8 +381,42 @@ export class LoanAccountsService {
         }
       }
 
-      return updated;
+      return updatedRow;
     });
+
+    try {
+      if (data.collector_id !== undefined) {
+        if (
+          prevCollectorId !== undefined &&
+          prevCollectorId !== data.collector_id
+        ) {
+          await this.assetManagementService.updateCollectorAssetFromLoanAccount(
+            prevCollectorId,
+            updated,
+          );
+        }
+        await this.assetManagementService.updateCollectorAssetFromLoanAccount(
+          data.collector_id,
+          updated,
+        );
+      }
+      if (data.risk_controller_id !== undefined) {
+        if (prevRiskId !== undefined && prevRiskId !== data.risk_controller_id) {
+          await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(
+            prevRiskId,
+            updated,
+          );
+        }
+        await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(
+          data.risk_controller_id,
+          updated,
+        );
+      }
+    } catch (error) {
+      console.error('更新资产数据失败:', error);
+    }
+
+    return updated;
   }
 
   async findById(id: number): Promise<LoanAccount | null> {
@@ -377,6 +424,12 @@ export class LoanAccountsService {
       where: { id },
       include: {
         user: true,
+        risk_controller: {
+          select: { id: true, nickname: true },
+        },
+        collector: {
+          select: { id: true, nickname: true },
+        },
         repaymentSchedules: {
           orderBy: { period: 'asc' },
         },

@@ -6,6 +6,8 @@ import {
   Min,
   Max,
   IsPositive,
+  IsString,
+  Length,
 } from 'class-validator';
 import { LoanAccountStatus } from '@prisma/client';
 
@@ -93,4 +95,9 @@ export class UpdateLoanAccountDto {
 
   @IsOptional()
   note?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(0, 2)
+  ownership?: string;
 }
