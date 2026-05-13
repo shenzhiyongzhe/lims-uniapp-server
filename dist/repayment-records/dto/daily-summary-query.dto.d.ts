@@ -1,4 +1,4 @@
 export declare class DailySummaryQueryDto {
-    payeeId?: number;
+    adminId?: number;
     month: string;
 }

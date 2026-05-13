@@ -5,7 +5,7 @@ export class CollectorSummaryQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  payeeId?: number;
+  adminId?: number;
 
   @IsOptional()
   @IsString()

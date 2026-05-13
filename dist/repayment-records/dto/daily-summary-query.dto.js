@@ -13,7 +13,7 @@ exports.DailySummaryQueryDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 class DailySummaryQueryDto {
-    payeeId;
+    adminId;
     month;
 }
 exports.DailySummaryQueryDto = DailySummaryQueryDto;
@@ -22,7 +22,7 @@ __decorate([
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)(),
     __metadata("design:type", Number)
-], DailySummaryQueryDto.prototype, "payeeId", void 0);
+], DailySummaryQueryDto.prototype, "adminId", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.Matches)(/^\d{4}-\d{2}$/, { message: 'month 必须为 YYYY-MM 格式' }),

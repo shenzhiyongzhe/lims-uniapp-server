@@ -19,7 +19,7 @@ const loanAccounts_module_1 = require("./loanAccounts/loanAccounts.module");
 const statistics_module_1 = require("./statistics/statistics.module");
 const repayment_records_module_1 = require("./repayment-records/repayment-records.module");
 const asset_management_module_1 = require("./asset-management/asset-management.module");
-const mobile_terminal_module_1 = require("./mobile-terminal/mobile-terminal.module");
+const collector_statistics_module_1 = require("./collector-statistics/collector-statistics.module");
 const users_module_1 = require("./users/users.module");
 const loan_prediction_module_1 = require("./loan-prediction/loan-prediction.module");
 const admins_module_1 = require("./admins/admins.module");
@@ -47,7 +47,7 @@ exports.AppModule = AppModule = __decorate([
             statistics_module_1.StatisticsModule,
             repayment_records_module_1.RepaymentRecordsModule,
             asset_management_module_1.AssetManagementModule,
-            mobile_terminal_module_1.MobileTerminalModule,
+            collector_statistics_module_1.CollectorStatisticsModule,
             users_module_1.UsersModule,
             loan_prediction_module_1.LoanPredictionModule,
             admins_module_1.AdminsModule,

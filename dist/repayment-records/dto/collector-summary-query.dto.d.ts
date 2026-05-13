@@ -1,4 +1,4 @@
 export declare class CollectorSummaryQueryDto {
-    payeeId?: number;
+    adminId?: number;
     targetDate?: string;
 }

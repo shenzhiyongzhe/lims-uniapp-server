@@ -18,7 +18,7 @@ export class RepaymentRecordsService {
       pageSize = 20,
       userId,
       loanId,
-      payeeId,
+      adminId: scopeCollectorAdminId,
       startDate,
       endDate,
       riskControllerId,
@@ -31,7 +31,8 @@ export class RepaymentRecordsService {
     let where: any = { loan_id: { in: loanIds } };
     if (userId) where.user_id = userId;
     if (loanId) where.loan_id = loanId;
-    if (payeeId) where.actual_collector_id = payeeId;
+    if (scopeCollectorAdminId)
+      where.actual_collector_id = scopeCollectorAdminId;
     if (username) {
       where.user = {
         username: { contains: username.trim() },
@@ -75,7 +76,7 @@ export class RepaymentRecordsService {
   }
 
   async getCollectorSummary(query: CollectorSummaryQueryDto, adminId: number) {
-    const { payeeId, targetDate } = query;
+    const { adminId: scopeCollectorAdminId, targetDate } = query;
     const now = targetDate ? new Date(targetDate) : new Date();
     const dayStart = this.getDayStart(now);
     const dayEnd = this.getDayEnd(now);
@@ -88,8 +89,8 @@ export class RepaymentRecordsService {
 
     const loanIds = await this.getScopedLoanIds(adminId);
     const baseWhere: any = { loan_id: { in: loanIds } };
-    if (payeeId) {
-      baseWhere.actual_collector_id = payeeId;
+    if (scopeCollectorAdminId) {
+      baseWhere.actual_collector_id = scopeCollectorAdminId;
     }
 
     const [todayRecords, yesterdayRecords, monthRecords, totalRecords] = await Promise.all([
@@ -121,7 +122,7 @@ export class RepaymentRecordsService {
   }
 
   async getDailySummary(query: DailySummaryQueryDto, adminId: number) {
-    const { payeeId, month } = query;
+    const { adminId: scopeCollectorAdminId, month } = query;
     const [yearStr, monthStr] = month.split('-');
     const year = Number(yearStr);
     const monthIndex = Number(monthStr) - 1;
@@ -133,8 +134,8 @@ export class RepaymentRecordsService {
       loan_id: { in: loanIds },
       paid_at: { gte: monthStart, lt: nextMonthStart },
     };
-    if (payeeId) {
-      where.actual_collector_id = payeeId;
+    if (scopeCollectorAdminId) {
+      where.actual_collector_id = scopeCollectorAdminId;
     }
 
     const rows = await this.prisma.repaymentRecord.findMany({

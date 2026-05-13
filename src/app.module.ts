@@ -10,7 +10,7 @@ import { LoanAccountsModule } from './loanAccounts/loanAccounts.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { RepaymentRecordsModule } from './repayment-records/repayment-records.module';
 import { AssetManagementModule } from './asset-management/asset-management.module';
-import { MobileTerminalModule } from './mobile-terminal/mobile-terminal.module';
+import { CollectorStatisticsModule } from './collector-statistics/collector-statistics.module';
 import { UsersModule } from './users/users.module';
 import { LoanPredictionModule } from './loan-prediction/loan-prediction.module';
 import { AdminsModule } from './admins/admins.module';
@@ -36,7 +36,7 @@ import { buildPinoParams } from './logger/pino-params.factory';
     StatisticsModule,
     RepaymentRecordsModule,
     AssetManagementModule,
-    MobileTerminalModule,
+    CollectorStatisticsModule,
     UsersModule,
     LoanPredictionModule,
     AdminsModule,

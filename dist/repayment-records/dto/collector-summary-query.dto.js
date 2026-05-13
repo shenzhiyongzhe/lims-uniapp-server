@@ -13,7 +13,7 @@ exports.CollectorSummaryQueryDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 class CollectorSummaryQueryDto {
-    payeeId;
+    adminId;
     targetDate;
 }
 exports.CollectorSummaryQueryDto = CollectorSummaryQueryDto;
@@ -22,7 +22,7 @@ __decorate([
     (0, class_transformer_1.Type)(() => Number),
     (0, class_validator_1.IsNumber)(),
     __metadata("design:type", Number)
-], CollectorSummaryQueryDto.prototype, "payeeId", void 0);
+], CollectorSummaryQueryDto.prototype, "adminId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),

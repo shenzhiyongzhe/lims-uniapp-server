@@ -3,7 +3,7 @@ export declare class PaginationQueryDto {
     pageSize?: number;
     userId?: number;
     loanId?: number;
-    payeeId?: number;
+    adminId?: number;
     startDate?: string;
     endDate?: string;
     riskControllerId?: number;

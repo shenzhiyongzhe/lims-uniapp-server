@@ -5,7 +5,7 @@ export class DailySummaryQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  payeeId?: number;
+  adminId?: number;
 
   @IsString()
   @Matches(/^\d{4}-\d{2}$/, { message: 'month 必须为 YYYY-MM 格式' })

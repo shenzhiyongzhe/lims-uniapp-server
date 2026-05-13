@@ -18,7 +18,7 @@ let RepaymentRecordsService = class RepaymentRecordsService {
         this.prisma = prisma;
     }
     async findAllWithPagination(query, adminId) {
-        const { page = 1, pageSize = 20, userId, loanId, payeeId, startDate, endDate, riskControllerId, collectorId, username, } = query;
+        const { page = 1, pageSize = 20, userId, loanId, adminId: scopeCollectorAdminId, startDate, endDate, riskControllerId, collectorId, username, } = query;
         const skip = (page - 1) * pageSize;
         const loanIds = await this.getScopedLoanIds(adminId, riskControllerId, collectorId);
         let where = { loan_id: { in: loanIds } };
@@ -26,8 +26,8 @@ let RepaymentRecordsService = class RepaymentRecordsService {
             where.user_id = userId;
         if (loanId)
             where.loan_id = loanId;
-        if (payeeId)
-            where.actual_collector_id = payeeId;
+        if (scopeCollectorAdminId)
+            where.actual_collector_id = scopeCollectorAdminId;
         if (username) {
             where.user = {
                 username: { contains: username.trim() },
@@ -68,7 +68,7 @@ let RepaymentRecordsService = class RepaymentRecordsService {
         };
     }
     async getCollectorSummary(query, adminId) {
-        const { payeeId, targetDate } = query;
+        const { adminId: scopeCollectorAdminId, targetDate } = query;
         const now = targetDate ? new Date(targetDate) : new Date();
         const dayStart = this.getDayStart(now);
         const dayEnd = this.getDayEnd(now);
@@ -80,8 +80,8 @@ let RepaymentRecordsService = class RepaymentRecordsService {
         const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
         const loanIds = await this.getScopedLoanIds(adminId);
         const baseWhere = { loan_id: { in: loanIds } };
-        if (payeeId) {
-            baseWhere.actual_collector_id = payeeId;
+        if (scopeCollectorAdminId) {
+            baseWhere.actual_collector_id = scopeCollectorAdminId;
         }
         const [todayRecords, yesterdayRecords, monthRecords, totalRecords] = await Promise.all([
             this.prisma.repaymentRecord.findMany({
@@ -110,7 +110,7 @@ let RepaymentRecordsService = class RepaymentRecordsService {
         };
     }
     async getDailySummary(query, adminId) {
-        const { payeeId, month } = query;
+        const { adminId: scopeCollectorAdminId, month } = query;
         const [yearStr, monthStr] = month.split('-');
         const year = Number(yearStr);
         const monthIndex = Number(monthStr) - 1;
@@ -121,8 +121,8 @@ let RepaymentRecordsService = class RepaymentRecordsService {
             loan_id: { in: loanIds },
             paid_at: { gte: monthStart, lt: nextMonthStart },
         };
-        if (payeeId) {
-            where.actual_collector_id = payeeId;
+        if (scopeCollectorAdminId) {
+            where.actual_collector_id = scopeCollectorAdminId;
         }
         const rows = await this.prisma.repaymentRecord.findMany({
             where,

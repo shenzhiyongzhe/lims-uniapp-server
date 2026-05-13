@@ -28,7 +28,7 @@ export class PaginationQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
-  payeeId?: number;
+  adminId?: number;
 
   @IsOptional()
   startDate?: string;
