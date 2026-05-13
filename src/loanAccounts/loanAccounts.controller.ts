@@ -12,6 +12,7 @@ import {
 import { LoanAccountsService } from './loanAccounts.service';
 import { CreateLoanAccountDto } from './dto/create-loanAccount.dto';
 import { UpdateLoanAccountDto } from './dto/update-loanAccount.dto';
+import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -88,6 +89,26 @@ export class LoanAccountsController {
       return ResponseHelper.success(loan, '创建贷款记录成功');
     } catch (error: any) {
       return ResponseHelper.error(`创建贷款记录失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(
+    ManagementRoles.ADMIN,
+    ManagementRoles.COLLECTOR,
+    ManagementRoles.RISK_CONTROLLER,
+  )
+  @Put(':id/status')
+  async updateStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateLoanAccountStatusDto,
+  ): Promise<ApiResponseDto> {
+    try {
+      await this.loanAccountsService.updateAccountStatus(id, body);
+      const loan = await this.loanAccountsService.findById(id);
+      return ResponseHelper.success(loan, '更新贷款状态成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`更新贷款状态失败: ${error.message}`, 500);
     }
   }
 

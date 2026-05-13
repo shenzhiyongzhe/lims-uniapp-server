@@ -17,6 +17,7 @@ const common_1 = require("@nestjs/common");
 const loanAccounts_service_1 = require("./loanAccounts.service");
 const create_loanAccount_dto_1 = require("./dto/create-loanAccount.dto");
 const update_loanAccount_dto_1 = require("./dto/update-loanAccount.dto");
+const update_loan_account_status_dto_1 = require("./dto/update-loan-account-status.dto");
 const auth_guard_1 = require("../auth/auth.guard");
 const roles_guard_1 = require("../auth/roles.guard");
 const current_user_decorator_1 = require("../auth/current-user.decorator");
@@ -62,6 +63,16 @@ let LoanAccountsController = class LoanAccountsController {
         }
         catch (error) {
             return response_helper_1.ResponseHelper.error(`创建贷款记录失败: ${error.message}`, 500);
+        }
+    }
+    async updateStatus(id, body) {
+        try {
+            await this.loanAccountsService.updateAccountStatus(id, body);
+            const loan = await this.loanAccountsService.findById(id);
+            return response_helper_1.ResponseHelper.success(loan, '更新贷款状态成功');
+        }
+        catch (error) {
+            return response_helper_1.ResponseHelper.error(`更新贷款状态失败: ${error.message}`, 500);
         }
     }
     async update(id, body) {
@@ -123,6 +134,16 @@ __decorate([
     __metadata("design:paramtypes", [create_loanAccount_dto_1.CreateLoanAccountDto, Object]),
     __metadata("design:returntype", Promise)
 ], LoanAccountsController.prototype, "create", null);
+__decorate([
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)(client_1.ManagementRoles.ADMIN, client_1.ManagementRoles.COLLECTOR, client_1.ManagementRoles.RISK_CONTROLLER),
+    (0, common_1.Put)(':id/status'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, update_loan_account_status_dto_1.UpdateLoanAccountStatusDto]),
+    __metadata("design:returntype", Promise)
+], LoanAccountsController.prototype, "updateStatus", null);
 __decorate([
     (0, common_1.UseGuards)(auth_guard_1.AuthGuard, roles_guard_1.RolesGuard),
     (0, roles_decorator_1.Roles)(client_1.ManagementRoles.ADMIN, client_1.ManagementRoles.COLLECTOR, client_1.ManagementRoles.RISK_CONTROLLER),

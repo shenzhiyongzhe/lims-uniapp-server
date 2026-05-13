@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { LoanAccount } from '@prisma/client';
 import { CreateLoanAccountDto } from './dto/create-loanAccount.dto';
 import { UpdateLoanAccountDto } from './dto/update-loanAccount.dto';
+import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto';
 import { LoanPredictionService } from '../loan-prediction/loan-prediction.service';
 import { AssetManagementService } from '../asset-management/asset-management.service';
 export declare class LoanAccountsService {
@@ -11,9 +12,11 @@ export declare class LoanAccountsService {
     constructor(prisma: PrismaService, loanPredictionService: LoanPredictionService, assetManagementService: AssetManagementService);
     private isOverdue;
     private determineScheduleStatus;
+    private computeLoanStatistics;
     create(data: CreateLoanAccountDto, createdBy: number): Promise<LoanAccount>;
     update(id: number, data: UpdateLoanAccountDto): Promise<LoanAccount>;
-    findById(id: number): Promise<LoanAccount | null>;
+    findById(id: number): Promise<Record<string, unknown> | null>;
+    updateAccountStatus(id: number, dto: UpdateLoanAccountStatusDto): Promise<void>;
     findAll(): Promise<LoanAccount[]>;
     findRelatedAdmins(): Promise<{
         id: number;
@@ -59,9 +62,9 @@ export declare class LoanAccountsService {
                 paid_capital: import("@prisma/client/runtime/library").Decimal | null;
                 paid_interest: import("@prisma/client/runtime/library").Decimal | null;
                 period: number;
-                paid_amount: import("@prisma/client/runtime/library").Decimal | null;
                 loan_id: number;
                 due_amount: import("@prisma/client/runtime/library").Decimal;
+                paid_amount: import("@prisma/client/runtime/library").Decimal | null;
                 paid_at: Date | null;
                 fines: import("@prisma/client/runtime/library").Decimal | null;
                 collected_by_type: import("@prisma/client").$Enums.CollectionSource | null;

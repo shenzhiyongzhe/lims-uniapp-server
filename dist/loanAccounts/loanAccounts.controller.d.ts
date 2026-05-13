@@ -1,6 +1,7 @@
 import { LoanAccountsService } from './loanAccounts.service';
 import { CreateLoanAccountDto } from './dto/create-loanAccount.dto';
 import { UpdateLoanAccountDto } from './dto/update-loanAccount.dto';
+import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 export declare class LoanAccountsController {
     private readonly loanAccountsService;
@@ -15,5 +16,6 @@ export declare class LoanAccountsController {
     create(body: CreateLoanAccountDto, user: {
         id: number;
     }): Promise<ApiResponseDto>;
+    updateStatus(id: number, body: UpdateLoanAccountStatusDto): Promise<ApiResponseDto>;
     update(id: number, body: UpdateLoanAccountDto): Promise<ApiResponseDto>;
 }

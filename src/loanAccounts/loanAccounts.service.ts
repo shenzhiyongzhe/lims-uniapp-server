@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { CreateLoanAccountDto } from './dto/create-loanAccount.dto';
 import { UpdateLoanAccountDto } from './dto/update-loanAccount.dto';
+import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto';
 
 import { LoanPredictionService } from '../loan-prediction/loan-prediction.service';
 import { AssetManagementService } from '../asset-management/asset-management.service';
@@ -60,6 +61,83 @@ export class LoanAccountsService {
       return 'overdue';
     }
     return 'pending';
+  }
+
+  private computeLoanStatistics(loan: {
+    status: LoanAccountStatus;
+    receiving_amount?: unknown;
+    paid_capital?: unknown;
+    paid_interest?: unknown;
+    total_fines?: unknown;
+    repaymentSchedules?: Array<{
+      capital?: unknown;
+      interest?: unknown;
+      paid_capital?: unknown;
+      paid_interest?: unknown;
+      fines?: unknown;
+    }>;
+  }) {
+    const schedules = loan.repaymentSchedules || [];
+    const sumNumber = (value?: unknown) =>
+      value !== null && value !== undefined ? Number(value) : 0;
+
+    if (loan.status === 'settled' || loan.status === 'blacklist') {
+      const receivingAmount = sumNumber(loan.receiving_amount);
+      const paidCapital = sumNumber(loan.paid_capital);
+      const paidInterest = sumNumber(loan.paid_interest);
+      const totalFines = sumNumber(loan.total_fines);
+      return {
+        receivingAmount,
+        paidCapital,
+        paidInterest,
+        totalFines,
+        unpaidCapital: 0,
+        remainingCapital: 0,
+        remainingInterest: 0,
+      };
+    }
+
+    const totalCapital = schedules.reduce(
+      (sum, schedule) => sum + sumNumber(schedule.capital),
+      0,
+    );
+    const totalInterest = schedules.reduce(
+      (sum, schedule) => sum + sumNumber(schedule.interest),
+      0,
+    );
+    const paidCapital = schedules.reduce(
+      (sum, schedule) => sum + sumNumber(schedule.paid_capital),
+      0,
+    );
+    const paidInterest = schedules.reduce(
+      (sum, schedule) => sum + sumNumber(schedule.paid_interest),
+      0,
+    );
+    const remainingCapital = Math.max(totalCapital - paidCapital, 0);
+    const remainingInterest = Math.max(totalInterest - paidInterest, 0);
+    const totalFines = schedules.reduce(
+      (sum, schedule) => sum + sumNumber(schedule.fines),
+      0,
+    );
+    const receivingAmount = schedules.reduce(
+      (sum, schedule) =>
+        sum +
+        sumNumber(schedule.paid_capital) +
+        sumNumber(schedule.paid_interest) +
+        sumNumber(schedule.fines),
+      0,
+    );
+    const unpaidCapital = remainingCapital;
+
+    return {
+      receivingAmount,
+      paidCapital,
+      paidInterest,
+      totalFines,
+      unpaidCapital,
+      remainingCapital,
+      remainingInterest,
+    };
   }
 
   async create(
@@ -419,8 +497,8 @@ export class LoanAccountsService {
     return updated;
   }
 
-  async findById(id: number): Promise<LoanAccount | null> {
-    return this.prisma.loanAccount.findUnique({
+  async findById(id: number): Promise<Record<string, unknown> | null> {
+    const loan = await this.prisma.loanAccount.findUnique({
       where: { id },
       include: {
         user: true,
@@ -434,6 +512,81 @@ export class LoanAccountsService {
           orderBy: { period: 'asc' },
         },
       },
+    });
+    if (!loan) {
+      return null;
+    }
+    return {
+      ...loan,
+      statistics: this.computeLoanStatistics(loan),
+    };
+  }
+
+  async updateAccountStatus(
+    id: number,
+    dto: UpdateLoanAccountStatusDto,
+  ): Promise<void> {
+    const { status, settlement_capital, settlement_date } = dto;
+
+    if (status === 'settled' || status === 'blacklist') {
+      if (
+        !settlement_date ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(settlement_date)
+      ) {
+        throw new Error('结清或拉黑时必须提供有效的结清/拉黑日期');
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const loan = await tx.loanAccount.findUnique({ where: { id } });
+      if (!loan) {
+        throw new Error('贷款记录不存在');
+      }
+
+      const data: Record<string, unknown> = {
+        status,
+        status_changed_at: new Date(),
+      };
+
+      if (status === 'settled' || status === 'blacklist') {
+        if (settlement_capital !== undefined && settlement_capital !== null) {
+          data.early_settlement_capital = settlement_capital;
+        }
+
+        const m = settlement_date!.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (!m) {
+          throw new Error('结清/拉黑日期格式无效');
+        }
+        const cutoff = new Date(
+          Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])),
+        );
+
+        const schedules = await tx.repaymentSchedule.findMany({
+          where: { loan_id: id },
+          select: { id: true, due_start_date: true, status: true },
+        });
+
+        for (const s of schedules) {
+          if (s.status === 'paid') {
+            continue;
+          }
+          const d = new Date(s.due_start_date);
+          const dayUtc = new Date(
+            Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+          );
+          if (dayUtc.getTime() >= cutoff.getTime()) {
+            await tx.repaymentSchedule.update({
+              where: { id: s.id },
+              data: { status: 'terminated' },
+            });
+          }
+        }
+      }
+
+      await tx.loanAccount.update({
+        where: { id },
+        data,
+      });
     });
   }
 
