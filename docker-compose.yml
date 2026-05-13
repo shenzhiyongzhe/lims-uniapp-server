@@ -11,6 +11,8 @@ services:
       - .env
     environment:
       PORT: "3000"
+      # 覆盖 .env 里可能误带的 development，避免生产镜像加载 pino-pretty
+      NODE_ENV: production
     volumes:
       - uploads_data:/app/uploads
     healthcheck:

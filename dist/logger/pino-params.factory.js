@@ -2,6 +2,18 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildPinoParams = buildPinoParams;
 const crypto_1 = require("crypto");
+const node_module_1 = require("node:module");
+const node_path_1 = require("node:path");
+function canResolvePinoPretty() {
+    try {
+        const rq = (0, node_module_1.createRequire)((0, node_path_1.join)(process.cwd(), 'package.json'));
+        rq.resolve('pino-pretty');
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
 function resolveNodeEnv(config) {
     return (config.get('NODE_ENV') ??
         process.env.NODE_ENV ??
@@ -52,7 +64,7 @@ function buildPinoParams(config) {
         customSuccessMessage: (req, res, responseTime) => `request_out ${req.method} ${req.url ?? ''} status=${res.statusCode} timeMs=${responseTime}`,
         customErrorMessage: (req, res, err) => `request_out_error ${req.method} ${req.url ?? ''} status=${res.statusCode} err=${err?.message ?? 'unknown'}`,
     };
-    if (!silent && !isProd) {
+    if (!silent && !isProd && canResolvePinoPretty()) {
         pinoHttp.transport = {
             target: 'pino-pretty',
             options: { singleLine: true, colorize: true },

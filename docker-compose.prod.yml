@@ -12,6 +12,7 @@ services:
       - .env
     environment:
       PORT: "3000"
+      NODE_ENV: production
     volumes:
       - uploads_data:/app/uploads
     healthcheck:

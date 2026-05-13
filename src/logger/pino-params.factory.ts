@@ -1,7 +1,20 @@
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import type { Params } from 'nestjs-pino';
 import type { Options } from 'pino-http';
+
+/** 生产镜像 prune 掉 devDependencies 后无 pino-pretty；勿在未安装时注册 transport */
+function canResolvePinoPretty(): boolean {
+  try {
+    const rq = createRequire(join(process.cwd(), 'package.json'));
+    rq.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function resolveNodeEnv(config: ConfigService): string {
   return (
@@ -64,7 +77,7 @@ export function buildPinoParams(config: ConfigService): Params {
       `request_out_error ${req.method} ${req.url ?? ''} status=${res.statusCode} err=${err?.message ?? 'unknown'}`,
   };
 
-  if (!silent && !isProd) {
+  if (!silent && !isProd && canResolvePinoPretty()) {
     pinoHttp.transport = {
       target: 'pino-pretty',
       options: { singleLine: true, colorize: true },
