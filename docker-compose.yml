@@ -1,4 +1,5 @@
 # 本地 / 服务器：构建并运行 API（数据库请自备或使用 docker-compose.mysql.yml）
+# 注意：容器内 .env 若 DATABASE_URL 使用 localhost，则连的是容器自身；应改为 mysql / 宿主机 IP / RDS 等
 services:
   api:
     build: .
@@ -9,6 +10,9 @@ services:
       - "127.0.0.1:${PORT:-3000}:3000"
     env_file:
       - .env
+    # 容器访问「宿主机上的 MySQL」时用主机名 host.docker.internal（Linux 需 host-gateway）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       PORT: "3000"
       # 覆盖 .env 里可能误带的 development，避免生产镜像加载 pino-pretty

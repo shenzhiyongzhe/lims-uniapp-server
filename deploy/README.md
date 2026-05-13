@@ -13,6 +13,20 @@
 
 `.env` 中请将 `DATABASE_URL` 指向你的 MySQL（云 RDS 或自建）；`NEXT_PUBLIC_API_BASE` 设为对外 HTTPS 地址，例如 `https://www.xinde8888.com`。
 
+**Docker 里 Prisma 报 `Can't reach database server at localhost:3306`（P1001）**  
+容器里的 `localhost` 是容器自己，不是宿主机。请把 **`DATABASE_URL` 里的主机**改成：
+
+| 场景 | `DATABASE_URL` 里主机应写 |
+|------|---------------------------|
+| MySQL 与 API 同一 `docker compose`，且服务名为 `mysql` | `mysql`（推荐用 `docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d`，compose 会注入带 `mysql` 的 URL） |
+| MySQL 跑在**宿主机**（本仓库 `docker-compose` / `docker-compose.prod` 已加 `extra_hosts: host.docker.internal:host-gateway`） | **`host.docker.internal`**（推荐；`.env` 里 `DATABASE_URL` 写 `@host.docker.internal:3306`） |
+| MySQL 跑在宿主机、**未**使用本仓库 compose（无 `extra_hosts`） | Linux 常用 **`172.17.0.1`**，或宿主机内网 IP；Docker Desktop 仍可用 `host.docker.internal` |
+| 云 RDS / 远程库 | RDS 提供的主机名 |
+
+改完 `.env` 后执行 `docker compose up -d`（或 `pull` + `up`）使 API 容器重新加载环境变量。
+
+**宿主机 MySQL 仍连不上时**：确认 MySQL 监听 **`0.0.0.0:3306`**（或至少监听 docker 网桥能到的网卡），且防火墙放行来自 **docker0 / bridge** 到 `3306` 的入站（或本机仅 Docker 访问可收紧规则）。
+
 ## 2. 数据库
 
 当前仓库未包含 `prisma/migrations` 时，需在具备 `DATABASE_URL` 的环境执行一次结构同步（任选其一，按团队规范）：
