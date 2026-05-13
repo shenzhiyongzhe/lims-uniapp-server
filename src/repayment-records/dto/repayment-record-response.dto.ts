@@ -11,4 +11,5 @@ export class RepaymentRecordResponseDto {
   // 贷款账户信息
   repaid_periods?: number;
   total_periods?: number;
+  remark?: string;
 }

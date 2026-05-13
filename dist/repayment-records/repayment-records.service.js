@@ -194,6 +194,7 @@ let RepaymentRecordsService = class RepaymentRecordsService {
             user_name: record.user?.username || undefined,
             repaid_periods: record.loan_account?.repaid_periods || 0,
             total_periods: record.loan_account?.total_periods || undefined,
+            remark: record.remark || undefined,
         };
     }
 };

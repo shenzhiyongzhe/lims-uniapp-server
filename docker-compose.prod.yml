@@ -1,0 +1,31 @@
+# 生产环境：仅拉取镜像运行（由 CI 注入 DOCKER_IMAGE）
+# 用法：export DOCKER_IMAGE=ghcr.io/<owner>/lims-uniapp-server:latest
+#      docker compose -f docker-compose.prod.yml up -d
+services:
+  api:
+    image: ${DOCKER_IMAGE:?Set DOCKER_IMAGE to ghcr.io/.../lims-uniapp-server:tag}
+    container_name: lims-uniapp-server
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    env_file:
+      - .env
+    environment:
+      PORT: "3000"
+    volumes:
+      - uploads_data:/app/uploads
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  uploads_data:

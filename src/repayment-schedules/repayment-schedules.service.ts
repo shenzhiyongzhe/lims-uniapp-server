@@ -51,6 +51,7 @@ export class RepaymentSchedulesService {
       pay_capital?: number;
       pay_interest?: number;
       fines?: number;
+      remark?: string;
     },
     operatorAdminId?: number,
   ): Promise<RepaymentSchedule> {
@@ -86,7 +87,7 @@ export class RepaymentSchedulesService {
       const baseCapital = toNumber(currentSchedule.capital);
       const baseInterest = toNumber(currentSchedule.interest);
 
-      const { pay_capital, pay_interest, ...restData } = data;
+      const { pay_capital, pay_interest, remark, ...restData } = data;
       const updatePayload: any = {
         ...restData,
         paid_capital: inputCapital,
@@ -192,6 +193,7 @@ export class RepaymentSchedulesService {
             paid_fines: finesValue,
             repayment_schedule_id: data.id,
             actual_collector_id: operatorAdminId ?? null,
+            remark: remark || null,
           },
         });
       }

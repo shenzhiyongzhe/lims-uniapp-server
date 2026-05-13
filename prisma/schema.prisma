@@ -144,6 +144,7 @@ model RepaymentRecord {
   paid_interest         Decimal?           @db.Decimal(10, 2)
   repayment_schedule_id Int?
   actual_collector_id   Int?
+  remark                String?            @db.VarChar(10)
   actual_collector      Admin?             @relation(fields: [actual_collector_id], references: [id])
   loan_account          LoanAccount        @relation(fields: [loan_id], references: [id])
   repayment_schedule    RepaymentSchedule? @relation(fields: [repayment_schedule_id], references: [id])

@@ -9,4 +9,5 @@ export declare class RepaymentRecordResponseDto {
     user_name?: string;
     repaid_periods?: number;
     total_periods?: number;
+    remark?: string;
 }

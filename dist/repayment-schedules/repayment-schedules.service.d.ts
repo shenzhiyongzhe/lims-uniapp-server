@@ -10,6 +10,7 @@ export declare class RepaymentSchedulesService {
         pay_capital?: number;
         pay_interest?: number;
         fines?: number;
+        remark?: string;
     }, operatorAdminId?: number): Promise<RepaymentSchedule>;
     create(loanId: number): Promise<RepaymentSchedule>;
     toResponse(schedule: any): RepaymentScheduleResponseDto;

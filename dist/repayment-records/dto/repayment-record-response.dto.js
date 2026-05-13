@@ -12,6 +12,7 @@ class RepaymentRecordResponseDto {
     user_name;
     repaid_periods;
     total_periods;
+    remark;
 }
 exports.RepaymentRecordResponseDto = RepaymentRecordResponseDto;
 //# sourceMappingURL=repayment-record-response.dto.js.map

@@ -1,0 +1,30 @@
+# 可选：与本目录 docker-compose.yml 叠加以在本机起 MySQL
+# docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d
+# .env 中 DATABASE_USER / DATABASE_PASSWORD / DATABASE_NAME 需与下列一致；DATABASE_URL 使用主机名 mysql
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: lims-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${DATABASE_NAME:-lims}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+
+  api:
+    depends_on:
+      mysql:
+        condition: service_started
+    environment:
+      DATABASE_HOST: mysql
+      DATABASE_PORT: "3306"
+      DATABASE_URL: mysql://${DATABASE_USER:-root}:${DATABASE_PASSWORD}@mysql:3306/${DATABASE_NAME:-lims}
+
+volumes:
+  mysql_data:

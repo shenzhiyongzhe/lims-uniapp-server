@@ -1,0 +1,81 @@
+# 构建并推送 ghcr.io/<owner>/lims-uniapp-server ，再通过 SSH 在服务器拉取并重启。
+#
+# Secrets：DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_PASSWORD, DEPLOY_PATH
+# 私有镜像需在服务器 docker login ghcr.io（见 deploy/README.md）。
+#
+# 本工作流假定仓库根目录即为 lims-uniapp-server（paths 相对仓库根）。
+# 若仓库为上层 monorepo，须把本文件放到仓库根 .github/workflows/，并把 paths 改为 monorepo 子目录前缀。
+
+name: Deploy lims-uniapp-server
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "src/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - "Dockerfile"
+      - ".github/workflows/deploy-lims-server.yml"
+  workflow_dispatch:
+
+env:
+  CONTEXT_PATH: ${{ vars.DOCKER_CONTEXT || '.' }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_full_sha: ${{ steps.resolve.outputs.image_full_sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve ghcr.io image name (lowercase owner)
+        id: resolve
+        run: |
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE_NAME="ghcr.io/${OWNER_LC}/lims-uniapp-server"
+          echo "IMAGE_NAME=${IMAGE_NAME}" >> "$GITHUB_ENV"
+          echo "image_full_sha=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.CONTEXT_PATH }}
+          file: ${{ env.CONTEXT_PATH }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_FULL_SHA: ${{ needs.build-and-push.outputs.image_full_sha }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          envs: IMAGE_FULL_SHA,DEPLOY_PATH
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_PATH}"
+            export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
+            docker compose -f docker-compose.prod.yml pull api
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
