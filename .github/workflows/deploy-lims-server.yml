@@ -78,26 +78,13 @@ jobs:
           envs: IMAGE_FULL_SHA,DEPLOY_PATH
           script_stop: true
           script: |
-            set -euo pipefail
-            log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
+            set -exo pipefail
             cd "${DEPLOY_PATH}"
             export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
-            log ">>> [0] context: pwd=$(pwd) user=$(whoami)"
-            log ">>> [0] files: docker-compose.prod.yml=$([ -f docker-compose.prod.yml ] && echo ok || echo MISSING) .env=$([ -f .env ] && echo ok || echo MISSING)"
-            command -v docker >/dev/null && log ">>> [0] docker: $(docker --version)" || log ">>> [0] docker: NOT FOUND"
-            _cv="$(docker compose version 2>&1 || :)"
-            log ">>> [0] docker compose: ${_cv}"
-            if [ -d "prisma/migrations" ]; then
-              log ">>> [0] host prisma/migrations: present (informational only; migrate uses /app/prisma inside the image)"
-            else
-              log ">>> [0] host prisma/migrations: absent (informational only)"
-            fi
-            log ">>> [1/4] pull api (${DOCKER_IMAGE})"
+            echo "=== [1/3] pull ===" >&2
             docker compose -f docker-compose.prod.yml pull api
-            log ">>> [2/4] prisma migrate deploy (from image; no-op if DB already up to date)"
+            echo "=== [2/3] prisma migrate deploy ===" >&2
             docker compose -f docker-compose.prod.yml run -T --rm api npx prisma migrate deploy
-            log ">>> [3/4] compose up -d"
+            echo "=== [3/3] compose up -d ===" >&2
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            log ">>> [4/4] compose ps (api)"
-            docker compose -f docker-compose.prod.yml ps api 2>&1 | sed 's/^/    /' || :
-            log ">>> [done] deploy script finished OK"
+            echo "=== deploy OK ===" >&2
