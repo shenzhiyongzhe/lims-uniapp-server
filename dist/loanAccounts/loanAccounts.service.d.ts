@@ -21,6 +21,7 @@ export declare class LoanAccountsService {
     findAll(): Promise<LoanAccount[]>;
     findRelatedAdmins(): Promise<{
         id: number;
+        username: string | null;
         role: import("@prisma/client").$Enums.ManagementRoles;
         nickname: string | null;
     }[]>;
@@ -36,76 +37,7 @@ export declare class LoanAccountsService {
         id: number;
         role: string;
     }): Promise<{
-        data: ({
-            collector: {
-                id: number;
-                nickname: string | null;
-            };
-            risk_controller: {
-                id: number;
-                nickname: string | null;
-            };
-            user: {
-                id: number;
-                createdAt: Date;
-                updatedAt: Date | null;
-                username: string;
-                overtime: number | null;
-                overdue_time: number | null;
-                is_high_risk: boolean | null;
-            };
-            repaymentSchedules: {
-                id: number;
-                capital: import("@prisma/client/runtime/library").Decimal | null;
-                interest: import("@prisma/client/runtime/library").Decimal | null;
-                due_start_date: Date;
-                status: import("@prisma/client").$Enums.RepaymentScheduleStatus;
-                paid_capital: import("@prisma/client/runtime/library").Decimal | null;
-                paid_interest: import("@prisma/client/runtime/library").Decimal | null;
-                paid_amount: import("@prisma/client/runtime/library").Decimal | null;
-                loan_id: number;
-                period: number;
-                due_amount: import("@prisma/client/runtime/library").Decimal;
-                paid_at: Date | null;
-                fines: import("@prisma/client/runtime/library").Decimal | null;
-                collected_by_type: import("@prisma/client").$Enums.CollectionSource | null;
-                operator_admin_id: number | null;
-                operator_admin_name: string | null;
-            }[];
-        } & {
-            id: number;
-            user_id: number;
-            loan_amount: import("@prisma/client/runtime/library").Decimal;
-            receiving_amount: import("@prisma/client/runtime/library").Decimal | null;
-            to_hand_ratio: import("@prisma/client/runtime/library").Decimal | null;
-            capital: import("@prisma/client/runtime/library").Decimal;
-            interest: import("@prisma/client/runtime/library").Decimal;
-            due_start_date: Date;
-            due_end_date: Date;
-            status: import("@prisma/client").$Enums.LoanAccountStatus;
-            handling_fee: import("@prisma/client/runtime/library").Decimal;
-            total_periods: number;
-            repaid_periods: number;
-            daily_repayment: number;
-            company_cost: number;
-            created_at: Date;
-            created_by: number;
-            updated_at: Date | null;
-            collector_id: number;
-            risk_controller_id: number;
-            apply_times: number;
-            paid_capital: import("@prisma/client/runtime/library").Decimal;
-            status_changed_at: Date | null;
-            total_fines: import("@prisma/client/runtime/library").Decimal;
-            paid_interest: import("@prisma/client/runtime/library").Decimal;
-            early_settlement_capital: import("@prisma/client/runtime/library").Decimal | null;
-            last_edit_fines: import("@prisma/client/runtime/library").Decimal | null;
-            last_edit_pay_capital: import("@prisma/client/runtime/library").Decimal | null;
-            last_edit_pay_interest: import("@prisma/client/runtime/library").Decimal | null;
-            note: string | null;
-            overdue_count: number;
-            ownership: string | null;
-        })[];
+        data: Record<string, unknown>[];
         total: number;
         statistics: {
             inStock: number;
@@ -120,6 +52,7 @@ export declare class LoanAccountsService {
         };
         relatedAdmins: {
             id: number;
+            username: string | null;
             role: import("@prisma/client").$Enums.ManagementRoles;
             nickname: string | null;
         }[];

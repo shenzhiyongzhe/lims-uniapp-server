@@ -99,9 +99,6 @@ let RepaymentSchedulesService = class RepaymentSchedulesService {
             const paidAmount = inputCapital + inputInterest + finesValue;
             const nextPaid = Number(paidAmount.toFixed(2));
             updatePayload.paid_amount = nextPaid;
-            if (currentSchedule.operator_admin_name == null) {
-                updatePayload.collected_by_type = 'manual';
-            }
             if (operatorAdminId) {
                 updatePayload.operator_admin_id = operatorAdminId;
                 updatePayload.operator_admin_name = operatorName;

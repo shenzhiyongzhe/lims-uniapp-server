@@ -19,13 +19,21 @@
 | 场景 | `DATABASE_URL` 里主机应写 |
 |------|---------------------------|
 | MySQL 与 API 同一 `docker compose`，且服务名为 `mysql` | `mysql`（推荐用 `docker compose -f docker-compose.yml -f docker-compose.mysql.yml up -d`，compose 会注入带 `mysql` 的 URL） |
-| MySQL 跑在**宿主机**（本仓库 `docker-compose` / `docker-compose.prod` 已加 `extra_hosts: host.docker.internal:host-gateway`） | **`host.docker.internal`**（推荐；`.env` 里 `DATABASE_URL` 写 `@host.docker.internal:3306`） |
-| MySQL 跑在宿主机、**未**使用本仓库 compose（无 `extra_hosts`） | Linux 常用 **`172.17.0.1`**，或宿主机内网 IP；Docker Desktop 仍可用 `host.docker.internal` |
+| MySQL 跑在**宿主机**、且监听 **`0.0.0.0:3306`**（或 docker 网桥可达的网卡） | **`host.docker.internal`**（本仓库 compose 已配 `extra_hosts`） |
+| MySQL 跑在宿主机、**仅监听 127.0.0.1** | 先改 MySQL `bind-address=0.0.0.0` 再用上一行；**或**单用 **`docker-compose.prod.hostnetwork.yml`** + `DATABASE_URL` 里 **`127.0.0.1:3306`** |
 | 云 RDS / 远程库 | RDS 提供的主机名 |
+| 未用本仓库 compose、无 `extra_hosts` | Linux 常用 **`172.17.0.1`**（默认 bridge 网关）或宿主机内网 IP |
 
 改完 `.env` 后执行 `docker compose up -d`（或 `pull` + `up`）使 API 容器重新加载环境变量。
 
-**宿主机 MySQL 仍连不上时**：确认 MySQL 监听 **`0.0.0.0:3306`**（或至少监听 docker 网桥能到的网卡），且防火墙放行来自 **docker0 / bridge** 到 `3306` 的入站（或本机仅 Docker 访问可收紧规则）。
+**宿主机 MySQL 仍连不上时**：先确认 MySQL 监听地址：
+
+- 若 `bind-address` / `skip-networking` 导致 **只监听 `127.0.0.1:3306`**，从 Docker 网桥访问 `host.docker.internal` / `172.17.0.1` **往往仍连不上**（连的不是回环口上的 mysqld）。任选其一：
+  - **推荐（改 MySQL）**：把 `bind-address` 设为 **`0.0.0.0`**（或注释掉），放行防火墙后仍用 `DATABASE_URL=@host.docker.internal:3306`；
+  - **不改 MySQL**：改用 **`docker-compose.prod.hostnetwork.yml`**（API 使用 `network_mode: host`），`.env` 里 **`DATABASE_URL` 使用 `@127.0.0.1:3306`**，且**不要**与带 `ports` 的 `docker-compose.prod.yml` 叠在同一 `api` 上。示例：  
+    `DOCKER_IMAGE=ghcr.io/你的镜像:tag docker compose -f docker-compose.prod.hostnetwork.yml up -d`
+
+其它排查：`docker compose` 是否已更新到含 `extra_hosts: host.docker.internal:host-gateway` 的版本；宿主机 `ss -tlnp | grep 3306`；容器内 `getent hosts host.docker.internal` 是否有 IP。
 
 ## 2. 数据库
 

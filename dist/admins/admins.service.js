@@ -11,8 +11,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AdminsService = void 0;
 const common_1 = require("@nestjs/common");
-const prisma_service_1 = require("../prisma/prisma.service");
 const client_1 = require("@prisma/client");
+const prisma_service_1 = require("../prisma/prisma.service");
 let AdminsService = class AdminsService {
     prisma;
     constructor(prisma) {
@@ -23,6 +23,7 @@ let AdminsService = class AdminsService {
             orderBy: { createdAt: 'desc' },
             select: {
                 id: true,
+                username: true,
                 nickname: true,
                 role: true,
                 openid: true,
@@ -32,19 +33,46 @@ let AdminsService = class AdminsService {
         });
     }
     async updateRole(id, role) {
+        return this.updateAdmin(id, { role });
+    }
+    async updateAdmin(id, dto) {
+        const roleProvided = dto.role !== undefined;
+        const usernameProvided = dto.username !== undefined;
+        if (!roleProvided && !usernameProvided) {
+            throw new common_1.BadRequestException('至少提供 username 或 role 之一');
+        }
+        let normalizedUsername;
+        if (usernameProvided) {
+            const s = dto.username == null ? '' : String(dto.username).trim();
+            normalizedUsername = s.length === 0 ? null : s;
+            if (normalizedUsername && normalizedUsername.length > 10) {
+                throw new common_1.BadRequestException('用户名最多 10 个字符');
+            }
+        }
         return this.prisma.$transaction(async (tx) => {
+            const existing = await tx.admin.findUnique({ where: { id } });
+            if (!existing) {
+                throw new common_1.NotFoundException(`管理员不存在: ${id}`);
+            }
+            const data = {};
+            if (usernameProvided) {
+                data.username = normalizedUsername ?? null;
+            }
+            if (roleProvided && dto.role !== undefined) {
+                data.role = dto.role;
+            }
             const admin = await tx.admin.update({
                 where: { id },
-                data: { role },
+                data,
             });
-            if (role === client_1.ManagementRoles.COLLECTOR) {
+            if (roleProvided && dto.role === client_1.ManagementRoles.COLLECTOR) {
                 await tx.collectorAssetManagement.upsert({
                     where: { admin_id: id },
                     update: {},
                     create: { admin_id: id },
                 });
             }
-            if (role === client_1.ManagementRoles.RISK_CONTROLLER) {
+            if (roleProvided && dto.role === client_1.ManagementRoles.RISK_CONTROLLER) {
                 await tx.riskControllerAssetManagement.upsert({
                     where: { admin_id: id },
                     update: {},

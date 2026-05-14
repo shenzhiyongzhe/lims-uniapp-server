@@ -25,7 +25,7 @@ let AssetManagementService = AssetManagementService_1 = class AssetManagementSer
     async findCollectorAsset(adminId) {
         const admin = await this.prisma.admin.findUnique({
             where: { id: adminId },
-            select: { id: true, nickname: true },
+            select: { id: true, username: true, nickname: true },
         });
         const asset = await this.prisma.collectorAssetManagement.findUnique({
             where: { admin_id: adminId },
@@ -54,7 +54,7 @@ let AssetManagementService = AssetManagementService_1 = class AssetManagementSer
     async findRiskControllerAsset(adminId) {
         const admin = await this.prisma.admin.findUnique({
             where: { id: adminId },
-            select: { id: true, nickname: true },
+            select: { id: true, username: true, nickname: true },
         });
         const asset = await this.prisma.riskControllerAssetManagement.findUnique({
             where: { admin_id: adminId },

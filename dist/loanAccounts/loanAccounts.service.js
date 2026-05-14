@@ -122,11 +122,14 @@ let LoanAccountsService = class LoanAccountsService {
                     apply_times: applyTimes,
                     capital: Number(capital),
                     interest: Number(interest),
+                    last_edit_pay_capital: Number(capital),
+                    last_edit_pay_interest: Number(interest),
                     status: data.status || 'pending',
                     repaid_periods: 0,
                     created_by: createdBy,
                     note: data.remark || '',
                     ownership: data.ownership || null,
+                    payer_name: data.payer_name?.trim() ? data.payer_name.trim() : null,
                 },
             });
             await this.loanPredictionService.updatePredictions(created);
@@ -269,6 +272,10 @@ let LoanAccountsService = class LoanAccountsService {
             if (data.ownership !== undefined) {
                 updateData.ownership = data.ownership === '' ? null : data.ownership;
             }
+            if (data.payer_name !== undefined) {
+                const t = data.payer_name?.trim();
+                updateData.payer_name = t ? t : null;
+            }
             const updatedRow = await tx.loanAccount.update({
                 where: { id },
                 data: updateData,
@@ -366,10 +373,10 @@ let LoanAccountsService = class LoanAccountsService {
             include: {
                 user: true,
                 risk_controller: {
-                    select: { id: true, nickname: true },
+                    select: { id: true, username: true, nickname: true },
                 },
                 collector: {
-                    select: { id: true, nickname: true },
+                    select: { id: true, username: true, nickname: true },
                 },
                 repaymentSchedules: {
                     orderBy: { period: 'asc' },
@@ -535,6 +542,7 @@ let LoanAccountsService = class LoanAccountsService {
             },
             select: {
                 id: true,
+                username: true,
                 nickname: true,
                 role: true,
             },
@@ -576,32 +584,38 @@ let LoanAccountsService = class LoanAccountsService {
         }
         const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
         const tab = (listFilter || 'history').toLowerCase();
-        const listTabParts = [];
+        const isScheduleTab = tab === 'overdue' || tab === 'today_paid' || tab === 'today_unpaid';
         const { today: todayShanghai, yesterday: yesterdayShanghai } = (0, business_date_1.getShanghaiBusinessTodayAndYesterday)();
-        if (tab === 'overdue') {
-            listTabParts.push({
-                repaymentSchedules: { some: { status: 'overdue' } },
-            });
-        }
-        else if (tab === 'today_paid') {
-            listTabParts.push({
-                repaymentSchedules: {
-                    some: { due_start_date: todayShanghai, status: 'paid' },
-                },
-            });
-        }
-        else if (tab === 'today_unpaid') {
-            listTabParts.push({
-                repaymentSchedules: {
-                    some: {
-                        due_start_date: todayShanghai,
-                        status: { in: ['pending', 'active'] },
-                    },
-                },
-            });
-        }
-        const listAndParts = [...baseAndParts, ...listTabParts];
-        const listWhere = listAndParts.length ? { AND: listAndParts } : {};
+        const historyStatusFilter = {
+            status: { in: ['settled', 'blacklist'] },
+        };
+        const whereHistory = baseAndParts.length > 0
+            ? { AND: [...baseAndParts, historyStatusFilter] }
+            : historyStatusFilter;
+        const activeLoanStatusFilter = {
+            status: {
+                notIn: ['settled', 'blacklist'],
+            },
+        };
+        const loanAccountWhereForScheduleTabs = baseAndParts.length > 0
+            ? { AND: [...baseAndParts, activeLoanStatusFilter] }
+            : activeLoanStatusFilter;
+        const scheduleWhereOverdue = {
+            status: 'overdue',
+            loan_account: { is: loanAccountWhereForScheduleTabs },
+        };
+        const scheduleWhereTodayPaid = {
+            due_start_date: todayShanghai,
+            status: 'paid',
+            loan_account: { is: loanAccountWhereForScheduleTabs },
+        };
+        const scheduleWhereTodayUnpaid = {
+            due_start_date: todayShanghai,
+            status: {
+                in: ['pending', 'active'],
+            },
+            loan_account: { is: loanAccountWhereForScheduleTabs },
+        };
         const scheduleSumWhere = {
             paid_amount: { gt: 0 },
             loan_account: baseWhere,
@@ -610,56 +624,39 @@ let LoanAccountsService = class LoanAccountsService {
             due_start_date: todayShanghai,
             loan_account: baseWhere,
         };
-        const withListFilter = (tabExtra) => baseAndParts.length > 0
-            ? { AND: [...baseAndParts, tabExtra] }
-            : tabExtra;
-        const whereTabHistory = baseAndParts.length > 0 ? { AND: [...baseAndParts] } : {};
-        const whereTabOverdue = withListFilter({
-            repaymentSchedules: { some: { status: 'overdue' } },
-        });
-        const whereTabTodayPaid = withListFilter({
-            repaymentSchedules: {
-                some: { due_start_date: todayShanghai, status: 'paid' },
-            },
-        });
-        const whereTabTodayUnpaid = withListFilter({
-            repaymentSchedules: {
-                some: {
-                    due_start_date: todayShanghai,
-                    status: { in: ['pending', 'active'] },
-                },
-            },
-        });
-        const [data, total, loanRows, todaySchedAgg, yesterdaySchedAgg, relatedAdmins, todaySchedulePaidCount, todaySchedulePendingCount, todayScheduleActiveCount, countTabHistory, countTabOverdue, countTabTodayPaid, countTabTodayUnpaid,] = await Promise.all([
+        const loanAccountInclude = {
+            user: true,
+            collector: { select: { id: true, username: true, nickname: true } },
+            risk_controller: { select: { id: true, username: true, nickname: true } },
+        };
+        const statSelect = {
+            status: true,
+            loan_amount: true,
+            capital: true,
+            interest: true,
+            paid_capital: true,
+            paid_interest: true,
+            handling_fee: true,
+            total_fines: true,
+        };
+        const statsLoanWhere = isScheduleTab
+            ? loanAccountWhereForScheduleTabs
+            : whereHistory;
+        const currentScheduleWhere = isScheduleTab
+            ? tab === 'overdue'
+                ? scheduleWhereOverdue
+                : tab === 'today_paid'
+                    ? scheduleWhereTodayPaid
+                    : scheduleWhereTodayUnpaid
+            : null;
+        const [countTabHistory, countTabOverdue, countTabTodayPaid, countTabTodayUnpaid, loanRows, todaySchedAgg, yesterdaySchedAgg, relatedAdmins, todaySchedulePaidCount, todaySchedulePendingCount, todayScheduleActiveCount,] = await Promise.all([
+            this.prisma.loanAccount.count({ where: whereHistory }),
+            this.prisma.repaymentSchedule.count({ where: scheduleWhereOverdue }),
+            this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
+            this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
             this.prisma.loanAccount.findMany({
-                where: listWhere,
-                skip,
-                take: pageSize,
-                include: {
-                    user: true,
-                    collector: { select: { id: true, nickname: true } },
-                    risk_controller: { select: { id: true, nickname: true } },
-                    repaymentSchedules: {
-                        where: {
-                            due_start_date: todayShanghai,
-                        },
-                    },
-                },
-                orderBy: { created_at: 'desc' },
-            }),
-            this.prisma.loanAccount.count({ where: listWhere }),
-            this.prisma.loanAccount.findMany({
-                where: baseWhere,
-                select: {
-                    status: true,
-                    loan_amount: true,
-                    capital: true,
-                    interest: true,
-                    paid_capital: true,
-                    paid_interest: true,
-                    handling_fee: true,
-                    total_fines: true,
-                },
+                where: statsLoanWhere,
+                select: statSelect,
             }),
             this.prisma.repaymentSchedule.aggregate({
                 where: {
@@ -685,11 +682,53 @@ let LoanAccountsService = class LoanAccountsService {
             this.prisma.repaymentSchedule.count({
                 where: { ...scheduleDayCountBase, status: 'active' },
             }),
-            this.prisma.loanAccount.count({ where: whereTabHistory }),
-            this.prisma.loanAccount.count({ where: whereTabOverdue }),
-            this.prisma.loanAccount.count({ where: whereTabTodayPaid }),
-            this.prisma.loanAccount.count({ where: whereTabTodayUnpaid }),
         ]);
+        let data;
+        let total;
+        if (!isScheduleTab) {
+            const [rows, totalCount] = await Promise.all([
+                this.prisma.loanAccount.findMany({
+                    where: whereHistory,
+                    skip,
+                    take: pageSize,
+                    include: {
+                        ...loanAccountInclude,
+                        repaymentSchedules: {
+                            orderBy: { period: 'desc' },
+                            take: 1,
+                        },
+                    },
+                    orderBy: { created_at: 'desc' },
+                }),
+                this.prisma.loanAccount.count({ where: whereHistory }),
+            ]);
+            data = rows;
+            total = totalCount;
+        }
+        else {
+            const sw = currentScheduleWhere;
+            const [scheduleRows, totalCount] = await Promise.all([
+                this.prisma.repaymentSchedule.findMany({
+                    where: sw,
+                    skip,
+                    take: pageSize,
+                    orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+                    include: {
+                        loan_account: { include: loanAccountInclude },
+                    },
+                }),
+                this.prisma.repaymentSchedule.count({ where: sw }),
+            ]);
+            data = scheduleRows.map((sch) => {
+                const loan = sch.loan_account;
+                return {
+                    ...loan,
+                    repaymentSchedules: [sch],
+                    __rowKey: `${loan.id}-${sch.id}`,
+                };
+            });
+            total = totalCount;
+        }
         const stats = {
             inStock: 0,
             remainingDebt: 0,

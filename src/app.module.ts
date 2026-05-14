@@ -16,6 +16,7 @@ import { LoanPredictionModule } from './loan-prediction/loan-prediction.module';
 import { AdminsModule } from './admins/admins.module';
 import { RepaymentSchedulesModule } from './repayment-schedules/repayment-schedules.module';
 import { ScheduleTasksModule } from './schedule/schedule-tasks.module';
+import { ChangelogsModule } from './changelogs/changelogs.module';
 import { buildPinoParams } from './logger/pino-params.factory';
 
 @Module({
@@ -42,6 +43,7 @@ import { buildPinoParams } from './logger/pino-params.factory';
     AdminsModule,
     RepaymentSchedulesModule,
     ScheduleTasksModule,
+    ChangelogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

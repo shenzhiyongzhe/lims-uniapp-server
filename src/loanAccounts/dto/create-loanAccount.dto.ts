@@ -89,4 +89,9 @@ export class CreateLoanAccountDto {
   @IsOptional()
   @Length(0, 2)
   ownership?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(0, 100)
+  payer_name?: string;
 }

@@ -12,13 +12,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.LoanPredictionService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+function storageValueForNumericField(fieldName, raw) {
+    const numValue = Number(raw);
+    if (Number.isNaN(numValue) || numValue <= 0)
+        return null;
+    if (fieldName === 'to_hand_ratio') {
+        if (numValue > 1)
+            return null;
+        return numValue
+            .toFixed(8)
+            .replace(/(\.\d*?)0+$/, '$1')
+            .replace(/\.$/, '');
+    }
+    return numValue.toFixed(2);
+}
 let LoanPredictionService = class LoanPredictionService {
     prisma;
     constructor(prisma) {
         this.prisma = prisma;
     }
     async getPredictions(fieldName, prefix) {
-        if (prefix && prefix.trim() !== '') {
+        const pref = (prefix ?? '').trim();
+        if (pref) {
             if (fieldName === 'to_hand_ratio') {
                 const allPredictions = await this.prisma.loanFieldPrediction.findMany({
                     where: { field_name: fieldName },
@@ -27,7 +42,7 @@ let LoanPredictionService = class LoanPredictionService {
                 const filtered = allPredictions
                     .filter((p) => {
                     const percentValue = String(Number(p.value) * 100);
-                    return percentValue.startsWith(prefix);
+                    return percentValue.startsWith(pref);
                 })
                     .slice(0, 3);
                 return filtered.map((p) => ({
@@ -35,44 +50,83 @@ let LoanPredictionService = class LoanPredictionService {
                     frequency: p.frequency,
                 }));
             }
-            else {
+            if (fieldName === 'payer_name') {
                 const allPredictions = await this.prisma.loanFieldPrediction.findMany({
-                    where: { field_name: fieldName },
+                    where: { field_name: 'payer_name' },
                     orderBy: [{ frequency: 'desc' }, { last_used_at: 'desc' }],
                 });
                 const filtered = allPredictions
-                    .filter((p) => {
-                    const valueStr = String(Number(p.value));
-                    return valueStr.startsWith(prefix);
-                })
+                    .filter((p) => p.value.startsWith(pref))
                     .slice(0, 3);
                 return filtered.map((p) => ({
-                    value: Number(p.value),
+                    value: p.value,
                     frequency: p.frequency,
                 }));
             }
-        }
-        else {
-            const predictions = await this.prisma.loanFieldPrediction.findMany({
+            const allPredictions = await this.prisma.loanFieldPrediction.findMany({
                 where: { field_name: fieldName },
                 orderBy: [{ frequency: 'desc' }, { last_used_at: 'desc' }],
-                take: 3,
             });
-            return predictions.map((p) => ({
+            const filtered = allPredictions
+                .filter((p) => {
+                const valueStr = String(Number(p.value));
+                return valueStr.startsWith(pref);
+            })
+                .slice(0, 3);
+            return filtered.map((p) => ({
                 value: Number(p.value),
                 frequency: p.frequency,
             }));
         }
+        const predictions = await this.prisma.loanFieldPrediction.findMany({
+            where: { field_name: fieldName },
+            orderBy: [{ frequency: 'desc' }, { last_used_at: 'desc' }],
+            take: 3,
+        });
+        if (fieldName === 'payer_name') {
+            return predictions.map((p) => ({
+                value: p.value,
+                frequency: p.frequency,
+            }));
+        }
+        return predictions.map((p) => ({
+            value: Number(p.value),
+            frequency: p.frequency,
+        }));
     }
     async recordFieldUsage(fieldName, value) {
-        const numValue = Number(value);
-        if (isNaN(numValue) || numValue <= 0)
+        if (fieldName === 'payer_name') {
+            const t = value.trim();
+            if (!t || t.length > 50)
+                return;
+            await this.prisma.loanFieldPrediction.upsert({
+                where: {
+                    field_name_value: {
+                        field_name: fieldName,
+                        value: t,
+                    },
+                },
+                update: {
+                    frequency: { increment: 1 },
+                    last_used_at: new Date(),
+                },
+                create: {
+                    field_name: fieldName,
+                    value: t,
+                    frequency: 1,
+                    last_used_at: new Date(),
+                },
+            });
+            return;
+        }
+        const stored = storageValueForNumericField(fieldName, value);
+        if (!stored)
             return;
         await this.prisma.loanFieldPrediction.upsert({
             where: {
                 field_name_value: {
                     field_name: fieldName,
-                    value: numValue,
+                    value: stored,
                 },
             },
             update: {
@@ -81,7 +135,7 @@ let LoanPredictionService = class LoanPredictionService {
             },
             create: {
                 field_name: fieldName,
-                value: numValue,
+                value: stored,
                 frequency: 1,
                 last_used_at: new Date(),
             },
@@ -101,6 +155,10 @@ let LoanPredictionService = class LoanPredictionService {
                 return;
             await this.recordFieldUsage(field.name, field.value.toString());
         }));
+        const payer = loanAccount.payer_name?.trim();
+        if (payer) {
+            await this.recordFieldUsage('payer_name', payer);
+        }
     }
 };
 exports.LoanPredictionService = LoanPredictionService;

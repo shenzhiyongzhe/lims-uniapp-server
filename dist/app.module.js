@@ -25,6 +25,7 @@ const loan_prediction_module_1 = require("./loan-prediction/loan-prediction.modu
 const admins_module_1 = require("./admins/admins.module");
 const repayment_schedules_module_1 = require("./repayment-schedules/repayment-schedules.module");
 const schedule_tasks_module_1 = require("./schedule/schedule-tasks.module");
+const changelogs_module_1 = require("./changelogs/changelogs.module");
 const pino_params_factory_1 = require("./logger/pino-params.factory");
 let AppModule = class AppModule {
 };
@@ -53,6 +54,7 @@ exports.AppModule = AppModule = __decorate([
             admins_module_1.AdminsModule,
             repayment_schedules_module_1.RepaymentSchedulesModule,
             schedule_tasks_module_1.ScheduleTasksModule,
+            changelogs_module_1.ChangelogsModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

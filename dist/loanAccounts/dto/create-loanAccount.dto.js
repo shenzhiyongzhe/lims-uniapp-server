@@ -31,6 +31,7 @@ class CreateLoanAccountDto {
     company_cost;
     remark;
     ownership;
+    payer_name;
 }
 exports.CreateLoanAccountDto = CreateLoanAccountDto;
 __decorate([
@@ -129,4 +130,10 @@ __decorate([
     (0, class_validator_1.Length)(0, 2),
     __metadata("design:type", String)
 ], CreateLoanAccountDto.prototype, "ownership", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Length)(0, 100),
+    __metadata("design:type", String)
+], CreateLoanAccountDto.prototype, "payer_name", void 0);
 //# sourceMappingURL=create-loanAccount.dto.js.map

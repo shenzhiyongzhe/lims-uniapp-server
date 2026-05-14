@@ -18,4 +18,5 @@ export declare class UpdateLoanAccountDto {
     apply_times?: number;
     note?: string;
     ownership?: string;
+    payer_name?: string;
 }

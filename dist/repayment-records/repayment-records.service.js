@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RepaymentRecordsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../prisma/prisma.service");
+const business_date_1 = require("../common/business-date");
 let RepaymentRecordsService = class RepaymentRecordsService {
     prisma;
     constructor(prisma) {
@@ -101,13 +102,148 @@ let RepaymentRecordsService = class RepaymentRecordsService {
                 select: { paid_amount: true },
             }),
         ]);
+        const dailyLoanBalance = await this.getDailyLoanBalance({
+            adminId,
+            targetDate: now,
+            scopeCollectorAdminId,
+            persist: false,
+        });
         return {
             monthAmount: monthRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
             yesterdayAmount: yesterdayRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
             todayAmount: todayRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
             todayCount: todayRecords.length,
             totalAmount: totalRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
+            dailyLoanBalance,
         };
+    }
+    async getDailyLoanBalance(params) {
+        const { adminId, targetDate = new Date(), scopeCollectorAdminId, persist = false, } = params;
+        const businessDate = this.getBusinessDate(targetDate);
+        const yesterdayDate = new Date(businessDate);
+        yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+        const dayStart = this.getDayStart(targetDate);
+        const dayEnd = this.getDayEnd(targetDate);
+        const loanIds = await this.getScopedLoanIds(adminId);
+        const loansWhere = {
+            id: { in: loanIds },
+            due_start_date: yesterdayDate,
+        };
+        if (scopeCollectorAdminId) {
+            loansWhere.collector_id = scopeCollectorAdminId;
+        }
+        const repaymentWhere = {
+            loan_id: { in: loanIds },
+            paid_at: { gte: dayStart, lte: dayEnd },
+        };
+        if (scopeCollectorAdminId) {
+            repaymentWhere.actual_collector_id = scopeCollectorAdminId;
+        }
+        const [yesterdayLoans, todayRepayments, previousRow] = await Promise.all([
+            this.prisma.loanAccount.findMany({
+                where: loansWhere,
+                select: {
+                    id: true,
+                    company_cost: true,
+                },
+                orderBy: { id: 'asc' },
+            }),
+            this.prisma.repaymentRecord.findMany({
+                where: repaymentWhere,
+                select: {
+                    loan_id: true,
+                    paid_amount: true,
+                    remark: true,
+                    paid_at: true,
+                },
+                orderBy: { paid_at: 'asc' },
+            }),
+            this.prisma.collectorDailyLoanBalance.findFirst({
+                where: {
+                    admin_id: adminId,
+                    date: { lt: businessDate },
+                },
+                orderBy: { date: 'desc' },
+            }),
+        ]);
+        const yesterdayLoanItems = yesterdayLoans.map((loan) => {
+            const amount = -Number(loan.company_cost ?? 0);
+            return {
+                loanId: loan.id,
+                amount,
+                type: 'YESTERDAY_DUE_LOAN',
+                label: '借出',
+                isEarlySettlement: false,
+                remark: '',
+            };
+        });
+        const todayRepaidItems = todayRepayments.map((row) => {
+            const remark = row.remark ?? '';
+            const isEarlySettlement = remark === '提前结清';
+            return {
+                loanId: row.loan_id,
+                amount: Number(row.paid_amount ?? 0),
+                type: isEarlySettlement ? 'TODAY_EARLY_SETTLEMENT' : 'TODAY_REPAY',
+                label: isEarlySettlement ? '清' : '',
+                isEarlySettlement,
+                remark,
+            };
+        });
+        const previousTotal = Number(previousRow?.today_total ?? 0);
+        const yesterdayLoanTotal = yesterdayLoanItems.reduce((sum, item) => sum + item.amount, 0);
+        const todayRepaidTotal = todayRepaidItems.reduce((sum, item) => sum + item.amount, 0);
+        const todayTotal = previousTotal + yesterdayLoanTotal + todayRepaidTotal;
+        const result = {
+            previousTotal,
+            yesterdayLoanTotal,
+            todayRepaidTotal,
+            todayTotal,
+            yesterdayLoanItems,
+            todayRepaidItems,
+            expression: {
+                yesterdayLoans: this.formatExpression(yesterdayLoanItems, yesterdayLoanTotal),
+                todayRepayments: this.formatExpression(todayRepaidItems, todayRepaidTotal),
+                summary: `${this.formatNumber(previousTotal)}${this.formatSigned(yesterdayLoanTotal)}${this.formatSigned(todayRepaidTotal)}=${this.formatNumber(todayTotal)}`,
+            },
+            date: businessDate.toISOString().slice(0, 10),
+            adminId,
+        };
+        if (persist) {
+            await this.prisma.collectorDailyLoanBalance.upsert({
+                where: {
+                    admin_id_date: {
+                        admin_id: adminId,
+                        date: businessDate,
+                    },
+                },
+                update: {
+                    previous_total: previousTotal,
+                    yesterday_loan_total: yesterdayLoanTotal,
+                    today_repaid_total: todayRepaidTotal,
+                    today_total: todayTotal,
+                    yesterday_loan_items: result.yesterdayLoanItems,
+                    today_repaid_items: result.todayRepaidItems,
+                },
+                create: {
+                    admin_id: adminId,
+                    date: businessDate,
+                    previous_total: previousTotal,
+                    yesterday_loan_total: yesterdayLoanTotal,
+                    today_repaid_total: todayRepaidTotal,
+                    today_total: todayTotal,
+                    yesterday_loan_items: result.yesterdayLoanItems,
+                    today_repaid_items: result.todayRepaidItems,
+                },
+            });
+        }
+        return result;
+    }
+    async upsertDailyLoanBalanceForDate(adminId, targetDate) {
+        return this.getDailyLoanBalance({
+            adminId,
+            targetDate,
+            persist: true,
+        });
     }
     async getDailySummary(query, adminId) {
         const { adminId: scopeCollectorAdminId, month } = query;
@@ -181,6 +317,31 @@ let RepaymentRecordsService = class RepaymentRecordsService {
         const d = new Date(date);
         d.setHours(23, 59, 59, 999);
         return d;
+    }
+    getBusinessDate(date) {
+        const { y, m, d } = (0, business_date_1.getShanghaiYmdParts)(date);
+        return (0, business_date_1.utcMidnightFromYmd)(y, m, d);
+    }
+    formatNumber(value) {
+        return Number(value || 0).toLocaleString('zh-CN');
+    }
+    formatSigned(value) {
+        if (value >= 0)
+            return `+${this.formatNumber(value)}`;
+        return this.formatNumber(value);
+    }
+    formatExpression(items, total) {
+        if (!items.length) {
+            return `0=${this.formatNumber(total)}`;
+        }
+        const parts = items.map((item, idx) => {
+            const base = this.formatNumber(item.amount);
+            if (idx === 0)
+                return item.isEarlySettlement ? `${base}(清)` : base;
+            const signed = item.amount >= 0 ? `+${base}` : base;
+            return item.isEarlySettlement ? `${signed}(清)` : signed;
+        });
+        return `${parts.join('')}=${this.formatNumber(total)}`;
     }
     toResponse(record) {
         return {

@@ -66,17 +66,14 @@ let AuthController = class AuthController {
         if (!user) {
             return response_helper_1.ResponseHelper.error('未登录', 401);
         }
-        if (user.role === 'ADMIN') {
-            const admin = await this.prisma.admin.findUnique({
-                where: { id: user.id },
-                select: { id: true, nickname: true, role: true },
-            });
-            if (!admin) {
-                return response_helper_1.ResponseHelper.error('用户不存在', 404);
-            }
-            return response_helper_1.ResponseHelper.success({ code: 200, message: '验证成功', valid: true, data: admin }, '验证成功');
+        const admin = await this.prisma.admin.findUnique({
+            where: { id: user.id },
+            select: { id: true, username: true, nickname: true, role: true },
+        });
+        if (!admin) {
+            return response_helper_1.ResponseHelper.error('用户不存在', 404);
         }
-        return response_helper_1.ResponseHelper.success({ code: 200, message: '验证成功', valid: true, data: user }, '验证成功');
+        return response_helper_1.ResponseHelper.success({ code: 200, message: '验证成功', valid: true, data: admin }, '验证成功');
     }
     async refresh(req, res, bodyRefreshToken) {
         const refreshToken = req.cookies?.refresh_token ?? bodyRefreshToken ?? undefined;
@@ -198,6 +195,7 @@ let AuthController = class AuthController {
             openid: admin.openid,
             role: admin.role,
             nickname: admin.nickname,
+            username: admin.username,
             avatar_url: admin.avatar_url,
             token: accessToken,
             refreshToken,

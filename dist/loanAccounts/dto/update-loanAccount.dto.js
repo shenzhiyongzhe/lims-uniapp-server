@@ -31,6 +31,7 @@ class UpdateLoanAccountDto {
     apply_times;
     note;
     ownership;
+    payer_name;
 }
 exports.UpdateLoanAccountDto = UpdateLoanAccountDto;
 __decorate([
@@ -140,4 +141,10 @@ __decorate([
     (0, class_validator_1.Length)(0, 2),
     __metadata("design:type", String)
 ], UpdateLoanAccountDto.prototype, "ownership", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.Length)(0, 100),
+    __metadata("design:type", String)
+], UpdateLoanAccountDto.prototype, "payer_name", void 0);
 //# sourceMappingURL=update-loanAccount.dto.js.map

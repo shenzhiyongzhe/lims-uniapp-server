@@ -18,4 +18,5 @@ export declare class CreateLoanAccountDto {
     company_cost?: number;
     remark?: string;
     ownership?: string;
+    payer_name?: string;
 }

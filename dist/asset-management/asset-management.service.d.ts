@@ -13,6 +13,7 @@ export declare class AssetManagementService implements OnModuleInit {
         admin_id: number;
         admin: {
             id: number;
+            username: string | null;
             nickname: string | null;
         } | null;
         remaining_handling_fee: number;
@@ -25,6 +26,7 @@ export declare class AssetManagementService implements OnModuleInit {
         admin_id: number;
         admin: {
             id: number;
+            username: string | null;
             nickname: string | null;
         } | null;
         remaining_handling_fee: number;
@@ -37,6 +39,7 @@ export declare class AssetManagementService implements OnModuleInit {
         admin_id: number;
         admin: {
             id: number;
+            username: string | null;
             nickname: string | null;
         } | null;
         remaining_amount: number;
@@ -47,6 +50,7 @@ export declare class AssetManagementService implements OnModuleInit {
         admin_id: number;
         admin: {
             id: number;
+            username: string | null;
             nickname: string | null;
         } | null;
         remaining_amount: number;

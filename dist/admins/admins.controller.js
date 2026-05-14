@@ -20,6 +20,7 @@ const roles_guard_1 = require("../auth/roles.guard");
 const roles_decorator_1 = require("../auth/roles.decorator");
 const client_1 = require("@prisma/client");
 const response_helper_1 = require("../common/response-helper");
+const update_admin_dto_1 = require("./dto/update-admin.dto");
 let AdminsController = class AdminsController {
     adminsService;
     constructor(adminsService) {
@@ -28,6 +29,10 @@ let AdminsController = class AdminsController {
     async findAll() {
         const admins = await this.adminsService.findAll();
         return response_helper_1.ResponseHelper.success(admins, '获取管理员列表成功');
+    }
+    async updateAdmin(id, body) {
+        const updated = await this.adminsService.updateAdmin(parseInt(id, 10), body);
+        return response_helper_1.ResponseHelper.success(updated, '更新管理员成功');
     }
     async updateRole(id, role) {
         const updated = await this.adminsService.updateRole(parseInt(id, 10), role);
@@ -45,6 +50,14 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], AdminsController.prototype, "findAll", null);
+__decorate([
+    (0, common_1.Patch)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, update_admin_dto_1.UpdateAdminDto]),
+    __metadata("design:returntype", Promise)
+], AdminsController.prototype, "updateAdmin", null);
 __decorate([
     (0, common_1.Put)(':id/role'),
     __param(0, (0, common_1.Param)('id')),

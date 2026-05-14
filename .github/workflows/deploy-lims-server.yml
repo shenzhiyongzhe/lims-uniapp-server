@@ -82,4 +82,11 @@ jobs:
             cd "${DEPLOY_PATH}"
             export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
             docker compose -f docker-compose.prod.yml pull api
+            if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+              echo "Detected prisma migrations, running migrate deploy..."
+              docker compose -f docker-compose.prod.yml run --rm api npx prisma migrate deploy
+            else
+              echo "No prisma migrations found, fallback to db push..."
+              docker compose -f docker-compose.prod.yml run --rm api npx prisma db push
+            fi
             docker compose -f docker-compose.prod.yml up -d --remove-orphans

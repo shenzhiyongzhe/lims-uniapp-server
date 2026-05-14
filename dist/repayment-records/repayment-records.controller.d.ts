@@ -19,6 +19,35 @@ export declare class RepaymentRecordsController {
             todayAmount: number;
             todayCount: number;
             totalAmount: number;
+            dailyLoanBalance: {
+                previousTotal: number;
+                yesterdayLoanTotal: number;
+                todayRepaidTotal: number;
+                todayTotal: number;
+                yesterdayLoanItems: {
+                    loanId: number;
+                    amount: number;
+                    type: "YESTERDAY_DUE_LOAN" | "TODAY_REPAY" | "TODAY_EARLY_SETTLEMENT";
+                    label: string;
+                    isEarlySettlement: boolean;
+                    remark: string;
+                }[];
+                todayRepaidItems: {
+                    loanId: number;
+                    amount: number;
+                    type: "YESTERDAY_DUE_LOAN" | "TODAY_REPAY" | "TODAY_EARLY_SETTLEMENT";
+                    label: string;
+                    isEarlySettlement: boolean;
+                    remark: string;
+                }[];
+                expression: {
+                    yesterdayLoans: string;
+                    todayRepayments: string;
+                    summary: string;
+                };
+                date: string;
+                adminId: number;
+            };
         };
     }>;
     getDailySummary(query: DailySummaryQueryDto, user: any): Promise<{

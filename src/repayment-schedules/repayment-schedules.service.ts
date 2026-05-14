@@ -116,10 +116,6 @@ export class RepaymentSchedulesService {
       const nextPaid = Number(paidAmount.toFixed(2));
       updatePayload.paid_amount = nextPaid;
 
-      // 只要本期存在已还金额，则标记为手动收款并记录操作人
-      if (currentSchedule.operator_admin_name == null) {
-        updatePayload.collected_by_type = 'manual';
-      }
       if (operatorAdminId) {
         updatePayload.operator_admin_id = operatorAdminId;
         updatePayload.operator_admin_name = operatorName;

@@ -1,53 +1,100 @@
-# 复制到服务器 /etc/nginx/sites-available/ （例如 api.conf），启用 HTTPS 后把 server_name、证书路径改成你的域名。
-# 假设 API 由本机 Docker 映射到 127.0.0.1:3000。
-
-upstream lims_api {
-    server 127.0.0.1:3000;
-    keepalive 32;
-}
-
 server {
     listen 80;
-    listen [::]:80;
+    server_name 8.216.43.87 www.xinde8888.com xinde8888.com;
+    # 308 会保留 POST 方法；301/302 在浏览器里常把 POST 重发成 GET，导致 /auth/wechat-login 等报 Cannot GET
+    return 308 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+
+    ssl_certificate /etc/nginx/ssl/xinde/xinde8888.com.crt;
+    ssl_certificate_key /etc/nginx/ssl/xinde/xinde8888.com.key;
+
+    # www 与根域同一证书时一并写上，避免再跳一次 301 把 POST 变成 GET
     server_name www.xinde8888.com xinde8888.com;
-
-    # Certbot 会自动写入 rewrite；也可手动：
-    # return 301 https://$host$request_uri;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-
+    
+    # 根目录设置
+    root /var/www/html;
+    index index.html;
+    
+    # 主路由 - 处理 SPA 路由
     location / {
-        proxy_pass http://lims_api;
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # 静态资源缓存
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        add_header X-Static "hit";
+        
+        # 确保能找到文件
+        try_files $uri =404;
+    }
+    
+    # API 代理到后端
+    location /api/ {
+        # 处理 CORS 预检请求
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Cookie' always;
+            add_header 'Access-Control-Allow-Credentials' 'true' always;
+            add_header 'Access-Control-Max-Age' 1728000 always;
+            add_header 'Content-Type' 'text/plain; charset=utf-8' always;
+            add_header 'Content-Length' 0 always;
+            return 204;
+        }
+        
+        # 添加 CORS 头
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,Cookie' always;
+        add_header 'Access-Control-Allow-Credentials' 'true' always;
+        
+        # 末尾 / 会去掉 /api/ 前缀，把 /api/auth/... 转成后端 Nest 的 /auth/...
+        proxy_pass http://127.0.0.1:3000/;
         proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_cache_bypass $http_upgrade;
+        
+        # 超时设置
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
-        client_max_body_size 50m;
     }
+    
+    # 健康检查
+    location /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+    
+    
+    # Gzip 压缩
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml;
+        
+    # 日志设置
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
 }
-
-# HTTPS 示例（certbot --nginx 会自动生成类似块）
-# server {
-#     listen 443 ssl http2;
-#     listen [::]:443 ssl http2;
-#     server_name www.xinde8888.com xinde8888.com;
-#     ssl_certificate /etc/letsencrypt/live/www.xinde8888.com/fullchain.pem;
-#     ssl_certificate_key /etc/letsencrypt/live/www.xinde8888.com/privkey.pem;
-#     location / {
-#         proxy_pass http://lims_api;
-#         proxy_http_version 1.1;
-#         proxy_set_header Host $host;
-#         proxy_set_header X-Real-IP $remote_addr;
-#         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-#         proxy_set_header X-Forwarded-Proto $scheme;
-#         client_max_body_size 50m;
-#     }
-# }

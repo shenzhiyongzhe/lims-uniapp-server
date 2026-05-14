@@ -10,13 +10,15 @@ exports.ScheduleTasksModule = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_module_1 = require("../prisma/prisma.module");
 const overdue_sweep_service_1 = require("./overdue-sweep.service");
+const repayment_records_module_1 = require("../repayment-records/repayment-records.module");
+const daily_loan_balance_service_1 = require("./daily-loan-balance.service");
 let ScheduleTasksModule = class ScheduleTasksModule {
 };
 exports.ScheduleTasksModule = ScheduleTasksModule;
 exports.ScheduleTasksModule = ScheduleTasksModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_1.PrismaModule],
-        providers: [overdue_sweep_service_1.OverdueSweepService],
+        imports: [prisma_module_1.PrismaModule, repayment_records_module_1.RepaymentRecordsModule],
+        providers: [overdue_sweep_service_1.OverdueSweepService, daily_loan_balance_service_1.DailyLoanBalanceService],
     })
 ], ScheduleTasksModule);
 //# sourceMappingURL=schedule-tasks.module.js.map
