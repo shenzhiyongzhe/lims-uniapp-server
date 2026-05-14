@@ -79,14 +79,42 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
+            log() { printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*"; }
             cd "${DEPLOY_PATH}"
             export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
-            docker compose -f docker-compose.prod.yml pull api
-            if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
-              echo "Detected prisma migrations, running migrate deploy..."
-              docker compose -f docker-compose.prod.yml run --rm api npx prisma migrate deploy
+            log ">>> [0] context: pwd=$(pwd) user=$(whoami)"
+            log ">>> [0] files: docker-compose.prod.yml=$([ -f docker-compose.prod.yml ] && echo ok || echo MISSING) .env=$([ -f .env ] && echo ok || echo MISSING)"
+            command -v docker >/dev/null && log ">>> [0] docker: $(docker --version)" || log ">>> [0] docker: NOT FOUND"
+            docker compose version 2>/dev/null | sed 's/^/>>> [0] /' || true
+            if [ -d "prisma/migrations" ]; then
+              log ">>> [0] host prisma/migrations (first 30 entries):"
+              ls -la prisma/migrations 2>/dev/null | head -30 || true
             else
-              echo "No prisma migrations found, fallback to db push..."
-              docker compose -f docker-compose.prod.yml run --rm api npx prisma db push
+              log ">>> [0] host prisma/migrations: (directory missing)"
             fi
+            log ">>> [1/5] pull api (${DOCKER_IMAGE})"
+            docker compose -f docker-compose.prod.yml pull api
+            log ">>> [1b] prisma CLI inside image"
+            docker compose -f docker-compose.prod.yml run -T --rm api npx prisma -v 2>&1 | sed 's/^/    /' || true
+            log ">>> [1c] prisma migrate status (log only; non-zero may still be OK before deploy)"
+            set +e
+            docker compose -f docker-compose.prod.yml run -T --rm api npx prisma migrate status 2>&1 | sed 's/^/    /'
+            _st=$?
+            set -e
+            log ">>> [1c] migrate status exit code: ${_st}"
+            if [ -d "prisma/migrations" ] && [ "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+              log ">>> [2/5] prisma migrate deploy (host has prisma/migrations)"
+              docker compose -f docker-compose.prod.yml run -T --rm \
+                -e DEBUG="prisma:migrate,prisma:migrateEngine" \
+                api npx prisma migrate deploy 2>&1 | sed 's/^/    /'
+            else
+              log ">>> [2/5] prisma db push (no host prisma/migrations)"
+              docker compose -f docker-compose.prod.yml run -T --rm \
+                -e DEBUG="prisma:migrate,prisma:migrateEngine" \
+                api npx prisma db push 2>&1 | sed 's/^/    /'
+            fi
+            log ">>> [3/5] compose up -d"
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
+            log ">>> [4/5] api container status"
+            docker compose -f docker-compose.prod.yml ps api 2>&1 | sed 's/^/    /' || true
+            log ">>> [5/5] deploy script finished OK"
