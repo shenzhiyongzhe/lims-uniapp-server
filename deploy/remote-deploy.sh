@@ -13,20 +13,23 @@ echo "=== [1/3] pull ===" >&2
 docker compose -f "${COMPOSE_FILE}" pull api
 
 echo "=== [2/3] prisma migrate deploy ===" >&2
-DATABASE_URL_LINE="$(grep -E '^DATABASE_URL=' .env | head -1 || true)"
-DATABASE_URL_VAL="${DATABASE_URL_LINE#DATABASE_URL=}"
-DATABASE_URL_VAL="${DATABASE_URL_VAL%$'\r'}"
-case "$DATABASE_URL_VAL" in
-  \"*) DATABASE_URL_VAL="${DATABASE_URL_VAL#\"}"; DATABASE_URL_VAL="${DATABASE_URL_VAL%\"}" ;;
-  \'*) DATABASE_URL_VAL="${DATABASE_URL_VAL#\'}"; DATABASE_URL_VAL="${DATABASE_URL_VAL%\'}" ;;
-esac
+DATABASE_URL_VAL="$(
+  grep -E '^DATABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '\r' \
+    | sed -e 's/^["'\'']//' -e 's/["'\'']$//'
+)"
+
+run_prisma_migrate() {
+  local db_url="$1"
+  docker run --rm -T --network host \
+    -e "DATABASE_URL=${db_url}" \
+    "${DOCKER_IMAGE}" \
+    npx prisma migrate deploy
+}
 
 if printf '%s' "$DATABASE_URL_VAL" | grep -q '@host\.docker\.internal:'; then
   MIGRATE_DATABASE_URL="${DATABASE_URL_VAL//@host.docker.internal:/@127.0.0.1:}"
-  echo "migrate: host network + DATABASE_URL host 127.0.0.1 (was host.docker.internal)" >&2
-  docker compose -f "${COMPOSE_FILE}" run -T --rm --network host \
-    -e "DATABASE_URL=${MIGRATE_DATABASE_URL}" \
-    api npx prisma migrate deploy
+  echo "migrate: docker run --network host + DATABASE_URL host 127.0.0.1 (was host.docker.internal)" >&2
+  run_prisma_migrate "${MIGRATE_DATABASE_URL}"
 else
   docker compose -f "${COMPOSE_FILE}" run -T --rm api npx prisma migrate deploy
 fi
