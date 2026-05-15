@@ -69,7 +69,13 @@
 若曾把 `DEPLOY_HOST` 建在 **Secrets** 里，`host` 在部分情况下不会参与 `if` 判断，且漏配时会报 `missing server host`；请改用上表 **Variables** 填写 `DEPLOY_HOST` / `DEPLOY_USER` / `DEPLOY_PATH`。
 
 推送至 `main` / `master` 且变更 `src/`、`prisma/`、`Dockerfile`、`package.json` 等时会构建镜像并推送至  
-`ghcr.io/<小写 owner>/lims-uniapp-server`（`:latest` 与 `:<git-sha>`）。若已配置 Variable **`DEPLOY_HOST`**，则会继续 SSH 到服务器执行 `docker compose -f docker-compose.prod.yml pull` 与 `up -d`；否则仅完成镜像推送。
+`ghcr.io/<小写 owner>/lims-uniapp-server`（`:latest` 与 `:<git-sha>`）。若已配置 Variable **`DEPLOY_HOST`**，则会继续 SSH 到服务器执行 `pull` → `prisma migrate deploy` → `up -d`；否则仅完成镜像推送。
+
+**CI / Drone 迁移报 `Can't reach database server at host.docker.internal:3306`（P1001）**  
+多为宿主机 MySQL **只监听 `127.0.0.1`**。`deploy/remote-deploy.sh` 在检测到 `.env` 里 `DATABASE_URL` 使用 `host.docker.internal` 时，会对 **migrate** 自动改用 `--network host` 并把主机改为 `127.0.0.1`。GitHub Actions 与 Drone 的 SSH 步骤均应调用该脚本（示例：`cd "${DEPLOY_PATH}" && export DOCKER_IMAGE=... && bash deploy/remote-deploy.sh`）。若 **长期运行的 API** 仍连不上库，请任选其一：
+
+1. MySQL `bind-address=0.0.0.0`，继续用 `docker-compose.prod.yml` + `host.docker.internal`；或  
+2. `.env` 中 `DATABASE_URL` 改为 `@127.0.0.1:3306`，日常用 `docker-compose.prod.hostnetwork.yml` 启动 API。
 
 **若镜像为私有仓库**：在服务器执行一次 `docker login ghcr.io`（使用 GitHub 用户名 + 具有 `read:packages` 的 PAT）。
 
