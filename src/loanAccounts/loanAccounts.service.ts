@@ -338,7 +338,9 @@ export class LoanAccountsService {
       let newDueStartDate: Date | null = null;
 
       if (data.due_start_date) {
-        const dateMatch = data.due_start_date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const dateMatch = data.due_start_date.match(
+          /^(\d{4})-(\d{2})-(\d{2})$/,
+        );
         if (dateMatch) {
           const [, year, month, day] = dateMatch;
           const startDate = new Date(
@@ -360,20 +362,32 @@ export class LoanAccountsService {
         }
       }
 
-      if (data.loan_amount !== undefined) updateData.loan_amount = data.loan_amount;
-      if (data.receiving_amount !== undefined) updateData.receiving_amount = data.receiving_amount;
-      if (data.to_hand_ratio !== undefined) updateData.to_hand_ratio = data.to_hand_ratio;
+      if (data.loan_amount !== undefined)
+        updateData.loan_amount = data.loan_amount;
+      if (data.receiving_amount !== undefined)
+        updateData.receiving_amount = data.receiving_amount;
+      if (data.to_hand_ratio !== undefined)
+        updateData.to_hand_ratio = data.to_hand_ratio;
       if (data.capital !== undefined) updateData.capital = data.capital;
       if (data.interest !== undefined) updateData.interest = data.interest;
-      if (data.handling_fee !== undefined) updateData.handling_fee = data.handling_fee;
-      if (data.total_periods !== undefined) updateData.total_periods = data.total_periods;
-      if (data.repaid_periods !== undefined) updateData.repaid_periods = data.repaid_periods;
-      if (data.daily_repayment !== undefined) updateData.daily_repayment = data.daily_repayment;
-      if (data.status !== undefined) updateData.status = data.status as LoanAccountStatus;
-      if (data.company_cost !== undefined) updateData.company_cost = data.company_cost;
-      if (data.apply_times !== undefined) updateData.apply_times = data.apply_times;
-      if (data.risk_controller_id !== undefined) updateData.risk_controller_id = data.risk_controller_id;
-      if (data.collector_id !== undefined) updateData.collector_id = data.collector_id;
+      if (data.handling_fee !== undefined)
+        updateData.handling_fee = data.handling_fee;
+      if (data.total_periods !== undefined)
+        updateData.total_periods = data.total_periods;
+      if (data.repaid_periods !== undefined)
+        updateData.repaid_periods = data.repaid_periods;
+      if (data.daily_repayment !== undefined)
+        updateData.daily_repayment = data.daily_repayment;
+      if (data.status !== undefined)
+        updateData.status = data.status as LoanAccountStatus;
+      if (data.company_cost !== undefined)
+        updateData.company_cost = data.company_cost;
+      if (data.apply_times !== undefined)
+        updateData.apply_times = data.apply_times;
+      if (data.risk_controller_id !== undefined)
+        updateData.risk_controller_id = data.risk_controller_id;
+      if (data.collector_id !== undefined)
+        updateData.collector_id = data.collector_id;
       if (data.note !== undefined) updateData.note = data.note;
       if (data.ownership !== undefined) {
         updateData.ownership = data.ownership === '' ? null : data.ownership;
@@ -457,7 +471,11 @@ export class LoanAccountsService {
             where: { loan_account_id: id, role_type: 'risk_controller' },
           });
           await tx.loanAccountRole.create({
-            data: { loan_account_id: id, admin_id: data.risk_controller_id, role_type: 'risk_controller' },
+            data: {
+              loan_account_id: id,
+              admin_id: data.risk_controller_id,
+              role_type: 'risk_controller',
+            },
           });
         }
         if (data.collector_id !== undefined) {
@@ -465,7 +483,11 @@ export class LoanAccountsService {
             where: { loan_account_id: id, role_type: 'collector' },
           });
           await tx.loanAccountRole.create({
-            data: { loan_account_id: id, admin_id: data.collector_id, role_type: 'collector' },
+            data: {
+              loan_account_id: id,
+              admin_id: data.collector_id,
+              role_type: 'collector',
+            },
           });
         }
       }
@@ -490,7 +512,10 @@ export class LoanAccountsService {
         );
       }
       if (data.risk_controller_id !== undefined) {
-        if (prevRiskId !== undefined && prevRiskId !== data.risk_controller_id) {
+        if (
+          prevRiskId !== undefined &&
+          prevRiskId !== data.risk_controller_id
+        ) {
           await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(
             prevRiskId,
             updated,
@@ -581,11 +606,7 @@ export class LoanAccountsService {
         } else {
           const now = new Date();
           settlementDate = new Date(
-            Date.UTC(
-              now.getUTCFullYear(),
-              now.getUTCMonth(),
-              now.getUTCDate(),
-            ),
+            Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
           );
         }
 
@@ -706,10 +727,7 @@ export class LoanAccountsService {
           paid_interest: prevPaidInterest,
         };
 
-        if (
-          settlement_capital !== undefined &&
-          settlement_capital !== null
-        ) {
+        if (settlement_capital !== undefined && settlement_capital !== null) {
           updateData.early_settlement_capital = manualCapital;
         }
 
@@ -1020,7 +1038,12 @@ export class LoanAccountsService {
     const inStockWhere: Record<string, unknown> = isScheduleTab
       ? loanAccountWhereForScheduleTabs
       : baseAndParts.length > 0
-        ? { AND: [...baseAndParts, { status: 'blacklist' as LoanAccountStatus }] }
+        ? {
+            AND: [
+              ...baseAndParts,
+              { status: 'blacklist' as LoanAccountStatus },
+            ],
+          }
         : { status: 'blacklist' as LoanAccountStatus };
 
     const [

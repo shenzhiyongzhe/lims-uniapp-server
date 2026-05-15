@@ -21,6 +21,16 @@ let OverdueSweepService = OverdueSweepService_1 = class OverdueSweepService {
     constructor(prisma) {
         this.prisma = prisma;
     }
+    async onApplicationBootstrap() {
+        this.logger.log('Running overdue sweep on server startup');
+        try {
+            await this.sweepYesterdayPendingToOverdue();
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : 'unknown overdue sweep error';
+            this.logger.error(`Overdue sweep on startup failed: ${message}`);
+        }
+    }
     async sweepYesterdayPendingToOverdue() {
         const { yesterday } = (0, business_date_1.getShanghaiBusinessTodayAndYesterday)();
         const rows = await this.prisma.repaymentSchedule.findMany({

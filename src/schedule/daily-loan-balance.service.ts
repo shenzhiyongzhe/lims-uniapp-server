@@ -1,17 +1,32 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepaymentRecordsService } from '../repayment-records/repayment-records.service';
 import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
 
 @Injectable()
-export class DailyLoanBalanceService {
+export class DailyLoanBalanceService implements OnApplicationBootstrap {
   private readonly logger = new Logger(DailyLoanBalanceService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly repaymentRecordsService: RepaymentRecordsService,
   ) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    this.logger.log('Running daily loan balance snapshot on server startup');
+    try {
+      await this.snapshotDailyLoanBalance();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'unknown daily balance snapshot error';
+      this.logger.error(
+        `Daily loan balance snapshot on startup failed: ${message}`,
+      );
+    }
+  }
 
   @Cron('59 59 23 * * *', { timeZone: 'Asia/Shanghai' })
   async snapshotDailyLoanBalance(): Promise<void> {

@@ -333,7 +333,11 @@ let LoanAccountsService = class LoanAccountsService {
                         where: { loan_account_id: id, role_type: 'risk_controller' },
                     });
                     await tx.loanAccountRole.create({
-                        data: { loan_account_id: id, admin_id: data.risk_controller_id, role_type: 'risk_controller' },
+                        data: {
+                            loan_account_id: id,
+                            admin_id: data.risk_controller_id,
+                            role_type: 'risk_controller',
+                        },
                     });
                 }
                 if (data.collector_id !== undefined) {
@@ -341,7 +345,11 @@ let LoanAccountsService = class LoanAccountsService {
                         where: { loan_account_id: id, role_type: 'collector' },
                     });
                     await tx.loanAccountRole.create({
-                        data: { loan_account_id: id, admin_id: data.collector_id, role_type: 'collector' },
+                        data: {
+                            loan_account_id: id,
+                            admin_id: data.collector_id,
+                            role_type: 'collector',
+                        },
                     });
                 }
             }
@@ -356,7 +364,8 @@ let LoanAccountsService = class LoanAccountsService {
                 await this.assetManagementService.updateCollectorAssetFromLoanAccount(data.collector_id, updated);
             }
             if (data.risk_controller_id !== undefined) {
-                if (prevRiskId !== undefined && prevRiskId !== data.risk_controller_id) {
+                if (prevRiskId !== undefined &&
+                    prevRiskId !== data.risk_controller_id) {
                     await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(prevRiskId, updated);
                 }
                 await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(data.risk_controller_id, updated);
@@ -503,8 +512,7 @@ let LoanAccountsService = class LoanAccountsService {
                     paid_capital: paidCapital,
                     paid_interest: prevPaidInterest,
                 };
-                if (settlement_capital !== undefined &&
-                    settlement_capital !== null) {
+                if (settlement_capital !== undefined && settlement_capital !== null) {
                     updateData.early_settlement_capital = manualCapital;
                 }
                 await tx.loanAccount.update({
@@ -728,7 +736,12 @@ let LoanAccountsService = class LoanAccountsService {
         const inStockWhere = isScheduleTab
             ? loanAccountWhereForScheduleTabs
             : baseAndParts.length > 0
-                ? { AND: [...baseAndParts, { status: 'blacklist' }] }
+                ? {
+                    AND: [
+                        ...baseAndParts,
+                        { status: 'blacklist' },
+                    ],
+                }
                 : { status: 'blacklist' };
         const [loanAgg, feeAgg, todaySchedAgg, yesterdaySchedAgg, todaySchedulePaidCount, todaySchedulePendingCount, todayScheduleActiveCount,] = await Promise.all([
             this.prisma.loanAccount.aggregate({

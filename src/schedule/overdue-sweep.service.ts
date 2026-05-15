@@ -1,13 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
 
 @Injectable()
-export class OverdueSweepService {
+export class OverdueSweepService implements OnApplicationBootstrap {
   private readonly logger = new Logger(OverdueSweepService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    this.logger.log('Running overdue sweep on server startup');
+    try {
+      await this.sweepYesterdayPendingToOverdue();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'unknown overdue sweep error';
+      this.logger.error(`Overdue sweep on startup failed: ${message}`);
+    }
+  }
 
   @Cron('0 6 * * *', { timeZone: 'Asia/Shanghai' })
   async sweepYesterdayPendingToOverdue(): Promise<void> {

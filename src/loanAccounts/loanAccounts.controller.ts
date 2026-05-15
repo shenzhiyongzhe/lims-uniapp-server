@@ -86,7 +86,9 @@ export class LoanAccountsController {
 
   @UseGuards(AuthGuard)
   @Get(':id')
-  async findById(@Param('id', ParseIntPipe) id: number): Promise<ApiResponseDto> {
+  async findById(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ApiResponseDto> {
     const loan = await this.loanAccountsService.findById(id);
     if (!loan) {
       return ResponseHelper.error('贷款记录不存在', 400);
