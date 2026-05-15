@@ -26,6 +26,10 @@ let RepaymentSchedulesController = class RepaymentSchedulesController {
     constructor(repaymentSchedulesService) {
         this.repaymentSchedulesService = repaymentSchedulesService;
     }
+    async findOperationLogs(id) {
+        const logs = await this.repaymentSchedulesService.findOperationLogs(id);
+        return response_helper_1.ResponseHelper.success(logs, '获取操作日志成功');
+    }
     async findById(id) {
         const schedule = await this.repaymentSchedulesService.findById(id);
         if (!schedule) {
@@ -78,6 +82,13 @@ let RepaymentSchedulesController = class RepaymentSchedulesController {
     }
 };
 exports.RepaymentSchedulesController = RepaymentSchedulesController;
+__decorate([
+    (0, common_1.Get)(':id/operation-logs'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", Promise)
+], RepaymentSchedulesController.prototype, "findOperationLogs", null);
 __decorate([
     (0, common_1.Get)(':id'),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),

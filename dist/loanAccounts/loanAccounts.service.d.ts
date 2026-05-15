@@ -25,6 +25,7 @@ export declare class LoanAccountsService {
         role: import("@prisma/client").$Enums.ManagementRoles;
         nickname: string | null;
     }[]>;
+    private buildListWhereConditions;
     findGroupedByUser(query: {
         page: number;
         pageSize: number;
@@ -39,17 +40,6 @@ export declare class LoanAccountsService {
     }): Promise<{
         data: Record<string, unknown>[];
         total: number;
-        statistics: {
-            inStock: number;
-            remainingDebt: number;
-            handlingFee: number;
-            fines: number;
-            todayReceived: number;
-            yesterdayReceived: number;
-            todaySchedulePaidCount: number;
-            todaySchedulePendingCount: number;
-            todayScheduleActiveCount: number;
-        };
         relatedAdmins: {
             id: number;
             username: string | null;
@@ -61,6 +51,30 @@ export declare class LoanAccountsService {
             overdue: number;
             today_paid: number;
             today_unpaid: number;
+        };
+    }>;
+    findListStats(query: {
+        status?: string;
+        adminId?: string;
+        keyword?: string;
+        username?: string;
+        listFilter?: string;
+    }, currentUser?: {
+        id: number;
+        role: string;
+    }): Promise<{
+        statistics: {
+            inStock: number;
+            remainingDebt: number;
+            handlingFee: number;
+            fines: number;
+            todayReceived: number;
+            yesterdayReceived: number;
+        };
+        dayScheduleBoard: {
+            paid: number;
+            pending: number;
+            active: number;
         };
     }>;
 }

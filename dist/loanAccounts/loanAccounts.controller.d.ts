@@ -12,6 +12,10 @@ export declare class LoanAccountsController {
         id: number;
         role: string;
     }): Promise<ApiResponseDto>;
+    getListStats(adminId?: string, username?: string, listFilter?: string, status?: string, keyword?: string, user?: {
+        id: number;
+        role: string;
+    }): Promise<ApiResponseDto>;
     findById(id: number): Promise<ApiResponseDto>;
     create(body: CreateLoanAccountDto, user: {
         id: number;

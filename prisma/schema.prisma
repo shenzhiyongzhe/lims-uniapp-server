@@ -46,6 +46,7 @@ model Admin {
   dailyLoanBalances             CollectorDailyLoanBalance[]
   repaymentRecords              RepaymentRecord[]
   riskControllerAssetManagement RiskControllerAssetManagement?
+  scheduleOperationLogs         RepaymentScheduleOperationLog[]
 
   @@map("admins")
 }
@@ -130,10 +131,35 @@ model RepaymentSchedule {
   paid_interest       Decimal?                @default(0.00) @db.Decimal(10, 2)
   overdueRecords      OverdueRecord?
   repaymentRecords    RepaymentRecord[]
+  operationLogs       RepaymentScheduleOperationLog[]
   loan_account        LoanAccount             @relation(fields: [loan_id], references: [id], onDelete: Cascade)
 
   @@index([loan_id], map: "repayment_schedules_loan_id_fkey")
   @@map("repayment_schedules")
+}
+
+model RepaymentScheduleOperationLog {
+  id                    Int                           @id @default(autoincrement())
+  schedule_id           Int
+  loan_id               Int
+  action_type           RepaymentScheduleOperationType
+  operator_admin_id     Int?
+  operator_admin_name   String?                       @db.VarChar(50)
+  paid_capital_before   Decimal?                      @db.Decimal(10, 2)
+  paid_interest_before  Decimal?                      @db.Decimal(10, 2)
+  fines_before          Decimal?                      @db.Decimal(10, 2)
+  paid_capital_after    Decimal?                      @db.Decimal(10, 2)
+  paid_interest_after   Decimal?                      @db.Decimal(10, 2)
+  fines_after           Decimal?                      @db.Decimal(10, 2)
+  remark                String?                       @db.VarChar(10)
+  created_at            DateTime                      @default(now())
+  schedule              RepaymentSchedule             @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+  operator              Admin?                        @relation(fields: [operator_admin_id], references: [id])
+
+  @@index([schedule_id])
+  @@index([loan_id])
+  @@index([operator_admin_id], map: "repayment_schedule_operation_logs_operator_admin_id_fkey")
+  @@map("repayment_schedule_operation_logs")
 }
 
 model RepaymentRecord {
@@ -338,5 +364,10 @@ enum RepaymentScheduleStatus {
   overdue
   paid
   terminated
+}
+
+enum RepaymentScheduleOperationType {
+  collect
+  edit
 }
 

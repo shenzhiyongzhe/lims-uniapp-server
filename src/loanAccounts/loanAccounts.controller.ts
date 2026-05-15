@@ -68,6 +68,23 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard)
+  @Get('list-stats')
+  async getListStats(
+    @Query('adminId') adminId?: string,
+    @Query('username') username?: string,
+    @Query('listFilter') listFilter?: string,
+    @Query('status') status?: string,
+    @Query('keyword') keyword?: string,
+    @CurrentUser() user?: { id: number; role: string },
+  ): Promise<ApiResponseDto> {
+    const result = await this.loanAccountsService.findListStats(
+      { adminId, username, listFilter, status, keyword },
+      user,
+    );
+    return ResponseHelper.success(result, '获取统计数据成功');
+  }
+
+  @UseGuards(AuthGuard)
   @Get(':id')
   async findById(@Param('id', ParseIntPipe) id: number): Promise<ApiResponseDto> {
     const loan = await this.loanAccountsService.findById(id);

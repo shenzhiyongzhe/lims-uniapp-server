@@ -4,11 +4,42 @@ import {
   RepaymentSchedule,
   RepaymentScheduleStatus,
 } from '@prisma/client';
+
+type ScheduleOperationType = 'collect' | 'edit';
+
+interface OperationLogRow {
+  id: number;
+  schedule_id: number;
+  loan_id: number;
+  action_type: ScheduleOperationType;
+  operator_admin_id: number | null;
+  operator_admin_name: string | null;
+  paid_capital_before: unknown;
+  paid_interest_before: unknown;
+  fines_before: unknown;
+  paid_capital_after: unknown;
+  paid_interest_after: unknown;
+  fines_after: unknown;
+  remark: string | null;
+  created_at: Date;
+}
 import { RepaymentScheduleResponseDto } from './dto/repayment-schedule-response.dto';
 
 @Injectable()
 export class RepaymentSchedulesService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Prisma client 在 migrate 后需执行 generate；此处兼容 generate 尚未刷新的环境 */
+  private get operationLogDelegate(): {
+    findMany: (args: object) => Promise<OperationLogRow[]>;
+    create: (args: { data: object }) => Promise<unknown>;
+  } {
+    return (this.prisma as unknown as { repaymentScheduleOperationLog: unknown })
+      .repaymentScheduleOperationLog as {
+      findMany: (args: object) => Promise<OperationLogRow[]>;
+      create: (args: { data: object }) => Promise<unknown>;
+    };
+  }
 
   async findByLoanId(loanId: number): Promise<RepaymentSchedule[]> {
     return this.prisma.repaymentSchedule.findMany({
@@ -46,12 +77,53 @@ export class RepaymentSchedulesService {
     });
   }
 
+  async findOperationLogs(scheduleId: number) {
+    const schedule = await this.prisma.repaymentSchedule.findUnique({
+      where: { id: scheduleId },
+      select: { id: true },
+    });
+    if (!schedule) {
+      throw new NotFoundException('还款计划不存在');
+    }
+
+    const logs = await this.operationLogDelegate.findMany({
+      where: { schedule_id: scheduleId },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return logs.map((log) => ({
+      id: log.id,
+      schedule_id: log.schedule_id,
+      loan_id: log.loan_id,
+      action_type: log.action_type,
+      operator_admin_id: log.operator_admin_id,
+      operator_admin_name: log.operator_admin_name,
+      paid_capital_before: log.paid_capital_before
+        ? Number(log.paid_capital_before)
+        : null,
+      paid_interest_before: log.paid_interest_before
+        ? Number(log.paid_interest_before)
+        : null,
+      fines_before: log.fines_before ? Number(log.fines_before) : null,
+      paid_capital_after: log.paid_capital_after
+        ? Number(log.paid_capital_after)
+        : null,
+      paid_interest_after: log.paid_interest_after
+        ? Number(log.paid_interest_after)
+        : null,
+      fines_after: log.fines_after ? Number(log.fines_after) : null,
+      remark: log.remark,
+      created_at: log.created_at,
+    }));
+  }
+
   async update(
     data: Partial<RepaymentSchedule> & {
       pay_capital?: number;
       pay_interest?: number;
       fines?: number;
       remark?: string;
+      action_type?: ScheduleOperationType | string;
     },
     operatorAdminId?: number,
   ): Promise<RepaymentSchedule> {
@@ -87,7 +159,11 @@ export class RepaymentSchedulesService {
       const baseCapital = toNumber(currentSchedule.capital);
       const baseInterest = toNumber(currentSchedule.interest);
 
-      const { pay_capital, pay_interest, remark, ...restData } = data;
+      const actionType: ScheduleOperationType =
+        data.action_type === 'collect' ? 'collect' : 'edit';
+
+      const { pay_capital, pay_interest, remark, action_type, ...restData } =
+        data;
       const updatePayload: any = {
         ...restData,
         paid_capital: inputCapital,
@@ -130,6 +206,26 @@ export class RepaymentSchedulesService {
       }
       updatePayload.status = derivedStatus;
       updatePayload.paid_at = new Date();
+
+      await (
+        tx as unknown as { repaymentScheduleOperationLog: { create: (args: { data: object }) => Promise<unknown> } }
+      ).repaymentScheduleOperationLog.create({
+        data: {
+          schedule_id: data.id!,
+          loan_id: currentSchedule.loan_id,
+          action_type: actionType,
+          operator_admin_id: operatorAdminId ?? null,
+          operator_admin_name: operatorName,
+          paid_capital_before: toNumber(currentSchedule.paid_capital),
+          paid_interest_before: toNumber(currentSchedule.paid_interest),
+          fines_before: toNumber(currentSchedule.fines),
+          paid_capital_after: inputCapital,
+          paid_interest_after: inputInterest,
+          fines_after: finesValue,
+          remark: remark || null,
+        },
+      });
+
       // 2. 更新还款计划
       const updatedSchedule = await tx.repaymentSchedule.update({
         where: { id: data.id },
@@ -178,20 +274,32 @@ export class RepaymentSchedulesService {
         },
       });
 
-      if (nextPaid > 0 && loan) {
-        await tx.repaymentRecord.create({
-          data: {
-            loan_id: loanId,
-            user_id: loan.user_id,
-            paid_amount: nextPaid,
-            paid_capital: inputCapital,
-            paid_interest: inputInterest,
-            paid_fines: finesValue,
-            repayment_schedule_id: data.id,
-            actual_collector_id: operatorAdminId ?? null,
-            remark: remark || null,
-          },
+      // 每期 schedule 仅对应一条还款记录：已存在则更新，否则在有实收时新建
+      if (loan) {
+        const existingRecord = await tx.repaymentRecord.findFirst({
+          where: { repayment_schedule_id: data.id },
         });
+        const recordPayload = {
+          loan_id: loanId,
+          user_id: loan.user_id,
+          paid_amount: nextPaid,
+          paid_at: new Date(),
+          paid_capital: inputCapital,
+          paid_interest: inputInterest,
+          paid_fines: finesValue,
+          repayment_schedule_id: data.id,
+          actual_collector_id: operatorAdminId ?? null,
+          remark: remark || null,
+        };
+
+        if (existingRecord) {
+          await tx.repaymentRecord.update({
+            where: { id: existingRecord.id },
+            data: recordPayload,
+          });
+        } else if (nextPaid > 0) {
+          await tx.repaymentRecord.create({ data: recordPayload });
+        }
       }
 
       const earlySettlementCapital = Number(

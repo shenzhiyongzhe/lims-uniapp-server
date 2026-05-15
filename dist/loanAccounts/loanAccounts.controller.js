@@ -49,6 +49,10 @@ let LoanAccountsController = class LoanAccountsController {
         }, user);
         return response_helper_1.ResponseHelper.success(result, '获取贷款记录成功');
     }
+    async getListStats(adminId, username, listFilter, status, keyword, user) {
+        const result = await this.loanAccountsService.findListStats({ adminId, username, listFilter, status, keyword }, user);
+        return response_helper_1.ResponseHelper.success(result, '获取统计数据成功');
+    }
     async findById(id) {
         const loan = await this.loanAccountsService.findById(id);
         if (!loan) {
@@ -116,6 +120,19 @@ __decorate([
     __metadata("design:paramtypes", [String, String, String, String, String, String, String, Object]),
     __metadata("design:returntype", Promise)
 ], LoanAccountsController.prototype, "findGroupedByUser", null);
+__decorate([
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
+    (0, common_1.Get)('list-stats'),
+    __param(0, (0, common_1.Query)('adminId')),
+    __param(1, (0, common_1.Query)('username')),
+    __param(2, (0, common_1.Query)('listFilter')),
+    __param(3, (0, common_1.Query)('status')),
+    __param(4, (0, common_1.Query)('keyword')),
+    __param(5, (0, current_user_decorator_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, String, String, String, Object]),
+    __metadata("design:returntype", Promise)
+], LoanAccountsController.prototype, "getListStats", null);
 __decorate([
     (0, common_1.UseGuards)(auth_guard_1.AuthGuard),
     (0, common_1.Get)(':id'),

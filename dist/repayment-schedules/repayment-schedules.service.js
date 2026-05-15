@@ -17,6 +17,10 @@ let RepaymentSchedulesService = class RepaymentSchedulesService {
     constructor(prisma) {
         this.prisma = prisma;
     }
+    get operationLogDelegate() {
+        return this.prisma
+            .repaymentScheduleOperationLog;
+    }
     async findByLoanId(loanId) {
         return this.prisma.repaymentSchedule.findMany({
             where: {
@@ -51,6 +55,43 @@ let RepaymentSchedulesService = class RepaymentSchedulesService {
             },
         });
     }
+    async findOperationLogs(scheduleId) {
+        const schedule = await this.prisma.repaymentSchedule.findUnique({
+            where: { id: scheduleId },
+            select: { id: true },
+        });
+        if (!schedule) {
+            throw new common_1.NotFoundException('还款计划不存在');
+        }
+        const logs = await this.operationLogDelegate.findMany({
+            where: { schedule_id: scheduleId },
+            orderBy: { created_at: 'desc' },
+        });
+        return logs.map((log) => ({
+            id: log.id,
+            schedule_id: log.schedule_id,
+            loan_id: log.loan_id,
+            action_type: log.action_type,
+            operator_admin_id: log.operator_admin_id,
+            operator_admin_name: log.operator_admin_name,
+            paid_capital_before: log.paid_capital_before
+                ? Number(log.paid_capital_before)
+                : null,
+            paid_interest_before: log.paid_interest_before
+                ? Number(log.paid_interest_before)
+                : null,
+            fines_before: log.fines_before ? Number(log.fines_before) : null,
+            paid_capital_after: log.paid_capital_after
+                ? Number(log.paid_capital_after)
+                : null,
+            paid_interest_after: log.paid_interest_after
+                ? Number(log.paid_interest_after)
+                : null,
+            fines_after: log.fines_after ? Number(log.fines_after) : null,
+            remark: log.remark,
+            created_at: log.created_at,
+        }));
+    }
     async update(data, operatorAdminId) {
         return await this.prisma.$transaction(async (tx) => {
             const currentSchedule = await tx.repaymentSchedule.findUnique({
@@ -76,7 +117,8 @@ let RepaymentSchedulesService = class RepaymentSchedulesService {
             const inputInterest = Number(data.pay_interest) || 0;
             const baseCapital = toNumber(currentSchedule.capital);
             const baseInterest = toNumber(currentSchedule.interest);
-            const { pay_capital, pay_interest, remark, ...restData } = data;
+            const actionType = data.action_type === 'collect' ? 'collect' : 'edit';
+            const { pay_capital, pay_interest, remark, action_type, ...restData } = data;
             const updatePayload = {
                 ...restData,
                 paid_capital: inputCapital,
@@ -115,6 +157,22 @@ let RepaymentSchedulesService = class RepaymentSchedulesService {
             }
             updatePayload.status = derivedStatus;
             updatePayload.paid_at = new Date();
+            await tx.repaymentScheduleOperationLog.create({
+                data: {
+                    schedule_id: data.id,
+                    loan_id: currentSchedule.loan_id,
+                    action_type: actionType,
+                    operator_admin_id: operatorAdminId ?? null,
+                    operator_admin_name: operatorName,
+                    paid_capital_before: toNumber(currentSchedule.paid_capital),
+                    paid_interest_before: toNumber(currentSchedule.paid_interest),
+                    fines_before: toNumber(currentSchedule.fines),
+                    paid_capital_after: inputCapital,
+                    paid_interest_after: inputInterest,
+                    fines_after: finesValue,
+                    remark: remark || null,
+                },
+            });
             const updatedSchedule = await tx.repaymentSchedule.update({
                 where: { id: data.id },
                 data: updatePayload,
@@ -143,20 +201,31 @@ let RepaymentSchedulesService = class RepaymentSchedulesService {
                     total_periods: true,
                 },
             });
-            if (nextPaid > 0 && loan) {
-                await tx.repaymentRecord.create({
-                    data: {
-                        loan_id: loanId,
-                        user_id: loan.user_id,
-                        paid_amount: nextPaid,
-                        paid_capital: inputCapital,
-                        paid_interest: inputInterest,
-                        paid_fines: finesValue,
-                        repayment_schedule_id: data.id,
-                        actual_collector_id: operatorAdminId ?? null,
-                        remark: remark || null,
-                    },
+            if (loan) {
+                const existingRecord = await tx.repaymentRecord.findFirst({
+                    where: { repayment_schedule_id: data.id },
                 });
+                const recordPayload = {
+                    loan_id: loanId,
+                    user_id: loan.user_id,
+                    paid_amount: nextPaid,
+                    paid_at: new Date(),
+                    paid_capital: inputCapital,
+                    paid_interest: inputInterest,
+                    paid_fines: finesValue,
+                    repayment_schedule_id: data.id,
+                    actual_collector_id: operatorAdminId ?? null,
+                    remark: remark || null,
+                };
+                if (existingRecord) {
+                    await tx.repaymentRecord.update({
+                        where: { id: existingRecord.id },
+                        data: recordPayload,
+                    });
+                }
+                else if (nextPaid > 0) {
+                    await tx.repaymentRecord.create({ data: recordPayload });
+                }
             }
             const earlySettlementCapital = Number(loan?.early_settlement_capital || 0);
             const calculatedPaidCapital = totalPaidCapital + earlySettlementCapital;

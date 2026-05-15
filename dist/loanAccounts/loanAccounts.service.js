@@ -548,9 +548,8 @@ let LoanAccountsService = class LoanAccountsService {
             },
         });
     }
-    async findGroupedByUser(query, currentUser) {
-        const { page, pageSize, status, adminId, keyword, username, listFilter, } = query;
-        const skip = (page - 1) * pageSize;
+    buildListWhereConditions(query, currentUser) {
+        const { status, adminId, keyword, username, listFilter } = query;
         const baseAndParts = [];
         if (status) {
             baseAndParts.push({ status });
@@ -624,24 +623,31 @@ let LoanAccountsService = class LoanAccountsService {
             due_start_date: todayShanghai,
             loan_account: baseWhere,
         };
+        return {
+            baseAndParts,
+            baseWhere,
+            tab,
+            isScheduleTab,
+            todayShanghai,
+            yesterdayShanghai,
+            whereHistory,
+            loanAccountWhereForScheduleTabs,
+            scheduleWhereOverdue,
+            scheduleWhereTodayPaid,
+            scheduleWhereTodayUnpaid,
+            scheduleSumWhere,
+            scheduleDayCountBase,
+        };
+    }
+    async findGroupedByUser(query, currentUser) {
+        const { page, pageSize } = query;
+        const skip = (page - 1) * pageSize;
+        const { tab, isScheduleTab, whereHistory, loanAccountWhereForScheduleTabs, scheduleWhereOverdue, scheduleWhereTodayPaid, scheduleWhereTodayUnpaid, } = this.buildListWhereConditions(query, currentUser);
         const loanAccountInclude = {
             user: true,
             collector: { select: { id: true, username: true, nickname: true } },
             risk_controller: { select: { id: true, username: true, nickname: true } },
         };
-        const statSelect = {
-            status: true,
-            loan_amount: true,
-            capital: true,
-            interest: true,
-            paid_capital: true,
-            paid_interest: true,
-            handling_fee: true,
-            total_fines: true,
-        };
-        const statsLoanWhere = isScheduleTab
-            ? loanAccountWhereForScheduleTabs
-            : whereHistory;
         const currentScheduleWhere = isScheduleTab
             ? tab === 'overdue'
                 ? scheduleWhereOverdue
@@ -649,39 +655,12 @@ let LoanAccountsService = class LoanAccountsService {
                     ? scheduleWhereTodayPaid
                     : scheduleWhereTodayUnpaid
             : null;
-        const [countTabHistory, countTabOverdue, countTabTodayPaid, countTabTodayUnpaid, loanRows, todaySchedAgg, yesterdaySchedAgg, relatedAdmins, todaySchedulePaidCount, todaySchedulePendingCount, todayScheduleActiveCount,] = await Promise.all([
+        const [countTabHistory, countTabOverdue, countTabTodayPaid, countTabTodayUnpaid, relatedAdmins,] = await Promise.all([
             this.prisma.loanAccount.count({ where: whereHistory }),
             this.prisma.repaymentSchedule.count({ where: scheduleWhereOverdue }),
             this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
             this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
-            this.prisma.loanAccount.findMany({
-                where: statsLoanWhere,
-                select: statSelect,
-            }),
-            this.prisma.repaymentSchedule.aggregate({
-                where: {
-                    ...scheduleSumWhere,
-                    due_start_date: todayShanghai,
-                },
-                _sum: { paid_amount: true },
-            }),
-            this.prisma.repaymentSchedule.aggregate({
-                where: {
-                    ...scheduleSumWhere,
-                    due_start_date: yesterdayShanghai,
-                },
-                _sum: { paid_amount: true },
-            }),
             this.findRelatedAdmins(),
-            this.prisma.repaymentSchedule.count({
-                where: { ...scheduleDayCountBase, status: 'paid' },
-            }),
-            this.prisma.repaymentSchedule.count({
-                where: { ...scheduleDayCountBase, status: 'pending' },
-            }),
-            this.prisma.repaymentSchedule.count({
-                where: { ...scheduleDayCountBase, status: 'active' },
-            }),
         ]);
         let data;
         let total;
@@ -729,38 +708,79 @@ let LoanAccountsService = class LoanAccountsService {
             });
             total = totalCount;
         }
-        const stats = {
-            inStock: 0,
-            remainingDebt: 0,
-            handlingFee: 0,
-            fines: 0,
-            todayReceived: Number(todaySchedAgg._sum.paid_amount ?? 0),
-            yesterdayReceived: Number(yesterdaySchedAgg._sum.paid_amount ?? 0),
-            todaySchedulePaidCount,
-            todaySchedulePendingCount,
-            todayScheduleActiveCount,
-        };
-        loanRows.forEach((loan) => {
-            if (loan.status !== 'settled') {
-                stats.inStock += Number(loan.loan_amount);
-                const debt = Number(loan.capital) +
-                    Number(loan.interest) -
-                    (Number(loan.paid_capital) + Number(loan.paid_interest));
-                stats.remainingDebt += Math.max(0, debt);
-            }
-            stats.handlingFee += Number(loan.handling_fee);
-            stats.fines += Number(loan.total_fines);
-        });
         return {
             data,
             total,
-            statistics: stats,
             relatedAdmins,
             listFilterCounts: {
                 history: countTabHistory,
                 overdue: countTabOverdue,
                 today_paid: countTabTodayPaid,
                 today_unpaid: countTabTodayUnpaid,
+            },
+        };
+    }
+    async findListStats(query, currentUser) {
+        const { baseAndParts, isScheduleTab, todayShanghai, yesterdayShanghai, whereHistory, loanAccountWhereForScheduleTabs, scheduleSumWhere, scheduleDayCountBase, } = this.buildListWhereConditions(query, currentUser);
+        const statsLoanWhere = isScheduleTab
+            ? loanAccountWhereForScheduleTabs
+            : whereHistory;
+        const inStockWhere = isScheduleTab
+            ? loanAccountWhereForScheduleTabs
+            : baseAndParts.length > 0
+                ? { AND: [...baseAndParts, { status: 'blacklist' }] }
+                : { status: 'blacklist' };
+        const [loanAgg, feeAgg, todaySchedAgg, yesterdaySchedAgg, todaySchedulePaidCount, todaySchedulePendingCount, todayScheduleActiveCount,] = await Promise.all([
+            this.prisma.loanAccount.aggregate({
+                where: inStockWhere,
+                _sum: {
+                    loan_amount: true,
+                    capital: true,
+                    interest: true,
+                    paid_capital: true,
+                    paid_interest: true,
+                },
+            }),
+            this.prisma.loanAccount.aggregate({
+                where: statsLoanWhere,
+                _sum: { handling_fee: true, total_fines: true },
+            }),
+            this.prisma.repaymentSchedule.aggregate({
+                where: { ...scheduleSumWhere, due_start_date: todayShanghai },
+                _sum: { paid_amount: true },
+            }),
+            this.prisma.repaymentSchedule.aggregate({
+                where: { ...scheduleSumWhere, due_start_date: yesterdayShanghai },
+                _sum: { paid_amount: true },
+            }),
+            this.prisma.repaymentSchedule.count({
+                where: { ...scheduleDayCountBase, status: 'paid' },
+            }),
+            this.prisma.repaymentSchedule.count({
+                where: { ...scheduleDayCountBase, status: 'pending' },
+            }),
+            this.prisma.repaymentSchedule.count({
+                where: { ...scheduleDayCountBase, status: 'active' },
+            }),
+        ]);
+        const inStock = this.toNumber(loanAgg._sum.loan_amount);
+        const remainingDebt = Math.max(0, this.toNumber(loanAgg._sum.capital) +
+            this.toNumber(loanAgg._sum.interest) -
+            this.toNumber(loanAgg._sum.paid_capital) -
+            this.toNumber(loanAgg._sum.paid_interest));
+        return {
+            statistics: {
+                inStock,
+                remainingDebt,
+                handlingFee: this.toNumber(feeAgg._sum.handling_fee),
+                fines: this.toNumber(feeAgg._sum.total_fines),
+                todayReceived: this.toNumber(todaySchedAgg._sum.paid_amount),
+                yesterdayReceived: this.toNumber(yesterdaySchedAgg._sum.paid_amount),
+            },
+            dayScheduleBoard: {
+                paid: todaySchedulePaidCount,
+                pending: todaySchedulePendingCount,
+                active: todayScheduleActiveCount,
             },
         };
     }

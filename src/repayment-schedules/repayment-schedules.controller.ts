@@ -25,6 +25,14 @@ export class RepaymentSchedulesController {
     private readonly repaymentSchedulesService: RepaymentSchedulesService,
   ) {}
 
+  @Get(':id/operation-logs')
+  async findOperationLogs(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ApiResponseDto> {
+    const logs = await this.repaymentSchedulesService.findOperationLogs(id);
+    return ResponseHelper.success(logs, '获取操作日志成功');
+  }
+
   @Get(':id')
   async findById(
     @Param('id', ParseIntPipe) id: number,
