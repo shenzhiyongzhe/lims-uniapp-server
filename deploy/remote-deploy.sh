@@ -20,7 +20,7 @@ DATABASE_URL_VAL="$(
 
 run_prisma_migrate() {
   local db_url="$1"
-  docker run --rm -T --network host \
+  docker run --rm --network host \
     -e "DATABASE_URL=${db_url}" \
     "${DOCKER_IMAGE}" \
     npx prisma migrate deploy

@@ -811,9 +811,16 @@ export class LoanAccountsService {
 
     const usernameTrim = username?.trim();
     if (usernameTrim) {
-      baseAndParts.push({
-        user: { username: { contains: usernameTrim } },
-      });
+      if (/^\d+$/.test(usernameTrim)) {
+        const loanId = parseInt(usernameTrim, 10);
+        if (!Number.isNaN(loanId)) {
+          baseAndParts.push({ id: loanId });
+        }
+      } else {
+        baseAndParts.push({
+          user: { username: { contains: usernameTrim } },
+        });
+      }
     } else if (keyword?.trim()) {
       baseAndParts.push({
         OR: [
@@ -925,6 +932,14 @@ export class LoanAccountsService {
       risk_controller: { select: { id: true, username: true, nickname: true } },
     };
 
+    const scheduleWithLatestRecordRemark = {
+      repaymentRecords: {
+        orderBy: { paid_at: 'desc' as const },
+        take: 1,
+        select: { remark: true },
+      },
+    };
+
     const currentScheduleWhere = isScheduleTab
       ? tab === 'overdue'
         ? scheduleWhereOverdue
@@ -961,6 +976,7 @@ export class LoanAccountsService {
             repaymentSchedules: {
               orderBy: { period: 'desc' },
               take: 1,
+              include: scheduleWithLatestRecordRemark,
             },
           },
           orderBy: { created_at: 'desc' },
@@ -978,6 +994,7 @@ export class LoanAccountsService {
           take: pageSize,
           orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
           include: {
+            ...scheduleWithLatestRecordRemark,
             loan_account: { include: loanAccountInclude },
           },
         }),
