@@ -53,6 +53,12 @@ let OverdueSweepService = OverdueSweepService_1 = class OverdueSweepService {
             return;
         }
         const ids = rows.map((r) => r.id);
+        const existingOverdueRecords = await this.prisma.overdueRecord.findMany({
+            where: { schedule_id: { in: ids } },
+            select: { schedule_id: true },
+        });
+        const scheduleIdsWithRecord = new Set(existingOverdueRecords.map((r) => r.schedule_id));
+        const rowsNeedNewRecord = rows.filter((r) => !scheduleIdsWithRecord.has(r.id));
         await this.prisma.$transaction(async (tx) => {
             await tx.repaymentSchedule.updateMany({
                 where: {
@@ -62,21 +68,27 @@ let OverdueSweepService = OverdueSweepService_1 = class OverdueSweepService {
                 },
                 data: { status: 'overdue' },
             });
-            const collectorLabel = (nickname) => {
-                const s = (nickname ?? '').trim();
-                return s.length > 0 ? s.slice(0, 10) : '-';
-            };
-            await tx.overdueRecord.createMany({
-                data: rows.map((row) => ({
-                    user_id: row.loan_account.user_id,
-                    loan_id: row.loan_id,
-                    schedule_id: row.id,
-                    collector: collectorLabel(row.loan_account.collector?.nickname),
-                    overdue_date: yesterday,
-                })),
-            });
+            if (rowsNeedNewRecord.length === 0) {
+                this.logger.log(`Overdue sweep: ${ids.length} schedule(s) updated; all already had overdue records`);
+            }
+            else {
+                const collectorLabel = (nickname) => {
+                    const s = (nickname ?? '').trim();
+                    return s.length > 0 ? s.slice(0, 10) : '-';
+                };
+                await tx.overdueRecord.createMany({
+                    data: rowsNeedNewRecord.map((row) => ({
+                        user_id: row.loan_account.user_id,
+                        loan_id: row.loan_id,
+                        schedule_id: row.id,
+                        collector: collectorLabel(row.loan_account.collector?.nickname),
+                        overdue_date: yesterday,
+                    })),
+                    skipDuplicates: true,
+                });
+            }
             const userDeltas = new Map();
-            for (const row of rows) {
+            for (const row of rowsNeedNewRecord) {
                 const uid = row.loan_account.user_id;
                 userDeltas.set(uid, (userDeltas.get(uid) ?? 0) + 1);
             }
@@ -97,7 +109,7 @@ let OverdueSweepService = OverdueSweepService_1 = class OverdueSweepService {
                 });
             }
         });
-        this.logger.log(`Overdue sweep: marked ${ids.length} schedule(s) overdue for due date ${yesterday.toISOString().slice(0, 10)}`);
+        this.logger.log(`Overdue sweep: marked ${ids.length} schedule(s) overdue (${rowsNeedNewRecord.length} new record(s)) for due date ${yesterday.toISOString().slice(0, 10)}`);
     }
 };
 exports.OverdueSweepService = OverdueSweepService;
