@@ -861,6 +861,23 @@ export class LoanAccountsService {
       status: 'overdue' as const,
       loan_account: { is: loanAccountWhereForScheduleTabs },
     };
+
+    const whereOverdueLoans = {
+      AND: [
+        loanAccountWhereForScheduleTabs,
+        { repaymentSchedules: { some: { status: 'overdue' as const } } },
+        {
+          NOT: {
+            repaymentSchedules: {
+              some: {
+                due_start_date: todayShanghai,
+                status: 'paid' as const,
+              },
+            },
+          },
+        },
+      ],
+    };
     const scheduleWhereTodayPaid = {
       due_start_date: todayShanghai,
       status: 'paid' as const,
@@ -894,6 +911,7 @@ export class LoanAccountsService {
       whereHistory,
       loanAccountWhereForScheduleTabs,
       scheduleWhereOverdue,
+      whereOverdueLoans,
       scheduleWhereTodayPaid,
       scheduleWhereTodayUnpaid,
       scheduleSumWhere,
@@ -920,8 +938,7 @@ export class LoanAccountsService {
       tab,
       isScheduleTab,
       whereHistory,
-      loanAccountWhereForScheduleTabs,
-      scheduleWhereOverdue,
+      whereOverdueLoans,
       scheduleWhereTodayPaid,
       scheduleWhereTodayUnpaid,
     } = this.buildListWhereConditions(query, currentUser);
@@ -941,11 +958,11 @@ export class LoanAccountsService {
     };
 
     const currentScheduleWhere = isScheduleTab
-      ? tab === 'overdue'
-        ? scheduleWhereOverdue
-        : tab === 'today_paid'
-          ? scheduleWhereTodayPaid
-          : scheduleWhereTodayUnpaid
+      ? tab === 'today_paid'
+        ? scheduleWhereTodayPaid
+        : tab === 'today_unpaid'
+          ? scheduleWhereTodayUnpaid
+          : null
       : null;
 
     const [
@@ -956,7 +973,7 @@ export class LoanAccountsService {
       relatedAdmins,
     ] = await Promise.all([
       this.prisma.loanAccount.count({ where: whereHistory }),
-      this.prisma.repaymentSchedule.count({ where: scheduleWhereOverdue }),
+      this.prisma.loanAccount.count({ where: whereOverdueLoans }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
       this.findRelatedAdmins(),
@@ -984,6 +1001,39 @@ export class LoanAccountsService {
         this.prisma.loanAccount.count({ where: whereHistory }),
       ]);
       data = rows as unknown as Array<Record<string, unknown>>;
+      total = totalCount;
+    } else if (tab === 'overdue') {
+      const [loanRows, totalCount] = await Promise.all([
+        this.prisma.loanAccount.findMany({
+          where: whereOverdueLoans,
+          skip,
+          take: pageSize,
+          orderBy: { created_at: 'desc' },
+          include: {
+            ...loanAccountInclude,
+            repaymentSchedules: {
+              where: { status: 'overdue' },
+              orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
+              take: 1,
+              include: scheduleWithLatestRecordRemark,
+            },
+            _count: {
+              select: {
+                repaymentSchedules: { where: { status: 'overdue' } },
+              },
+            },
+          },
+        }),
+        this.prisma.loanAccount.count({ where: whereOverdueLoans }),
+      ]);
+      data = loanRows.map((loan) => {
+        const { _count, ...rest } = loan;
+        return {
+          ...rest,
+          overdueScheduleCount: _count.repaymentSchedules,
+          __rowKey: String(loan.id),
+        } as unknown as Record<string, unknown>;
+      });
       total = totalCount;
     } else {
       const sw = currentScheduleWhere!;

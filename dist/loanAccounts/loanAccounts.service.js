@@ -619,6 +619,22 @@ let LoanAccountsService = class LoanAccountsService {
             status: 'overdue',
             loan_account: { is: loanAccountWhereForScheduleTabs },
         };
+        const whereOverdueLoans = {
+            AND: [
+                loanAccountWhereForScheduleTabs,
+                { repaymentSchedules: { some: { status: 'overdue' } } },
+                {
+                    NOT: {
+                        repaymentSchedules: {
+                            some: {
+                                due_start_date: todayShanghai,
+                                status: 'paid',
+                            },
+                        },
+                    },
+                },
+            ],
+        };
         const scheduleWhereTodayPaid = {
             due_start_date: todayShanghai,
             status: 'paid',
@@ -649,6 +665,7 @@ let LoanAccountsService = class LoanAccountsService {
             whereHistory,
             loanAccountWhereForScheduleTabs,
             scheduleWhereOverdue,
+            whereOverdueLoans,
             scheduleWhereTodayPaid,
             scheduleWhereTodayUnpaid,
             scheduleSumWhere,
@@ -658,7 +675,7 @@ let LoanAccountsService = class LoanAccountsService {
     async findGroupedByUser(query, currentUser) {
         const { page, pageSize } = query;
         const skip = (page - 1) * pageSize;
-        const { tab, isScheduleTab, whereHistory, loanAccountWhereForScheduleTabs, scheduleWhereOverdue, scheduleWhereTodayPaid, scheduleWhereTodayUnpaid, } = this.buildListWhereConditions(query, currentUser);
+        const { tab, isScheduleTab, whereHistory, whereOverdueLoans, scheduleWhereTodayPaid, scheduleWhereTodayUnpaid, } = this.buildListWhereConditions(query, currentUser);
         const loanAccountInclude = {
             user: true,
             collector: { select: { id: true, username: true, nickname: true } },
@@ -672,15 +689,15 @@ let LoanAccountsService = class LoanAccountsService {
             },
         };
         const currentScheduleWhere = isScheduleTab
-            ? tab === 'overdue'
-                ? scheduleWhereOverdue
-                : tab === 'today_paid'
-                    ? scheduleWhereTodayPaid
-                    : scheduleWhereTodayUnpaid
+            ? tab === 'today_paid'
+                ? scheduleWhereTodayPaid
+                : tab === 'today_unpaid'
+                    ? scheduleWhereTodayUnpaid
+                    : null
             : null;
         const [countTabHistory, countTabOverdue, countTabTodayPaid, countTabTodayUnpaid, relatedAdmins,] = await Promise.all([
             this.prisma.loanAccount.count({ where: whereHistory }),
-            this.prisma.repaymentSchedule.count({ where: scheduleWhereOverdue }),
+            this.prisma.loanAccount.count({ where: whereOverdueLoans }),
             this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
             this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
             this.findRelatedAdmins(),
@@ -706,6 +723,40 @@ let LoanAccountsService = class LoanAccountsService {
                 this.prisma.loanAccount.count({ where: whereHistory }),
             ]);
             data = rows;
+            total = totalCount;
+        }
+        else if (tab === 'overdue') {
+            const [loanRows, totalCount] = await Promise.all([
+                this.prisma.loanAccount.findMany({
+                    where: whereOverdueLoans,
+                    skip,
+                    take: pageSize,
+                    orderBy: { created_at: 'desc' },
+                    include: {
+                        ...loanAccountInclude,
+                        repaymentSchedules: {
+                            where: { status: 'overdue' },
+                            orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
+                            take: 1,
+                            include: scheduleWithLatestRecordRemark,
+                        },
+                        _count: {
+                            select: {
+                                repaymentSchedules: { where: { status: 'overdue' } },
+                            },
+                        },
+                    },
+                }),
+                this.prisma.loanAccount.count({ where: whereOverdueLoans }),
+            ]);
+            data = loanRows.map((loan) => {
+                const { _count, ...rest } = loan;
+                return {
+                    ...rest,
+                    overdueScheduleCount: _count.repaymentSchedules,
+                    __rowKey: String(loan.id),
+                };
+            });
             total = totalCount;
         }
         else {
