@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   LoanAccount,
@@ -533,6 +533,36 @@ export class LoanAccountsService {
     return updated;
   }
 
+  async remove(id: number): Promise<void> {
+    const loan = await this.prisma.loanAccount.findUnique({
+      where: { id },
+    });
+
+    if (!loan) {
+      throw new NotFoundException('贷款记录不存在');
+    }
+
+    const { collector_id, risk_controller_id } = loan;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.repaymentRecord.deleteMany({ where: { loan_id: id } });
+      await tx.loanAccount.delete({ where: { id } });
+    });
+
+    try {
+      await this.assetManagementService.updateCollectorAssetFromLoanAccount(
+        collector_id,
+        loan,
+      );
+      await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(
+        risk_controller_id,
+        loan,
+      );
+    } catch (error) {
+      console.error('更新资产数据失败:', error);
+    }
+  }
+
   async findById(id: number): Promise<Record<string, unknown> | null> {
     const loan = await this.prisma.loanAccount.findUnique({
       where: { id },
@@ -870,8 +900,16 @@ export class LoanAccountsService {
           NOT: {
             repaymentSchedules: {
               some: {
-                due_start_date: todayShanghai,
-                status: 'paid' as const,
+                OR: [
+                  {
+                    due_start_date: todayShanghai,
+                    status: 'paid' as const,
+                  },
+                  {
+                    due_start_date: yesterdayShanghai,
+                    status: 'paid' as const,
+                  },
+                ],
               },
             },
           },

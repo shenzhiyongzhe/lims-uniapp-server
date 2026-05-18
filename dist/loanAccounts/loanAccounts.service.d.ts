@@ -16,6 +16,7 @@ export declare class LoanAccountsService {
     private computeLoanStatistics;
     create(data: CreateLoanAccountDto, createdBy: number): Promise<LoanAccount>;
     update(id: number, data: UpdateLoanAccountDto): Promise<LoanAccount>;
+    remove(id: number): Promise<void>;
     findById(id: number): Promise<Record<string, unknown> | null>;
     updateAccountStatus(id: number, dto: UpdateLoanAccountStatusDto): Promise<void>;
     findAll(): Promise<LoanAccount[]>;

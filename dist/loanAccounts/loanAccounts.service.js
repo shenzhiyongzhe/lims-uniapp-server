@@ -376,6 +376,26 @@ let LoanAccountsService = class LoanAccountsService {
         }
         return updated;
     }
+    async remove(id) {
+        const loan = await this.prisma.loanAccount.findUnique({
+            where: { id },
+        });
+        if (!loan) {
+            throw new common_1.NotFoundException('贷款记录不存在');
+        }
+        const { collector_id, risk_controller_id } = loan;
+        await this.prisma.$transaction(async (tx) => {
+            await tx.repaymentRecord.deleteMany({ where: { loan_id: id } });
+            await tx.loanAccount.delete({ where: { id } });
+        });
+        try {
+            await this.assetManagementService.updateCollectorAssetFromLoanAccount(collector_id, loan);
+            await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(risk_controller_id, loan);
+        }
+        catch (error) {
+            console.error('更新资产数据失败:', error);
+        }
+    }
     async findById(id) {
         const loan = await this.prisma.loanAccount.findUnique({
             where: { id },
@@ -627,8 +647,16 @@ let LoanAccountsService = class LoanAccountsService {
                     NOT: {
                         repaymentSchedules: {
                             some: {
-                                due_start_date: todayShanghai,
-                                status: 'paid',
+                                OR: [
+                                    {
+                                        due_start_date: todayShanghai,
+                                        status: 'paid',
+                                    },
+                                    {
+                                        due_start_date: yesterdayShanghai,
+                                        status: 'paid',
+                                    },
+                                ],
                             },
                         },
                     },

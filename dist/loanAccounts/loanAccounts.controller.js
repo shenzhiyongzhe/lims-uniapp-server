@@ -88,6 +88,18 @@ let LoanAccountsController = class LoanAccountsController {
             return response_helper_1.ResponseHelper.error(`更新贷款记录失败: ${error.message}`, 500);
         }
     }
+    async remove(id) {
+        try {
+            await this.loanAccountsService.remove(id);
+            return response_helper_1.ResponseHelper.success(null, '删除贷款记录成功');
+        }
+        catch (error) {
+            if (error instanceof common_1.NotFoundException) {
+                return response_helper_1.ResponseHelper.error(error.message, 404);
+            }
+            return response_helper_1.ResponseHelper.error(`删除贷款记录失败: ${error.message}`, 500);
+        }
+    }
 };
 exports.LoanAccountsController = LoanAccountsController;
 __decorate([
@@ -171,6 +183,15 @@ __decorate([
     __metadata("design:paramtypes", [Number, update_loanAccount_dto_1.UpdateLoanAccountDto]),
     __metadata("design:returntype", Promise)
 ], LoanAccountsController.prototype, "update", null);
+__decorate([
+    (0, common_1.UseGuards)(auth_guard_1.AuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_decorator_1.Roles)(client_1.ManagementRoles.ADMIN),
+    (0, common_1.Delete)(':id'),
+    __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number]),
+    __metadata("design:returntype", Promise)
+], LoanAccountsController.prototype, "remove", null);
 exports.LoanAccountsController = LoanAccountsController = __decorate([
     (0, common_1.Controller)('loan-accounts'),
     __metadata("design:paramtypes", [loanAccounts_service_1.LoanAccountsService])

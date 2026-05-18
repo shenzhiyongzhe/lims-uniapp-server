@@ -22,4 +22,5 @@ export declare class LoanAccountsController {
     }): Promise<ApiResponseDto>;
     updateStatus(id: number, body: UpdateLoanAccountStatusDto): Promise<ApiResponseDto>;
     update(id: number, body: UpdateLoanAccountDto): Promise<ApiResponseDto>;
+    remove(id: number): Promise<ApiResponseDto>;
 }
