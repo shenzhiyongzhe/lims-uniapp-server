@@ -83,7 +83,7 @@ model LoanAccount {
   last_edit_pay_interest   Decimal?            @db.Decimal(10, 2)
   note                     String?             @db.VarChar(300)
   overdue_count            Int                 @default(0)
-  ownership                String?             @db.VarChar(2)
+  ownership                String?             @db.VarChar(5)
   payer_name               String?             @db.VarChar(100)
   loanAccountRoles         LoanAccountRole[]
   collector                Admin               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])

@@ -98,7 +98,7 @@ export class UpdateLoanAccountDto {
 
   @IsString()
   @IsOptional()
-  @Length(0, 2)
+  @Length(0, 5)
   ownership?: string;
 
   @IsString()

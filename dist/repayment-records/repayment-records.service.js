@@ -145,6 +145,7 @@ let RepaymentRecordsService = class RepaymentRecordsService {
                 select: {
                     id: true,
                     company_cost: true,
+                    handling_fee: true,
                 },
                 orderBy: { id: 'asc' },
             }),
@@ -167,7 +168,7 @@ let RepaymentRecordsService = class RepaymentRecordsService {
             }),
         ]);
         const yesterdayLoanItems = yesterdayLoans.map((loan) => {
-            const amount = -Number(loan.company_cost ?? 0);
+            const amount = -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
             return {
                 loanId: loan.id,
                 amount,

@@ -34,7 +34,24 @@ else
   docker compose -f "${COMPOSE_FILE}" run -T --rm api npx prisma migrate deploy
 fi
 
-echo "=== [3/3] compose up -d ===" >&2
+echo "=== [3/4] compose up -d ===" >&2
 docker compose -f "${COMPOSE_UP_FILE}" up -d --remove-orphans
+
+echo "=== [4/4] cleanup old images ===" >&2
+# 清理悬空镜像 (如 :latest 更新后原镜像会变成 <none>)
+docker image prune -f || true
+
+# 清理同一仓库下的其他 tag 的旧镜像
+IMAGE_REPO="${DOCKER_IMAGE%:*}"
+if [ -n "$IMAGE_REPO" ]; then
+  OLD_IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E "^${IMAGE_REPO}:" | grep -vFx "${DOCKER_IMAGE}" || true)
+  if [ -n "$OLD_IMAGES" ]; then
+    echo "Removing old images:" >&2
+    echo "$OLD_IMAGES" >&2
+    docker rmi $OLD_IMAGES || true
+  else
+    echo "No old tags to remove." >&2
+  fi
+fi
 
 echo "=== deploy OK ===" >&2

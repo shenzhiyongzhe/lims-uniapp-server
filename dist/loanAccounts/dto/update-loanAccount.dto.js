@@ -138,7 +138,7 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.Length)(0, 2),
+    (0, class_validator_1.Length)(0, 5),
     __metadata("design:type", String)
 ], UpdateLoanAccountDto.prototype, "ownership", void 0);
 __decorate([

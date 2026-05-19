@@ -38,7 +38,7 @@ type DailyLoanBalanceResult = {
 
 @Injectable()
 export class RepaymentRecordsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async findAllWithPagination(
     query: PaginationQueryDto,
@@ -202,6 +202,7 @@ export class RepaymentRecordsService {
         select: {
           id: true,
           company_cost: true,
+          handling_fee: true,
         },
         orderBy: { id: 'asc' },
       }),
@@ -225,7 +226,7 @@ export class RepaymentRecordsService {
     ]);
 
     const yesterdayLoanItems: DailyLoanBalanceItem[] = yesterdayLoans.map((loan) => {
-      const amount = -Number(loan.company_cost ?? 0);
+      const amount = -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
       return {
         loanId: loan.id,
         amount,

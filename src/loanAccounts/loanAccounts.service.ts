@@ -1120,36 +1120,27 @@ export class LoanAccountsService {
   ) {
     const {
       baseAndParts,
-      isScheduleTab,
       todayShanghai,
       yesterdayShanghai,
-      whereHistory,
-      loanAccountWhereForScheduleTabs,
       scheduleSumWhere,
       scheduleDayCountBase,
     } = this.buildListWhereConditions(query, currentUser);
 
-    const statsLoanWhere = isScheduleTab
-      ? loanAccountWhereForScheduleTabs
-      : whereHistory;
+    const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 
-    // For inStock/remainingDebt: exclude settled loans (mirrors original `status !== 'settled'` check).
-    // On schedule tabs all loans are already active (not settled/blacklist).
-    // On history tab only blacklist loans contribute to inStock.
-    const inStockWhere: Record<string, unknown> = isScheduleTab
-      ? loanAccountWhereForScheduleTabs
-      : baseAndParts.length > 0
-        ? {
-            AND: [
-              ...baseAndParts,
-              { status: 'blacklist' as LoanAccountStatus },
-            ],
-          }
-        : { status: 'blacklist' as LoanAccountStatus };
+    const pendingNegotiatedStatus = {
+      status: {
+        in: ['pending', 'negotiated'] satisfies LoanAccountStatus[],
+      },
+    };
+    const pendingNegotiatedWhere =
+      baseAndParts.length > 0
+        ? { AND: [...baseAndParts, pendingNegotiatedStatus] }
+        : pendingNegotiatedStatus;
 
     const [
-      loanAgg,
-      feeAgg,
+      pendingNegotiatedAgg,
+      allLoansFeeAgg,
       todaySchedAgg,
       yesterdaySchedAgg,
       todaySchedulePaidCount,
@@ -1157,17 +1148,15 @@ export class LoanAccountsService {
       todayScheduleActiveCount,
     ] = await Promise.all([
       this.prisma.loanAccount.aggregate({
-        where: inStockWhere,
+        where: pendingNegotiatedWhere,
         _sum: {
           loan_amount: true,
-          capital: true,
-          interest: true,
           paid_capital: true,
           paid_interest: true,
         },
       }),
       this.prisma.loanAccount.aggregate({
-        where: statsLoanWhere,
+        where: baseWhere,
         _sum: { handling_fee: true, total_fines: true },
       }),
       this.prisma.repaymentSchedule.aggregate({
@@ -1189,21 +1178,20 @@ export class LoanAccountsService {
       }),
     ]);
 
-    const inStock = this.toNumber(loanAgg._sum.loan_amount);
+    const inStock = this.toNumber(pendingNegotiatedAgg._sum.loan_amount);
     const remainingDebt = Math.max(
       0,
-      this.toNumber(loanAgg._sum.capital) +
-        this.toNumber(loanAgg._sum.interest) -
-        this.toNumber(loanAgg._sum.paid_capital) -
-        this.toNumber(loanAgg._sum.paid_interest),
+      this.toNumber(pendingNegotiatedAgg._sum.loan_amount) -
+        this.toNumber(pendingNegotiatedAgg._sum.paid_capital) -
+        this.toNumber(pendingNegotiatedAgg._sum.paid_interest),
     );
 
     return {
       statistics: {
         inStock,
         remainingDebt,
-        handlingFee: this.toNumber(feeAgg._sum.handling_fee),
-        fines: this.toNumber(feeAgg._sum.total_fines),
+        handlingFee: this.toNumber(allLoansFeeAgg._sum.handling_fee),
+        fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
         todayReceived: this.toNumber(todaySchedAgg._sum.paid_amount),
         yesterdayReceived: this.toNumber(yesterdaySchedAgg._sum.paid_amount),
       },
