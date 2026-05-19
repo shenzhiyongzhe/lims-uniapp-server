@@ -732,25 +732,21 @@ let LoanAccountsService = class LoanAccountsService {
         ]);
         let data;
         let total;
-        if (!isScheduleTab) {
+        if (tab === 'history') {
             const [rows, totalCount] = await Promise.all([
                 this.prisma.loanAccount.findMany({
                     where: whereHistory,
                     skip,
                     take: pageSize,
-                    include: {
-                        ...loanAccountInclude,
-                        repaymentSchedules: {
-                            orderBy: { period: 'desc' },
-                            take: 1,
-                            include: scheduleWithLatestRecordRemark,
-                        },
-                    },
+                    include: loanAccountInclude,
                     orderBy: { created_at: 'desc' },
                 }),
                 this.prisma.loanAccount.count({ where: whereHistory }),
             ]);
-            data = rows;
+            data = rows.map((loan) => ({
+                ...loan,
+                __rowKey: String(loan.id),
+            }));
             total = totalCount;
         }
         else if (tab === 'overdue') {

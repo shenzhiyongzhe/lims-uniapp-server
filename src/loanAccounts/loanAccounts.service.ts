@@ -1020,25 +1020,21 @@ export class LoanAccountsService {
     let data: Array<Record<string, unknown>>;
     let total: number;
 
-    if (!isScheduleTab) {
+    if (tab === 'history') {
       const [rows, totalCount] = await Promise.all([
         this.prisma.loanAccount.findMany({
           where: whereHistory,
           skip,
           take: pageSize,
-          include: {
-            ...loanAccountInclude,
-            repaymentSchedules: {
-              orderBy: { period: 'desc' },
-              take: 1,
-              include: scheduleWithLatestRecordRemark,
-            },
-          },
+          include: loanAccountInclude,
           orderBy: { created_at: 'desc' },
         }),
         this.prisma.loanAccount.count({ where: whereHistory }),
       ]);
-      data = rows as unknown as Array<Record<string, unknown>>;
+      data = rows.map((loan) => ({
+        ...loan,
+        __rowKey: String(loan.id),
+      })) as unknown as Array<Record<string, unknown>>;
       total = totalCount;
     } else if (tab === 'overdue') {
       const [loanRows, totalCount] = await Promise.all([
