@@ -4,11 +4,14 @@ FROM node:22-bookworm-slim AS builder
 
 WORKDIR /app
 
+# prisma.config.ts reads DATABASE_URL at generate time (no DB connection during build)
+ENV DATABASE_URL="postgresql://build:build@127.0.0.1:5432/lims?schema=public"
+
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 COPY prisma.config.ts ./
 
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 RUN npx prisma generate
 
