@@ -1,12 +1,10 @@
 generator client {
-  provider      = "prisma-client-js"
-  /** Docker 镜像 node:22-bookworm 为 OpenSSL 3；本地开发保留 native */
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
 datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
 model User {
@@ -92,9 +90,9 @@ model LoanAccount {
   repaymentRecords         RepaymentRecord[]
   repaymentSchedules       RepaymentSchedule[]
 
-  @@index([collector_id], map: "loan_accounts_collector_id_fkey")
-  @@index([risk_controller_id], map: "loan_accounts_risk_controller_id_fkey")
-  @@index([user_id], map: "loan_accounts_user_id_fkey")
+  @@index([collector_id])
+  @@index([risk_controller_id])
+  @@index([user_id])
   @@map("loan_accounts")
 }
 
@@ -108,7 +106,7 @@ model LoanAccountRole {
   loan_account    LoanAccount @relation(fields: [loan_account_id], references: [id], onDelete: Cascade)
 
   @@unique([loan_account_id, admin_id, role_type])
-  @@index([admin_id], map: "loan_account_roles_admin_id_fkey")
+  @@index([admin_id])
   @@index([loan_account_id])
   @@map("loan_account_roles")
 }
@@ -134,7 +132,7 @@ model RepaymentSchedule {
   operationLogs       RepaymentScheduleOperationLog[]
   loan_account        LoanAccount             @relation(fields: [loan_id], references: [id], onDelete: Cascade)
 
-  @@index([loan_id], map: "repayment_schedules_loan_id_fkey")
+  @@index([loan_id])
   @@map("repayment_schedules")
 }
 
@@ -158,7 +156,7 @@ model RepaymentScheduleOperationLog {
 
   @@index([schedule_id])
   @@index([loan_id])
-  @@index([operator_admin_id], map: "repayment_schedule_operation_logs_operator_admin_id_fkey")
+  @@index([operator_admin_id])
   @@map("repayment_schedule_operation_logs")
 }
 
@@ -179,10 +177,10 @@ model RepaymentRecord {
   repayment_schedule    RepaymentSchedule? @relation(fields: [repayment_schedule_id], references: [id])
   user                  User               @relation(fields: [user_id], references: [id])
 
-  @@index([actual_collector_id], map: "repayment_records_actual_collector_id_fkey")
-  @@index([loan_id], map: "repayment_records_loan_id_fkey")
-  @@index([repayment_schedule_id], map: "repayment_records_repayment_schedule_id_fkey")
-  @@index([user_id], map: "repayment_records_user_id_fkey")
+  @@index([actual_collector_id])
+  @@index([loan_id])
+  @@index([repayment_schedule_id])
+  @@index([user_id])
   @@map("repayment_records")
 }
 
@@ -326,7 +324,7 @@ model AssetReductionHistory {
   updated_at                DateTime @updatedAt
   admin                     Admin    @relation("AssetReductionHistory", fields: [admin_id], references: [id], onDelete: Cascade)
 
-  @@index([admin_id], map: "asset_reduction_history_admin_id_fkey")
+  @@index([admin_id])
   @@map("asset_reduction_history")
 }
 

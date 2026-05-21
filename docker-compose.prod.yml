@@ -1,7 +1,7 @@
 # 生产环境：仅拉取镜像运行（由 CI 注入 DOCKER_IMAGE）
 # 用法：export DOCKER_IMAGE=ghcr.io/<owner>/lims-uniapp-server:latest
 #      docker compose -f docker-compose.prod.yml up -d
-# .env 中 DATABASE_URL 主机勿用 localhost（除非 MySQL 真跑在同一容器内）
+# .env 中 DATABASE_URL 主机勿用 localhost（除非 PostgreSQL 真跑在同一容器内）
 services:
   api:
     image: ${DOCKER_IMAGE:?Set DOCKER_IMAGE to ghcr.io/.../lims-uniapp-server:tag}
