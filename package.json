@@ -21,6 +21,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
+    "db:check-orphans": "prisma db execute --file deploy/postgresql/check-orphan-fks.sql",
+    "db:add-constraints": "prisma db execute --file deploy/postgresql/add-constraints-after-import.sql",
     "db:reset-sequences": "prisma db execute --file deploy/postgresql/reset-sequences.sql",
     "db:verify-counts": "prisma db execute --file deploy/postgresql/verify-counts.sql",
     "db:truncate": "prisma db execute --file deploy/postgresql/truncate-app-tables.sql",
