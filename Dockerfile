@@ -34,7 +34,6 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./
-COPY --from=builder /app/generated ./generated
 
 RUN mkdir -p uploads && chown -R node:node /app
 
