@@ -26,12 +26,28 @@ run_prisma_migrate() {
     npx prisma migrate deploy
 }
 
-if printf '%s' "$DATABASE_URL_VAL" | grep -q '@host\.docker\.internal:'; then
-  MIGRATE_DATABASE_URL="${DATABASE_URL_VAL//@host.docker.internal:/@127.0.0.1:}"
-  echo "migrate: docker run --network host + DATABASE_URL host 127.0.0.1 (was host.docker.internal)" >&2
+# 容器内 localhost / 127.0.0.1 均指向容器自身；宿主机 PostgreSQL 须用 --network host 迁移
+normalize_host_pg_url() {
+  printf '%s' "$1" \
+    | sed -e 's/@localhost:/@127.0.0.1:/' -e 's/@host\.docker\.internal:/@127.0.0.1:/'
+}
+
+uses_host_postgresql() {
+  printf '%s' "$1" | grep -qE '@(localhost|127\.0\.0\.1|host\.docker\.internal):'
+}
+
+if uses_host_postgresql "$DATABASE_URL_VAL"; then
+  MIGRATE_DATABASE_URL="$(normalize_host_pg_url "$DATABASE_URL_VAL")"
+  echo "migrate: docker run --network host (DATABASE_URL → 127.0.0.1 on deploy host)" >&2
   run_prisma_migrate "${MIGRATE_DATABASE_URL}"
 else
   docker compose -f "${COMPOSE_FILE}" run -T --rm api npx prisma migrate deploy
+fi
+
+if printf '%s' "$DATABASE_URL_VAL" | grep -q '@localhost:' \
+  && [ "${COMPOSE_UP_FILE}" = "docker-compose.prod.yml" ]; then
+  echo "WARN: .env uses localhost; running API in bridge mode cannot reach host PostgreSQL." >&2
+  echo "      Use host.docker.internal in DATABASE_URL, or COMPOSE_UP_FILE=docker-compose.prod.hostnetwork.yml" >&2
 fi
 
 echo "=== [3/4] compose up -d ===" >&2
