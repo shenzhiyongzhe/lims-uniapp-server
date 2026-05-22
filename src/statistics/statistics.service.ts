@@ -224,6 +224,10 @@ export class StatisticsService {
     const lastMonthHandlingFee = lastMonthAccounts.reduce((sum, acc) => sum + Number(acc.handling_fee), 0);
     const lastMonthFines = lastMonthAccounts.reduce((sum, acc) => sum + Number(acc.total_fines), 0);
 
+    const lastMonthNegotiatedCount = await this.prisma.loanAccount.count({
+      where: { id: { in: loanAccountIds }, status: 'negotiated', status_changed_at: { gte: lastMonthStart, lt: thisMonthStart } },
+    });
+
     const lastMonthBlacklistCount = await this.prisma.loanAccount.count({
       where: { id: { in: loanAccountIds }, status: 'blacklist', status_changed_at: { gte: lastMonthStart, lt: thisMonthStart } },
     });
@@ -248,6 +252,7 @@ export class StatisticsService {
       thisMonthBlacklistCount,
       lastMonthHandlingFee,
       lastMonthFines,
+      lastMonthNegotiatedCount,
       lastMonthBlacklistCount,
       lastMonthNewCount,
       lastMonthSettledCount,
@@ -299,6 +304,7 @@ export class StatisticsService {
       thisMonthBlacklistCount: 0,
       lastMonthHandlingFee: 0,
       lastMonthFines: 0,
+      lastMonthNegotiatedCount: 0,
       lastMonthBlacklistCount: 0,
       lastMonthNewCount: 0,
       lastMonthSettledCount: 0,
