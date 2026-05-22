@@ -124,10 +124,10 @@ export class RepaymentRecordsService {
       baseWhere.actual_collector_id = scopeCollectorAdminId;
     }
 
-    const [todayRecords, yesterdayRecords, monthRecords, totalRecords] = await Promise.all([
+    const [todayRecords, yesterdayRecords, monthRecords] = await Promise.all([
       this.prisma.repaymentRecord.findMany({
         where: { ...baseWhere, paid_at: { gte: dayStart, lte: dayEnd } },
-        select: { paid_amount: true },
+        select: { paid_amount: true, loan_id: true },
       }),
       this.prisma.repaymentRecord.findMany({
         where: { ...baseWhere, paid_at: { gte: yesterday, lte: yesterdayEnd } },
@@ -135,10 +135,6 @@ export class RepaymentRecordsService {
       }),
       this.prisma.repaymentRecord.findMany({
         where: { ...baseWhere, paid_at: { gte: monthStart, lt: nextMonthStart } },
-        select: { paid_amount: true },
-      }),
-      this.prisma.repaymentRecord.findMany({
-        where: baseWhere,
         select: { paid_amount: true },
       }),
     ]);
@@ -154,8 +150,7 @@ export class RepaymentRecordsService {
       monthAmount: monthRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
       yesterdayAmount: yesterdayRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
       todayAmount: todayRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
-      todayCount: todayRecords.length,
-      totalAmount: totalRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
+      todayCount: new Set(todayRecords.map((r) => r.loan_id)).size,
       dailyLoanBalance,
     };
   }

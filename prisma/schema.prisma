@@ -44,6 +44,7 @@ model Admin {
   repaymentRecords              RepaymentRecord[]
   riskControllerAssetManagement RiskControllerAssetManagement?
   scheduleOperationLogs         RepaymentScheduleOperationLog[]
+  loanAccountOperationLogs      LoanAccountOperationLog[]
 
   @@map("admins")
 }
@@ -88,6 +89,7 @@ model LoanAccount {
   user                     User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   repaymentRecords         RepaymentRecord[]
   repaymentSchedules       RepaymentSchedule[]
+  operationLogs            LoanAccountOperationLog[]
 
   @@index([collector_id])
   @@index([risk_controller_id])
@@ -157,6 +159,23 @@ model RepaymentScheduleOperationLog {
   @@index([loan_id])
   @@index([operator_admin_id])
   @@map("repayment_schedule_operation_logs")
+}
+
+model LoanAccountOperationLog {
+  id                  Int               @id @default(autoincrement())
+  loan_id             Int
+  operator_admin_id   Int?
+  operator_admin_name String?           @db.VarChar(50)
+  action_type         String            @db.VarChar(50) // "create" | "update" | "update_status"
+  content             String            @db.VarChar(1000)
+  created_at          DateTime          @default(now())
+
+  loan_account        LoanAccount       @relation(fields: [loan_id], references: [id], onDelete: Cascade)
+  operator            Admin?            @relation(fields: [operator_admin_id], references: [id])
+
+  @@index([loan_id])
+  @@index([operator_admin_id])
+  @@map("loan_account_operation_logs")
 }
 
 model RepaymentRecord {

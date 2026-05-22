@@ -98,6 +98,15 @@ export class LoanAccountsController {
     return ResponseHelper.success(loan, '获取贷款记录成功');
   }
 
+  @UseGuards(AuthGuard)
+  @Get(':id/operation-logs')
+  async findOperationLogs(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ApiResponseDto> {
+    const logs = await this.loanAccountsService.findOperationLogs(id);
+    return ResponseHelper.success(logs, '获取操作日志成功');
+  }
+
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN, ManagementRoles.RISK_CONTROLLER)
   @Post()
@@ -123,9 +132,10 @@ export class LoanAccountsController {
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateLoanAccountStatusDto,
+    @CurrentUser() user: { id: number },
   ): Promise<ApiResponseDto> {
     try {
-      await this.loanAccountsService.updateAccountStatus(id, body);
+      await this.loanAccountsService.updateAccountStatus(id, body, user.id);
       const loan = await this.loanAccountsService.findById(id);
       return ResponseHelper.success(loan, '更新贷款状态成功');
     } catch (error: any) {
@@ -143,9 +153,10 @@ export class LoanAccountsController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateLoanAccountDto,
+    @CurrentUser() user: { id: number },
   ): Promise<ApiResponseDto> {
     try {
-      const updated = await this.loanAccountsService.update(id, body);
+      const updated = await this.loanAccountsService.update(id, body, user.id);
       return ResponseHelper.success(updated, '更新贷款记录成功');
     } catch (error: any) {
       return ResponseHelper.error(`更新贷款记录失败: ${error.message}`, 500);

@@ -21,6 +21,43 @@ export class LoanAccountsService {
     private readonly assetManagementService: AssetManagementService,
   ) {}
 
+  private async logOperation(
+    tx: any,
+    loanId: number,
+    operatorAdminId: number | undefined,
+    actionType: string,
+    content: string,
+  ) {
+    let operatorAdminName: string | null = null;
+    if (operatorAdminId) {
+      const admin = await tx.admin.findUnique({
+        where: { id: operatorAdminId },
+        select: { nickname: true, username: true },
+      });
+      if (admin) {
+        operatorAdminName =
+          admin.nickname || admin.username || `ID:${operatorAdminId}`;
+      }
+    }
+
+    await tx.loanAccountOperationLog.create({
+      data: {
+        loan_id: loanId,
+        operator_admin_id: operatorAdminId || null,
+        operator_admin_name: operatorAdminName,
+        action_type: actionType,
+        content,
+      },
+    });
+  }
+
+  async findOperationLogs(loanId: number) {
+    return this.prisma.loanAccountOperationLog.findMany({
+      where: { loan_id: loanId },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
   private toNumber(value?: unknown): number {
     if (value === null || value === undefined) return 0;
     const n = Number(value);
@@ -70,11 +107,8 @@ export class LoanAccountsService {
   }
 
   private computeLoanStatistics(loan: {
-    status: LoanAccountStatus;
-    receiving_amount?: unknown;
+    loan_amount?: unknown;
     paid_capital?: unknown;
-    paid_interest?: unknown;
-    total_fines?: unknown;
     repaymentSchedules?: Array<{
       capital?: unknown;
       interest?: unknown;
@@ -85,22 +119,6 @@ export class LoanAccountsService {
   }) {
     const schedules = loan.repaymentSchedules || [];
 
-    if (loan.status === 'settled' || loan.status === 'blacklist') {
-      const receivingAmount = this.toNumber(loan.receiving_amount);
-      const paidCapital = this.toNumber(loan.paid_capital);
-      const paidInterest = this.toNumber(loan.paid_interest);
-      const totalFines = this.toNumber(loan.total_fines);
-      return {
-        receivingAmount,
-        paidCapital,
-        paidInterest,
-        totalFines,
-        unpaidCapital: 0,
-        remainingCapital: 0,
-        remainingInterest: 0,
-      };
-    }
-
     const totalCapital = schedules.reduce(
       (sum, schedule) => sum + this.toNumber(schedule.capital),
       0,
@@ -109,7 +127,7 @@ export class LoanAccountsService {
       (sum, schedule) => sum + this.toNumber(schedule.interest),
       0,
     );
-    const paidCapital = schedules.reduce(
+    const paidCapitalFromSchedules = schedules.reduce(
       (sum, schedule) => sum + this.toNumber(schedule.paid_capital),
       0,
     );
@@ -117,7 +135,10 @@ export class LoanAccountsService {
       (sum, schedule) => sum + this.toNumber(schedule.paid_interest),
       0,
     );
-    const remainingCapital = Math.max(totalCapital - paidCapital, 0);
+    const remainingCapital = Math.max(
+      totalCapital - paidCapitalFromSchedules,
+      0,
+    );
     const remainingInterest = Math.max(totalInterest - paidInterest, 0);
     const totalFines = schedules.reduce(
       (sum, schedule) => sum + this.toNumber(schedule.fines),
@@ -131,7 +152,11 @@ export class LoanAccountsService {
         this.toNumber(schedule.fines),
       0,
     );
-    const unpaidCapital = remainingCapital;
+    const paidCapital = this.toNumber(loan.paid_capital);
+    const unpaidCapital = Math.max(
+      this.toNumber(loan.loan_amount) - paidCapital,
+      0,
+    );
 
     return {
       receivingAmount,
@@ -293,6 +318,14 @@ export class LoanAccountsService {
         skipDuplicates: true,
       });
 
+      await this.logOperation(
+        tx,
+        created.id,
+        createdBy,
+        'create',
+        '创建贷款记录',
+      );
+
       return created;
     });
 
@@ -313,7 +346,11 @@ export class LoanAccountsService {
     return loan;
   }
 
-  async update(id: number, data: UpdateLoanAccountDto): Promise<LoanAccount> {
+  async update(
+    id: number,
+    data: UpdateLoanAccountDto,
+    operatorAdminId?: number,
+  ): Promise<LoanAccount> {
     let prevCollectorId: number | undefined;
     let prevRiskId: number | undefined;
 
@@ -324,6 +361,22 @@ export class LoanAccountsService {
           due_start_date: true,
           collector_id: true,
           risk_controller_id: true,
+          loan_amount: true,
+          receiving_amount: true,
+          to_hand_ratio: true,
+          capital: true,
+          interest: true,
+          handling_fee: true,
+          total_periods: true,
+          repaid_periods: true,
+          daily_repayment: true,
+          status: true,
+          company_cost: true,
+          apply_times: true,
+          note: true,
+          ownership: true,
+          payer_name: true,
+          due_end_date: true,
         },
       });
 
@@ -492,6 +545,102 @@ export class LoanAccountsService {
         }
       }
 
+      // Log changes
+      const admins = await tx.admin.findMany({
+        select: { id: true, nickname: true, username: true },
+      });
+      const adminMap = new Map<number, string>(
+        admins.map((a) => [a.id, a.nickname || a.username || `ID:${a.id}`]),
+      );
+
+      const changes: string[] = [];
+      const formatChangeValue = (val: unknown): string => {
+        if (val === null || val === undefined) return '无';
+        const s = String(val).trim();
+        return s === '' ? '无' : s;
+      };
+      const compareField = (label: string, fieldName: string) => {
+        const oldVal = (oldLoan as any)[fieldName];
+        const newVal = (data as any)[fieldName];
+        if (newVal === undefined) return;
+        if (formatChangeValue(oldVal) === formatChangeValue(newVal)) return;
+        changes.push(
+          `${label} 从 "${formatChangeValue(oldVal)}" 修改为 "${formatChangeValue(newVal)}"`,
+        );
+      };
+
+      compareField('贷款金额', 'loan_amount');
+      compareField('应收金额', 'receiving_amount');
+      compareField('到手比例', 'to_hand_ratio');
+      compareField('每期本金', 'capital');
+      compareField('每期利息', 'interest');
+      compareField('手续费', 'handling_fee');
+      compareField('总期数', 'total_periods');
+      compareField('已还期数', 'repaid_periods');
+      compareField('日还款额', 'daily_repayment');
+      compareField('状态', 'status');
+      compareField('公司成本', 'company_cost');
+      compareField('申请次数', 'apply_times');
+      compareField('备注', 'note');
+      compareField('归属', 'ownership');
+      compareField('打款人', 'payer_name');
+
+      if (data.due_start_date !== undefined) {
+        const oldDateStr = oldLoan.due_start_date
+          ? new Date(oldLoan.due_start_date).toISOString().split('T')[0]
+          : '无';
+        if (oldDateStr !== data.due_start_date) {
+          changes.push(
+            `应还起始日 从 "${oldDateStr}" 修改为 "${data.due_start_date}"`,
+          );
+        }
+      }
+
+      if (data.due_end_date !== undefined) {
+        const oldDateStr = oldLoan.due_end_date
+          ? new Date(oldLoan.due_end_date).toISOString().split('T')[0]
+          : '无';
+        if (oldDateStr !== data.due_end_date) {
+          changes.push(
+            `到期日 从 "${oldDateStr}" 修改为 "${data.due_end_date}"`,
+          );
+        }
+      }
+
+      if (
+        data.collector_id !== undefined &&
+        oldLoan.collector_id !== data.collector_id
+      ) {
+        const oldName =
+          adminMap.get(oldLoan.collector_id) || `ID:${oldLoan.collector_id}`;
+        const newName =
+          adminMap.get(data.collector_id) || `ID:${data.collector_id}`;
+        changes.push(`负责人 从 "${oldName}" 修改为 "${newName}"`);
+      }
+
+      if (
+        data.risk_controller_id !== undefined &&
+        oldLoan.risk_controller_id !== data.risk_controller_id
+      ) {
+        const oldName =
+          adminMap.get(oldLoan.risk_controller_id) ||
+          `ID:${oldLoan.risk_controller_id}`;
+        const newName =
+          adminMap.get(data.risk_controller_id) ||
+          `ID:${data.risk_controller_id}`;
+        changes.push(`风控 从 "${oldName}" 修改为 "${newName}"`);
+      }
+
+      if (changes.length > 0) {
+        await this.logOperation(
+          tx,
+          id,
+          operatorAdminId,
+          'update',
+          changes.join(', '),
+        );
+      }
+
       return updatedRow;
     });
 
@@ -591,6 +740,7 @@ export class LoanAccountsService {
   async updateAccountStatus(
     id: number,
     dto: UpdateLoanAccountStatusDto,
+    operatorAdminId?: number,
   ): Promise<void> {
     const { status, settlement_capital, settlement_date } = dto;
 
@@ -765,25 +915,35 @@ export class LoanAccountsService {
           where: { id },
           data: updateData,
         });
+
+        await this.logOperation(
+          tx,
+          id,
+          operatorAdminId,
+          'update_status',
+          `状态更新为 ${status}${settlement_capital ? `, 提前结清本金: ${settlement_capital}` : ''}`,
+        );
       });
       return;
     }
 
-    const loan = await this.prisma.loanAccount.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-    if (!loan) {
-      throw new Error('贷款记录不存在');
-    }
+    await this.prisma.$transaction(async (tx) => {
+      const updateData: Record<string, unknown> = { status };
+      if (status === 'negotiated') {
+        updateData.status_changed_at = new Date();
+      }
+      await tx.loanAccount.update({
+        where: { id },
+        data: updateData,
+      });
 
-    const updateData: Record<string, unknown> = { status };
-    if (status === 'negotiated') {
-      updateData.status_changed_at = new Date();
-    }
-    await this.prisma.loanAccount.update({
-      where: { id },
-      data: updateData,
+      await this.logOperation(
+        tx,
+        id,
+        operatorAdminId,
+        'update_status',
+        `状态更新为 ${status}`,
+      );
     });
   }
 
@@ -1118,13 +1278,8 @@ export class LoanAccountsService {
     },
     currentUser?: { id: number; role: string },
   ) {
-    const {
-      baseAndParts,
-      todayShanghai,
-      yesterdayShanghai,
-      scheduleSumWhere,
-      scheduleDayCountBase,
-    } = this.buildListWhereConditions(query, currentUser);
+    const { baseAndParts, todayShanghai, yesterdayShanghai, scheduleSumWhere } =
+      this.buildListWhereConditions(query, currentUser);
 
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 
@@ -1143,9 +1298,6 @@ export class LoanAccountsService {
       allLoansFeeAgg,
       todaySchedAgg,
       yesterdaySchedAgg,
-      todaySchedulePaidCount,
-      todaySchedulePendingCount,
-      todayScheduleActiveCount,
     ] = await Promise.all([
       this.prisma.loanAccount.aggregate({
         where: pendingNegotiatedWhere,
@@ -1167,24 +1319,12 @@ export class LoanAccountsService {
         where: { ...scheduleSumWhere, due_start_date: yesterdayShanghai },
         _sum: { paid_amount: true },
       }),
-      this.prisma.repaymentSchedule.count({
-        where: { ...scheduleDayCountBase, status: 'paid' },
-      }),
-      this.prisma.repaymentSchedule.count({
-        where: { ...scheduleDayCountBase, status: 'pending' },
-      }),
-      this.prisma.repaymentSchedule.count({
-        where: { ...scheduleDayCountBase, status: 'active' },
-      }),
     ]);
 
     const inStock = this.toNumber(pendingNegotiatedAgg._sum.loan_amount);
-    const remainingDebt = Math.max(
-      0,
+    const remainingDebt =
       this.toNumber(pendingNegotiatedAgg._sum.loan_amount) -
-        this.toNumber(pendingNegotiatedAgg._sum.paid_capital) -
-        this.toNumber(pendingNegotiatedAgg._sum.paid_interest),
-    );
+      this.toNumber(pendingNegotiatedAgg._sum.paid_capital);
 
     return {
       statistics: {
@@ -1194,11 +1334,6 @@ export class LoanAccountsService {
         fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
         todayReceived: this.toNumber(todaySchedAgg._sum.paid_amount),
         yesterdayReceived: this.toNumber(yesterdaySchedAgg._sum.paid_amount),
-      },
-      dayScheduleBoard: {
-        paid: todaySchedulePaidCount,
-        pending: todaySchedulePendingCount,
-        active: todayScheduleActiveCount,
       },
     };
   }

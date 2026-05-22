@@ -175,29 +175,6 @@ export class StatisticsService {
     });
 
     const totalAmount = allLoanAccounts.reduce((sum, acc) => sum + Number(acc.handling_fee || 0) + Number(acc.receiving_amount || 0) - Number(acc.company_cost || 0), 0);
-    const totalInStockAmount = (await this.prisma.loanAccount.findMany({
-      where: { id: { in: loanAccountIds }, status: { notIn: ['settled', 'blacklist'] } },
-      select: { loan_amount: true },
-    })).reduce((sum, acc) => sum + Number(acc.loan_amount), 0);
-
-    const totalHandlingFee = allLoanAccounts.reduce((sum, acc) => sum + Number(acc.handling_fee), 0);
-    const totalFines = allLoanAccounts.reduce((sum, acc) => sum + Number(acc.total_fines), 0);
-    const totalBlacklistCount = await this.prisma.loanAccount.count({ where: { id: { in: loanAccountIds }, status: 'blacklist' } });
-    const totalNegotiatedCount = await this.prisma.loanAccount.count({ where: { id: { in: loanAccountIds }, status: 'negotiated' } });
-    const totalInStockCount = await this.prisma.loanAccount.count({ where: { id: { in: loanAccountIds }, status: { in: ['pending', 'negotiated'] } } });
-    const totalReceivedAmount = allLoanAccounts.reduce((sum, acc) => sum + Number(acc.receiving_amount || 0), 0);
-
-    const todayRepaymentRecords = await this.prisma.repaymentRecord.findMany({
-      where: { loan_id: { in: loanAccountIds }, paid_at: { gte: todayStart, lte: todayEnd } },
-      select: { paid_amount: true },
-    });
-    const todayCollection = todayRepaymentRecords.reduce((sum, r) => sum + Number(r.paid_amount || 0), 0);
-
-    const yesterdayRepaymentRecords = await this.prisma.repaymentRecord.findMany({
-      where: { loan_id: { in: loanAccountIds }, paid_at: { gte: yesterdayStart, lt: todayStart } },
-      select: { paid_amount: true },
-    });
-    const yesterdayCollection = yesterdayRepaymentRecords.reduce((sum, r) => sum + Number(r.paid_amount || 0), 0);
 
     const todayNewAmount = (await this.prisma.loanAccount.findMany({
       where: { id: { in: loanAccountIds }, due_start_date: { gte: todayStart, lt: new Date(todayStart.getTime() + 86400000) } },
@@ -208,31 +185,6 @@ export class StatisticsService {
       where: { id: { in: loanAccountIds }, status: 'settled', due_end_date: { gte: todayStart, lt: new Date(todayStart.getTime() + 86400000) } },
       select: { loan_amount: true },
     })).reduce((sum, acc) => sum + Number(acc.loan_amount), 0);
-
-    const todayPaidCount = await this.prisma.repaymentSchedule.count({
-      where: { loan_id: { in: loanAccountIds }, due_start_date: { gte: todayStart, lte: todayEnd }, status: 'paid' },
-    });
-
-    const todayPendingCount = await this.prisma.repaymentSchedule.count({
-      where: { loan_id: { in: loanAccountIds }, due_start_date: { gte: todayStart, lt: todayEnd }, status: 'pending' },
-    });
-
-    const activeCount = (await this.prisma.repaymentSchedule.groupBy({
-      by: ['loan_id'],
-      where: { loan_id: { in: loanAccountIds }, status: 'active' },
-    })).length;
-
-    const yesterdayOverdueCount = await this.prisma.repaymentSchedule.count({
-      where: { loan_id: { in: loanAccountIds }, due_start_date: { gte: yesterdayStart, lt: todayStart }, status: 'overdue' },
-    });
-
-    const todayNegotiatedCount = await this.prisma.loanAccount.count({
-      where: { id: { in: loanAccountIds }, status: 'negotiated', status_changed_at: { gte: todayStart, lte: todayEnd } },
-    });
-
-    const todayBlacklistCount = await this.prisma.loanAccount.count({
-      where: { id: { in: loanAccountIds }, status: 'blacklist', status_changed_at: { gte: todayStart, lte: todayEnd } },
-    });
 
     const thisMonthNewAccounts: LoanAccountAmount[] = await this.prisma.loanAccount.findMany({
       where: { id: { in: loanAccountIds }, due_start_date: { gte: thisMonthStart, lt: nextMonthStart } },
@@ -276,25 +228,18 @@ export class StatisticsService {
       where: { id: { in: loanAccountIds }, status: 'blacklist', status_changed_at: { gte: lastMonthStart, lt: thisMonthStart } },
     });
 
+    const lastMonthNewCount = await this.prisma.loanAccount.count({
+      where: { id: { in: loanAccountIds }, created_at: { gte: lastMonthStart, lt: thisMonthStart } },
+    });
+
+    const lastMonthSettledCount = await this.prisma.loanAccount.count({
+      where: { id: { in: loanAccountIds }, status: 'settled', status_changed_at: { gte: lastMonthStart, lt: thisMonthStart } },
+    });
+
     const result = {
       totalAmount,
-      totalInStockAmount,
-      totalHandlingFee,
-      totalFines,
-      totalBlacklistCount,
-      totalNegotiatedCount,
-      totalInStockCount,
-      totalReceivedAmount,
-      todayPaidCount,
-      todayPendingCount,
-      activeCount,
-      todayCollection,
-      yesterdayCollection,
       todayNewAmount,
       todaySettledAmount,
-      yesterdayOverdueCount,
-      todayNegotiatedCount,
-      todayBlacklistCount,
       thisMonthNewAmount,
       thisMonthSettledAmount,
       thisMonthHandlingFee,
@@ -304,6 +249,8 @@ export class StatisticsService {
       lastMonthHandlingFee,
       lastMonthFines,
       lastMonthBlacklistCount,
+      lastMonthNewCount,
+      lastMonthSettledCount,
       yesterdayTotalAmount: 0
     };
 
@@ -331,7 +278,7 @@ export class StatisticsService {
       const statistics = await this.getCollectorDetailedStatisticsForAdmin(role.admin_id, role.role_type as any);
       results.push({
         admin_id: role.admin_id,
-        admin_name: role.admin.nickname || '',
+        admin_name: role.role_type === 'collector' ? (role.admin.nickname || '') : (role.admin.nickname || ''),
         role: role.role_type,
         ...statistics,
       });
@@ -342,20 +289,19 @@ export class StatisticsService {
   private getEmptyStatistics() {
     return {
       totalAmount: 0,
-      totalInStockAmount: 0,
-      totalHandlingFee: 0,
-      totalFines: 0,
-      totalBlacklistCount: 0,
-      totalNegotiatedCount: 0,
-      totalInStockCount: 0,
-      totalReceivedAmount: 0,
-      todayPaidCount: 0,
-      todayPendingCount: 0,
-      activeCount: 0,
-      todayCollection: 0,
-      yesterdayCollection: 0,
       todayNewAmount: 0,
       todaySettledAmount: 0,
+      thisMonthNewAmount: 0,
+      thisMonthSettledAmount: 0,
+      thisMonthHandlingFee: 0,
+      thisMonthFines: 0,
+      thisMonthNegotiatedCount: 0,
+      thisMonthBlacklistCount: 0,
+      lastMonthHandlingFee: 0,
+      lastMonthFines: 0,
+      lastMonthBlacklistCount: 0,
+      lastMonthNewCount: 0,
+      lastMonthSettledCount: 0,
     };
   }
 }
