@@ -31,13 +31,20 @@ export class AccessScopeService {
     const isRequesterPlatformAdminRole =
       requester.role === ManagementRoles.ADMIN;
     const canViewAll = isRequesterPlatformAdminRole && !targetUserId;
-    const scopedUserId = isRequesterPlatformAdminRole
-      ? targetUserId || undefined
-      : requestUserId;
 
     let loanAccountIds: number[] = [];
-    if (!canViewAll && scopedUserId) {
-      loanAccountIds = await this.getLoanAccountIdsByUserId(scopedUserId);
+    if (isRequesterPlatformAdminRole) {
+      if (targetUserId) {
+        loanAccountIds = await this.getLoanAccountIdsByUserId(targetUserId);
+      }
+    } else {
+      const requesterLoans = await this.getLoanAccountIdsByUserId(requestUserId);
+      if (targetUserId) {
+        const targetLoans = await this.getLoanAccountIdsByUserId(targetUserId);
+        loanAccountIds = requesterLoans.filter((id) => targetLoans.includes(id));
+      } else {
+        loanAccountIds = requesterLoans;
+      }
     }
 
     return {
@@ -45,9 +52,59 @@ export class AccessScopeService {
       targetUserId,
       isRequesterPlatformAdminRole,
       isAllAccessible: canViewAll,
-      scopedUserId,
+      scopedUserId: isRequesterPlatformAdminRole
+        ? targetUserId || undefined
+        : requestUserId,
       loanAccountIds,
     };
+  }
+
+  async getAssociatedAdmins(userId: number): Promise<any[]> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+
+    if (!admin) {
+      throw new Error('管理员不存在');
+    }
+
+    if (admin.role === ManagementRoles.ADMIN) {
+      return this.prisma.admin.findMany({
+        where: {
+          role: { in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER] },
+        },
+        select: {
+          id: true,
+          username: true,
+          nickname: true,
+          role: true,
+        },
+      });
+    }
+
+    const myLoanIds = await this.getLoanAccountIdsByUserId(userId);
+    if (myLoanIds.length === 0) return [];
+
+    const otherRoles = await this.prisma.loanAccountRole.findMany({
+      where: {
+        loan_account_id: { in: myLoanIds },
+        admin_id: { not: userId },
+      },
+      select: {
+        admin: {
+          select: {
+            id: true,
+            username: true,
+            nickname: true,
+            role: true,
+          },
+        },
+      },
+      distinct: ['admin_id'],
+    });
+
+    return otherRoles.map((r) => r.admin);
   }
 
   async getLoanAccountIdsByUserId(userId: number): Promise<number[]> {

@@ -40,7 +40,7 @@ model Admin {
   loanAccountRoles              LoanAccountRole[]
   loanAccountsAsCollector       LoanAccount[]                  @relation("CollectorLoanAccounts")
   loanAccountsAsRiskController  LoanAccount[]                  @relation("RiskControllerLoanAccounts")
-  dailyLoanBalances             CollectorDailyLoanBalance[]
+  dailyLoanBalances             DailyLoanBalance[]
   repaymentRecords              RepaymentRecord[]
   riskControllerAssetManagement RiskControllerAssetManagement?
   scheduleOperationLogs         RepaymentScheduleOperationLog[]
@@ -194,6 +194,8 @@ model RepaymentRecord {
   loan_account          LoanAccount        @relation(fields: [loan_id], references: [id])
   repayment_schedule    RepaymentSchedule? @relation(fields: [repayment_schedule_id], references: [id])
   user                  User               @relation(fields: [user_id], references: [id])
+  due_date              DateTime?          @db.Date
+  is_overdue_repaid     Boolean            @default(false)
 
   @@index([actual_collector_id])
   @@index([loan_id])
@@ -264,24 +266,24 @@ model DailyStatistics {
   @@map("daily_statistics")
 }
 
-model CollectorDailyLoanBalance {
-  id                   Int      @id @default(autoincrement())
-  admin_id             Int
-  date                 DateTime @db.Date
-  previous_total       Decimal  @default(0.00) @db.Decimal(12, 2)
-  yesterday_loan_total Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_repaid_total   Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_total          Decimal  @default(0.00) @db.Decimal(12, 2)
-  yesterday_loan_items Json?
-  today_repaid_items   Json?
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
-  admin                Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+model DailyLoanBalance {
+  id                 Int      @id @default(autoincrement())
+  admin_id           Int
+  date               DateTime @db.Date
+  previous_total     Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_loan_total   Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_repaid_total Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_total        Decimal  @default(0.00) @db.Decimal(12, 2)
+  today_loan_items   Json?
+  today_repaid_items Json?
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  admin              Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@unique([admin_id, date])
   @@index([date])
   @@index([admin_id])
-  @@map("collector_daily_loan_balance")
+  @@map("daily_loan_balance")
 }
 
 

@@ -283,6 +283,8 @@ export class RepaymentSchedulesService {
         const existingRecord = await tx.repaymentRecord.findFirst({
           where: { repayment_schedule_id: data.id },
         });
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
         const recordPayload = {
           loan_id: loanId,
           user_id: loan.user_id,
@@ -294,6 +296,8 @@ export class RepaymentSchedulesService {
           repayment_schedule_id: data.id,
           actual_collector_id: operatorAdminId ?? null,
           remark: remark || null,
+          due_date: currentSchedule.due_start_date,
+          is_overdue_repaid: currentSchedule.due_start_date < todayStart,
         };
 
         if (existingRecord) {

@@ -11,7 +11,7 @@ import {
 import { AccessScopeService } from '../access-scope/access-scope.service';
 
 type DailyLoanBalanceItemType =
-  | 'YESTERDAY_DUE_LOAN'
+  | 'TODAY_LOAN'
   | 'TODAY_REPAY'
   | 'TODAY_EARLY_SETTLEMENT';
 
@@ -21,18 +21,19 @@ type DailyLoanBalanceItem = {
   type: DailyLoanBalanceItemType;
   label: string;
   isEarlySettlement: boolean;
+  isOverdueRepaid: boolean;
   remark: string;
 };
 
 type DailyLoanBalanceResult = {
   previousTotal: number;
-  yesterdayLoanTotal: number;
+  todayLoanTotal: number;
   todayRepaidTotal: number;
   todayTotal: number;
-  yesterdayLoanItems: DailyLoanBalanceItem[];
+  todayLoanItems: DailyLoanBalanceItem[];
   todayRepaidItems: DailyLoanBalanceItem[];
   expression: {
-    yesterdayLoans: string;
+    todayLoans: string;
     todayRepayments: string;
     summary: string;
   };
@@ -168,12 +169,20 @@ export class RepaymentRecordsService {
       }),
     ]);
 
-    const dailyLoanBalance = await this.getDailyLoanBalance({
-      requestUserId,
-      targetDate: now,
-      targetUserId,
-      persist: false,
-    });
+    const [yesterdayDailyBalance, todayDailyBalance] = await Promise.all([
+      this.getDailyLoanBalance({
+        requestUserId,
+        targetDate: yesterday,
+        targetUserId,
+        persist: false,
+      }),
+      this.getDailyLoanBalance({
+        requestUserId,
+        targetDate: now,
+        targetUserId,
+        persist: false,
+      }),
+    ]);
 
     return {
       monthAmount: monthRecords.reduce(
@@ -189,7 +198,8 @@ export class RepaymentRecordsService {
         0,
       ),
       todayCount: new Set(todayRecords.map((r) => r.loan_id)).size,
-      dailyLoanBalance,
+      yesterdayDailyBalance,
+      todayDailyBalance,
     };
   }
 
@@ -206,9 +216,6 @@ export class RepaymentRecordsService {
       persist = false,
     } = params;
     const businessDate = this.getBusinessDate(targetDate);
-    const yesterdayDate = new Date(businessDate);
-    yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
-
     const dayStart = this.getDayStart(targetDate);
     const dayEnd = this.getDayEnd(targetDate);
 
@@ -221,9 +228,10 @@ export class RepaymentRecordsService {
     const scopedBalanceUserId = scope.isAllAccessible
       ? requestUserId
       : scope.scopedUserId || requestUserId;
+
     const loansWhere: any = {
       ...(loanIdFilter ? { id: loanIdFilter } : {}),
-      due_start_date: yesterdayDate,
+      due_start_date: businessDate,
     };
 
     const repaymentWhere: any = {
@@ -231,7 +239,48 @@ export class RepaymentRecordsService {
       paid_at: { gte: dayStart, lte: dayEnd },
     };
 
-    const [yesterdayLoans, todayRepayments, previousRow] = await Promise.all([
+    let previousTotal = 0;
+    let previousRow: any = null;
+
+    if (targetUserId) {
+      // 交集模式下，动态算出之前的累计余额
+      const loansBefore = await this.prisma.loanAccount.aggregate({
+        where: {
+          id: { in: loanIds },
+          due_start_date: { lt: businessDate },
+        },
+        _sum: {
+          company_cost: true,
+          handling_fee: true,
+        },
+      });
+      const totalLentBefore = -Number(loansBefore._sum.company_cost || 0) + Number(loansBefore._sum.handling_fee || 0);
+
+      const repaymentsBefore = await this.prisma.repaymentRecord.aggregate({
+        where: {
+          loan_id: { in: loanIds },
+          paid_at: { lt: dayStart },
+        },
+        _sum: {
+          paid_amount: true,
+        },
+      });
+      const totalRepaidBefore = Number(repaymentsBefore._sum.paid_amount || 0);
+
+      previousTotal = totalLentBefore + totalRepaidBefore;
+    } else {
+      // 单用户模式下，从数据库归档表获取前一日的今日合计
+      previousRow = await this.prisma.dailyLoanBalance.findFirst({
+        where: {
+          admin_id: scopedBalanceUserId,
+          date: { lt: businessDate },
+        },
+        orderBy: { date: 'desc' },
+      });
+      previousTotal = Number(previousRow?.today_total ?? 0);
+    }
+
+    const [todayLoans, todayRepayments] = await Promise.all([
       this.prisma.loanAccount.findMany({
         where: loansWhere,
         select: {
@@ -248,28 +297,23 @@ export class RepaymentRecordsService {
           paid_amount: true,
           remark: true,
           paid_at: true,
+          is_overdue_repaid: true,
         },
         orderBy: { paid_at: 'asc' },
       }),
-      this.prisma.collectorDailyLoanBalance.findFirst({
-        where: {
-          admin_id: scopedBalanceUserId,
-          date: { lt: businessDate },
-        },
-        orderBy: { date: 'desc' },
-      }),
     ]);
 
-    const yesterdayLoanItems: DailyLoanBalanceItem[] = yesterdayLoans.map(
+    const todayLoanItems: DailyLoanBalanceItem[] = todayLoans.map(
       (loan) => {
         const amount =
           -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
         return {
           loanId: loan.id,
           amount,
-          type: 'YESTERDAY_DUE_LOAN',
+          type: 'TODAY_LOAN',
           label: '借出',
           isEarlySettlement: false,
+          isOverdueRepaid: false,
           remark: '',
         };
       },
@@ -279,19 +323,20 @@ export class RepaymentRecordsService {
       (row) => {
         const remark = row.remark ?? '';
         const isEarlySettlement = remark === '提前结清';
+        const isOverdue = !!row.is_overdue_repaid;
         return {
           loanId: row.loan_id,
           amount: Number(row.paid_amount ?? 0),
           type: isEarlySettlement ? 'TODAY_EARLY_SETTLEMENT' : 'TODAY_REPAY',
-          label: isEarlySettlement ? '清' : '',
+          label: isEarlySettlement ? '清' : (isOverdue ? '补' : ''),
           isEarlySettlement,
+          isOverdueRepaid: isOverdue,
           remark,
         };
       },
     );
 
-    const previousTotal = Number(previousRow?.today_total ?? 0);
-    const yesterdayLoanTotal = yesterdayLoanItems.reduce(
+    const todayLoanTotal = todayLoanItems.reduce(
       (sum, item) => sum + item.amount,
       0,
     );
@@ -299,32 +344,32 @@ export class RepaymentRecordsService {
       (sum, item) => sum + item.amount,
       0,
     );
-    const todayTotal = previousTotal + yesterdayLoanTotal + todayRepaidTotal;
+    const todayTotal = previousTotal + todayLoanTotal + todayRepaidTotal;
 
     const result: DailyLoanBalanceResult = {
       previousTotal,
-      yesterdayLoanTotal,
+      todayLoanTotal,
       todayRepaidTotal,
       todayTotal,
-      yesterdayLoanItems,
+      todayLoanItems,
       todayRepaidItems,
       expression: {
-        yesterdayLoans: this.formatExpression(
-          yesterdayLoanItems,
-          yesterdayLoanTotal,
+        todayLoans: this.formatExpression(
+          todayLoanItems,
+          todayLoanTotal,
         ),
         todayRepayments: this.formatExpression(
           todayRepaidItems,
           todayRepaidTotal,
         ),
-        summary: `${this.formatNumber(previousTotal)}${this.formatSigned(yesterdayLoanTotal)}${this.formatSigned(todayRepaidTotal)}=${this.formatNumber(todayTotal)}`,
+        summary: `${this.formatNumber(previousTotal)}${this.formatSigned(todayLoanTotal)}${this.formatSigned(todayRepaidTotal)}=${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
       userId: scopedBalanceUserId,
     };
 
     if (persist) {
-      await this.prisma.collectorDailyLoanBalance.upsert({
+      await this.prisma.dailyLoanBalance.upsert({
         where: {
           admin_id_date: {
             admin_id: scopedBalanceUserId,
@@ -333,20 +378,20 @@ export class RepaymentRecordsService {
         },
         update: {
           previous_total: previousTotal,
-          yesterday_loan_total: yesterdayLoanTotal,
+          today_loan_total: todayLoanTotal,
           today_repaid_total: todayRepaidTotal,
           today_total: todayTotal,
-          yesterday_loan_items: result.yesterdayLoanItems as any,
+          today_loan_items: result.todayLoanItems as any,
           today_repaid_items: result.todayRepaidItems as any,
         },
         create: {
           admin_id: scopedBalanceUserId,
           date: businessDate,
           previous_total: previousTotal,
-          yesterday_loan_total: yesterdayLoanTotal,
+          today_loan_total: todayLoanTotal,
           today_repaid_total: todayRepaidTotal,
           today_total: todayTotal,
-          yesterday_loan_items: result.yesterdayLoanItems as any,
+          today_loan_items: result.todayLoanItems as any,
           today_repaid_items: result.todayRepaidItems as any,
         },
       });

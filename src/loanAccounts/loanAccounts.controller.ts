@@ -22,10 +22,14 @@ import { ResponseHelper } from '../common/response-helper';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { Roles } from '../auth/roles.decorator';
 import { ManagementRoles } from '@prisma/client';
+import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Controller('loan-accounts')
 export class LoanAccountsController {
-  constructor(private readonly loanAccountsService: LoanAccountsService) {}
+  constructor(
+    private readonly loanAccountsService: LoanAccountsService,
+    private readonly accessScopeService: AccessScopeService,
+  ) {}
 
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN)
@@ -37,8 +41,8 @@ export class LoanAccountsController {
 
   @UseGuards(AuthGuard)
   @Get('related-admins')
-  async findRelatedAdmins(): Promise<ApiResponseDto> {
-    const admins = await this.loanAccountsService.findRelatedAdmins();
+  async findRelatedAdmins(@CurrentUser() user: { id: number }): Promise<ApiResponseDto> {
+    const admins = await this.accessScopeService.getAssociatedAdmins(user.id);
     return ResponseHelper.success(admins, '获取相关管理员成功');
   }
 
