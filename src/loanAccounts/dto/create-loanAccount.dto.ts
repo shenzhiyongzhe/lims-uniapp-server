@@ -28,11 +28,11 @@ export class CreateLoanAccountDto {
   to_hand_ratio: number;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   capital: number;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   interest: number;
 
   @IsDateString()

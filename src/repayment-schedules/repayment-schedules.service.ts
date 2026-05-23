@@ -21,6 +21,7 @@ interface OperationLogRow {
   created_at: Date;
 }
 import { RepaymentScheduleResponseDto } from './dto/repayment-schedule-response.dto';
+import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
 
 @Injectable()
 export class RepaymentSchedulesService {
@@ -283,8 +284,7 @@ export class RepaymentSchedulesService {
         const existingRecord = await tx.repaymentRecord.findFirst({
           where: { repayment_schedule_id: data.id },
         });
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
+        const { today: shanghaiTodayStart } = getShanghaiBusinessTodayAndYesterday();
         const recordPayload = {
           loan_id: loanId,
           user_id: loan.user_id,
@@ -297,7 +297,7 @@ export class RepaymentSchedulesService {
           actual_collector_id: operatorAdminId ?? null,
           remark: remark || null,
           due_date: currentSchedule.due_start_date,
-          is_overdue_repaid: currentSchedule.due_start_date < todayStart,
+          is_overdue_repaid: currentSchedule.due_start_date < shanghaiTodayStart,
         };
 
         if (existingRecord) {

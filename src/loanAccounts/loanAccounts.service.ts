@@ -1242,16 +1242,28 @@ export class LoanAccountsService {
           orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
           include: {
             ...scheduleWithLatestRecordRemark,
-            loan_account: { include: loanAccountInclude },
+            loan_account: {
+              include: {
+                ...loanAccountInclude,
+                _count: {
+                  select: {
+                    repaymentSchedules: { where: { status: 'overdue' as const } },
+                  },
+                },
+              },
+            },
           },
         }),
         this.prisma.repaymentSchedule.count({ where: sw }),
       ]);
       data = scheduleRows.map((sch) => {
-        const loan = sch.loan_account;
+        const { _count, ...loan } = sch.loan_account as typeof sch.loan_account & {
+          _count?: { repaymentSchedules?: number };
+        };
         return {
           ...loan,
           repaymentSchedules: [sch],
+          overdueScheduleCount: _count?.repaymentSchedules ?? 0,
           __rowKey: `${loan.id}-${sch.id}`,
         };
       });
