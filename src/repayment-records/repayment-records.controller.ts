@@ -16,10 +16,13 @@ export class RepaymentRecordsController {
 
   @Get()
   @Header('Cache-Control', 'private, no-store, must-revalidate')
-  async findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: any) {
+  async findAll(
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() currentUser: any,
+  ) {
     const result = await this.repaymentRecordsService.findAllWithPagination(
       query,
-      user.id,
+      currentUser.id,
     );
     const data = {
       ...result,
@@ -33,11 +36,11 @@ export class RepaymentRecordsController {
   @Get('collector-summary')
   async getCollectorSummary(
     @Query() query: CollectorSummaryQueryDto,
-    @CurrentUser() user: any,
+    @CurrentUser() currentUser: any,
   ) {
     const data = await this.repaymentRecordsService.getScopedRepaymentSummary(
       query,
-      user.id,
+      currentUser.id,
     );
     return ResponseHelper.success(data, '获取收款统计成功');
   }
@@ -45,11 +48,11 @@ export class RepaymentRecordsController {
   @Get('daily-summary')
   async getDailySummary(
     @Query() query: DailySummaryQueryDto,
-    @CurrentUser() user: any,
+    @CurrentUser() currentUser: any,
   ) {
     const data = await this.repaymentRecordsService.getDailySummary(
       query,
-      user.id,
+      currentUser.id,
     );
     return ResponseHelper.success(data, '获取按日收款统计成功');
   }

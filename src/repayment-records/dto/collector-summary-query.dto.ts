@@ -5,6 +5,12 @@ export class CollectorSummaryQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  targetUserId?: number;
+
+  // backward compatibility
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   adminId?: number;
 
   @IsOptional()

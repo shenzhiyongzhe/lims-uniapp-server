@@ -22,27 +22,27 @@ export class StatisticsService {
   }
 
   async getScopedStatistics(
-    requestAdminId: number,
-    targetAdminId?: number,
+    requestUserId: number,
+    targetUserId?: number,
     targetDate?: Date,
   ): Promise<any> {
     const scope = await this.accessScopeService.resolveLoanAccountScope(
-      requestAdminId,
-      targetAdminId,
+      requestUserId,
+      targetUserId,
     );
     return this.getDetailedStatisticsByLoanScope(
       scope.isAllAccessible ? undefined : scope.loanAccountIds,
       targetDate,
-      scope.isAllAccessible ? undefined : scope.scopedAdminId,
+      scope.isAllAccessible ? undefined : scope.scopedUserId,
     );
   }
 
-  private async getLoanAccountIdsByAdminRole(
-    adminId: number,
+  private async getLoanAccountIdsByUserRole(
+    userId: number,
     roleType: 'collector' | 'risk_controller',
   ): Promise<number[]> {
-    return this.accessScopeService.getLoanAccountIdsByAdminRole(
-      adminId,
+    return this.accessScopeService.getLoanAccountIdsByUserRole(
+      userId,
       roleType,
     );
   }
@@ -50,7 +50,7 @@ export class StatisticsService {
   private async getDetailedStatisticsByLoanScope(
     loanAccountIds: number[] | undefined,
     targetDate?: Date,
-    scopedAdminId?: number,
+    scopedUserId?: number,
     includeYesterdayTotal: boolean = true,
   ): Promise<any> {
     if (loanAccountIds && loanAccountIds.length === 0) {
@@ -248,7 +248,7 @@ export class StatisticsService {
       const yesterdayStats = await this.prisma.dailyStatistics.aggregate({
         where: {
           date: yesterdayDateForDb,
-          ...(scopedAdminId ? { admin_id: scopedAdminId } : {}),
+          ...(scopedUserId ? { admin_id: scopedUserId } : {}),
         },
         _sum: { total_amount: true },
       });
@@ -269,7 +269,7 @@ export class StatisticsService {
 
     const results: any[] = [];
     for (const role of roles) {
-      const loanAccountIds = await this.getLoanAccountIdsByAdminRole(
+      const loanAccountIds = await this.getLoanAccountIdsByUserRole(
         role.admin_id,
         role.role_type as 'collector' | 'risk_controller',
       );

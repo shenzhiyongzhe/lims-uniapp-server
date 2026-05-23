@@ -37,7 +37,7 @@ type DailyLoanBalanceResult = {
     summary: string;
   };
   date: string;
-  adminId: number;
+  userId: number;
 };
 
 @Injectable()
@@ -49,14 +49,15 @@ export class RepaymentRecordsService {
 
   async findAllWithPagination(
     query: PaginationQueryDto,
-    adminId: number,
+    requestUserId: number,
   ): Promise<any> {
     const {
       page = 1,
       pageSize = 20,
       userId,
       loanId,
-      adminId: scopeCollectorAdminId,
+      targetUserId,
+      adminId: legacyTargetUserId,
       startDate,
       endDate,
       riskControllerId,
@@ -64,9 +65,10 @@ export class RepaymentRecordsService {
       username,
     } = query;
     const skip = (page - 1) * pageSize;
+    const scopedTargetUserId = targetUserId ?? legacyTargetUserId;
     const scope = await this.accessScopeService.resolveLoanAccountScope(
-      adminId,
-      scopeCollectorAdminId,
+      requestUserId,
+      scopedTargetUserId,
     );
 
     const where: any = {};
@@ -127,9 +129,10 @@ export class RepaymentRecordsService {
 
   async getScopedRepaymentSummary(
     query: CollectorSummaryQueryDto,
-    adminId: number,
+    requestUserId: number,
   ) {
-    const { adminId: targetAdminId, targetDate } = query;
+    const targetUserId = query.targetUserId ?? query.adminId;
+    const { targetDate } = query;
     const now = targetDate ? new Date(targetDate) : new Date();
     const dayStart = this.getDayStart(now);
     const dayEnd = this.getDayEnd(now);
@@ -141,8 +144,8 @@ export class RepaymentRecordsService {
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
-      adminId,
-      targetAdminId,
+      requestUserId,
+      targetUserId,
     );
     const baseWhere: any = {};
     if (!scope.isAllAccessible) {
@@ -168,9 +171,9 @@ export class RepaymentRecordsService {
     ]);
 
     const dailyLoanBalance = await this.getDailyLoanBalance({
-      requestAdminId: adminId,
+      requestUserId,
       targetDate: now,
-      targetAdminId,
+      targetUserId,
       persist: false,
     });
 
@@ -193,15 +196,15 @@ export class RepaymentRecordsService {
   }
 
   async getDailyLoanBalance(params: {
-    requestAdminId: number;
+    requestUserId: number;
     targetDate?: Date;
-    targetAdminId?: number;
+    targetUserId?: number;
     persist?: boolean;
   }): Promise<DailyLoanBalanceResult> {
     const {
-      requestAdminId,
+      requestUserId,
       targetDate = new Date(),
-      targetAdminId,
+      targetUserId,
       persist = false,
     } = params;
     const businessDate = this.getBusinessDate(targetDate);
@@ -212,14 +215,14 @@ export class RepaymentRecordsService {
     const dayEnd = this.getDayEnd(targetDate);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
-      requestAdminId,
-      targetAdminId,
+      requestUserId,
+      targetUserId,
     );
     const loanIds = scope.loanAccountIds;
     const loanIdFilter = scope.isAllAccessible ? undefined : { in: loanIds };
-    const scopedBalanceAdminId = scope.isAllAccessible
-      ? requestAdminId
-      : scope.scopedAdminId || requestAdminId;
+    const scopedBalanceUserId = scope.isAllAccessible
+      ? requestUserId
+      : scope.scopedUserId || requestUserId;
     const loansWhere: any = {
       ...(loanIdFilter ? { id: loanIdFilter } : {}),
       due_start_date: yesterdayDate,
@@ -252,7 +255,7 @@ export class RepaymentRecordsService {
       }),
       this.prisma.collectorDailyLoanBalance.findFirst({
         where: {
-          admin_id: scopedBalanceAdminId,
+          admin_id: scopedBalanceUserId,
           date: { lt: businessDate },
         },
         orderBy: { date: 'desc' },
@@ -319,14 +322,14 @@ export class RepaymentRecordsService {
         summary: `${this.formatNumber(previousTotal)}${this.formatSigned(yesterdayLoanTotal)}${this.formatSigned(todayRepaidTotal)}=${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
-      adminId: scopedBalanceAdminId,
+      userId: scopedBalanceUserId,
     };
 
     if (persist) {
       await this.prisma.collectorDailyLoanBalance.upsert({
         where: {
           admin_id_date: {
-            admin_id: scopedBalanceAdminId,
+            admin_id: scopedBalanceUserId,
             date: businessDate,
           },
         },
@@ -339,7 +342,7 @@ export class RepaymentRecordsService {
           today_repaid_items: result.todayRepaidItems as any,
         },
         create: {
-          admin_id: scopedBalanceAdminId,
+          admin_id: scopedBalanceUserId,
           date: businessDate,
           previous_total: previousTotal,
           yesterday_loan_total: yesterdayLoanTotal,
@@ -355,18 +358,19 @@ export class RepaymentRecordsService {
   }
 
   async upsertDailyLoanBalanceForDate(
-    adminId: number,
+    requestUserId: number,
     targetDate: Date,
   ): Promise<DailyLoanBalanceResult> {
     return this.getDailyLoanBalance({
-      requestAdminId: adminId,
+      requestUserId,
       targetDate,
       persist: true,
     });
   }
 
-  async getDailySummary(query: DailySummaryQueryDto, adminId: number) {
-    const { adminId: targetAdminId, month } = query;
+  async getDailySummary(query: DailySummaryQueryDto, requestUserId: number) {
+    const targetUserId = query.targetUserId ?? query.adminId;
+    const { month } = query;
     const [yearStr, monthStr] = month.split('-');
     const year = Number(yearStr);
     const monthIndex = Number(monthStr) - 1;
@@ -374,8 +378,8 @@ export class RepaymentRecordsService {
     const nextMonthStart = new Date(year, monthIndex + 1, 1);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
-      adminId,
-      targetAdminId,
+      requestUserId,
+      targetUserId,
     );
     const where: any = {
       paid_at: { gte: monthStart, lt: nextMonthStart },

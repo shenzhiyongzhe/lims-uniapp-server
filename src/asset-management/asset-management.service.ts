@@ -18,19 +18,19 @@ export class AssetManagementService implements OnModuleInit {
     this.logger.log('Asset Management Module Initialized');
   }
 
-  async findCollectorAsset(adminId: number) {
+  async findCollectorAsset(userId: number) {
     const admin = await this.prisma.admin.findUnique({
-      where: { id: adminId },
+      where: { id: userId },
       select: { id: true, username: true, nickname: true },
     });
 
     const asset = await this.prisma.collectorAssetManagement.findUnique({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
     });
 
     const loanAccountIds =
-      await this.accessScopeService.getLoanAccountIdsByAdminRole(
-        adminId,
+      await this.accessScopeService.getLoanAccountIdsByUserRole(
+        userId,
         'collector',
       );
     const { total_handling_fee, total_fines } =
@@ -43,7 +43,7 @@ export class AssetManagementService implements OnModuleInit {
 
     return {
       id: asset?.id || 0,
-      admin_id: adminId,
+      admin_id: userId,
       admin,
       remaining_handling_fee: total_handling_fee - reduced_handling_fee,
       remaining_fines: total_fines - reduced_fines,
@@ -60,19 +60,19 @@ export class AssetManagementService implements OnModuleInit {
     return Promise.all(collectors.map((c) => this.findCollectorAsset(c.id)));
   }
 
-  async findRiskControllerAsset(adminId: number) {
+  async findRiskControllerAsset(userId: number) {
     const admin = await this.prisma.admin.findUnique({
-      where: { id: adminId },
+      where: { id: userId },
       select: { id: true, username: true, nickname: true },
     });
 
     const asset = await this.prisma.riskControllerAssetManagement.findUnique({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
     });
 
     const loanAccountIds =
-      await this.accessScopeService.getLoanAccountIdsByAdminRole(
-        adminId,
+      await this.accessScopeService.getLoanAccountIdsByUserRole(
+        userId,
         'risk_controller',
       );
     let total_amount = 0;
@@ -101,7 +101,7 @@ export class AssetManagementService implements OnModuleInit {
 
     return {
       id: asset?.id || 0,
-      admin_id: adminId,
+      admin_id: userId,
       admin,
       remaining_amount: total_amount - reduced_amount,
       reduced_amount,
@@ -118,15 +118,15 @@ export class AssetManagementService implements OnModuleInit {
     );
   }
 
-  async updateCollectorAsset(adminId: number, dto: UpdateCollectorAssetDto) {
+  async updateCollectorAsset(userId: number, dto: UpdateCollectorAssetDto) {
     await this.prisma.collectorAssetManagement.upsert({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
       update: {},
-      create: { admin_id: adminId },
+      create: { admin_id: userId },
     });
 
     return this.prisma.collectorAssetManagement.update({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
       data: {
         reduced_handling_fee: dto.reduced_handling_fee,
         reduced_fines: dto.reduced_fines,
@@ -135,17 +135,17 @@ export class AssetManagementService implements OnModuleInit {
   }
 
   async updateRiskControllerAsset(
-    adminId: number,
+    userId: number,
     dto: UpdateRiskControllerAssetDto,
   ) {
     await this.prisma.riskControllerAssetManagement.upsert({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
       update: {},
-      create: { admin_id: adminId },
+      create: { admin_id: userId },
     });
 
     return this.prisma.riskControllerAssetManagement.update({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
       data: {
         reduced_amount: dto.reduced_amount,
       },
@@ -153,25 +153,25 @@ export class AssetManagementService implements OnModuleInit {
   }
 
   async updateCollectorAssetFromLoanAccount(
-    adminId: number,
+    userId: number,
     _loanAccount: LoanAccount,
   ): Promise<void> {
     const loanAccountIds =
-      await this.accessScopeService.getLoanAccountIdsByAdminRole(
-        adminId,
+      await this.accessScopeService.getLoanAccountIdsByUserRole(
+        userId,
         'collector',
       );
     const { total_handling_fee, total_fines } =
       await this.calculateTotalAmounts(loanAccountIds);
 
     await this.prisma.collectorAssetManagement.upsert({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
       update: {
         total_handling_fee,
         total_fines,
       },
       create: {
-        admin_id: adminId,
+        admin_id: userId,
         total_handling_fee,
         total_fines,
       },
@@ -179,12 +179,12 @@ export class AssetManagementService implements OnModuleInit {
   }
 
   async updateRiskControllerAssetFromLoanAccount(
-    adminId: number,
+    userId: number,
     _loanAccount: LoanAccount,
   ): Promise<void> {
     const loanAccountIds =
-      await this.accessScopeService.getLoanAccountIdsByAdminRole(
-        adminId,
+      await this.accessScopeService.getLoanAccountIdsByUserRole(
+        userId,
         'risk_controller',
       );
     let total_amount = 0;
@@ -212,10 +212,10 @@ export class AssetManagementService implements OnModuleInit {
     }
 
     await this.prisma.riskControllerAssetManagement.upsert({
-      where: { admin_id: adminId },
+      where: { admin_id: userId },
       update: { total_amount },
       create: {
-        admin_id: adminId,
+        admin_id: userId,
         total_amount,
       },
     });

@@ -3,11 +3,11 @@ import { ManagementRoles } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type ResolvedDataScope = {
-  requestAdminId: number;
-  targetAdminId?: number;
-  isRequesterAdmin: boolean;
+  requestUserId: number;
+  targetUserId?: number;
+  isRequesterPlatformAdminRole: boolean;
   isAllAccessible: boolean;
-  scopedAdminId?: number;
+  scopedUserId?: number;
   loanAccountIds: number[];
 };
 
@@ -16,11 +16,11 @@ export class AccessScopeService {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolveLoanAccountScope(
-    requestAdminId: number,
-    targetAdminId?: number,
+    requestUserId: number,
+    targetUserId?: number,
   ): Promise<ResolvedDataScope> {
     const requester = await this.prisma.admin.findUnique({
-      where: { id: requestAdminId },
+      where: { id: requestUserId },
       select: { id: true, role: true },
     });
 
@@ -28,38 +28,39 @@ export class AccessScopeService {
       throw new Error('管理员不存在');
     }
 
-    const isRequesterAdmin = requester.role === ManagementRoles.ADMIN;
-    const canViewAll = isRequesterAdmin && !targetAdminId;
-    const scopedAdminId = isRequesterAdmin
-      ? targetAdminId || undefined
-      : requestAdminId;
+    const isRequesterPlatformAdminRole =
+      requester.role === ManagementRoles.ADMIN;
+    const canViewAll = isRequesterPlatformAdminRole && !targetUserId;
+    const scopedUserId = isRequesterPlatformAdminRole
+      ? targetUserId || undefined
+      : requestUserId;
 
     let loanAccountIds: number[] = [];
-    if (!canViewAll && scopedAdminId) {
-      loanAccountIds = await this.getLoanAccountIdsByAdminId(scopedAdminId);
+    if (!canViewAll && scopedUserId) {
+      loanAccountIds = await this.getLoanAccountIdsByUserId(scopedUserId);
     }
 
     return {
-      requestAdminId,
-      targetAdminId,
-      isRequesterAdmin,
+      requestUserId,
+      targetUserId,
+      isRequesterPlatformAdminRole,
       isAllAccessible: canViewAll,
-      scopedAdminId,
+      scopedUserId,
       loanAccountIds,
     };
   }
 
-  async getLoanAccountIdsByAdminId(adminId: number): Promise<number[]> {
-    return this.getLoanAccountIdsByAdminRole(adminId);
+  async getLoanAccountIdsByUserId(userId: number): Promise<number[]> {
+    return this.getLoanAccountIdsByUserRole(userId);
   }
 
-  async getLoanAccountIdsByAdminRole(
-    adminId: number,
+  async getLoanAccountIdsByUserRole(
+    userId: number,
     roleType?: 'collector' | 'risk_controller',
   ): Promise<number[]> {
     const roles = await this.prisma.loanAccountRole.findMany({
       where: {
-        admin_id: adminId,
+        admin_id: userId,
         ...(roleType ? { role_type: roleType } : {}),
       },
       select: { loan_account_id: true },

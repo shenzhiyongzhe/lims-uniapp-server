@@ -48,23 +48,25 @@ export class LoanAccountsController {
     @Query('page') page: string,
     @Query('pageSize') pageSize: string,
     @Query('status') status?: string,
-    @Query('adminId') adminId?: string,
+    @Query('targetUserId') targetUserId?: string,
+    @Query('adminId') legacyAdminId?: string,
     @Query('keyword') keyword?: string,
     @Query('username') username?: string,
     @Query('listFilter') listFilter?: string,
-    @CurrentUser() user?: { id: number; role: string },
+    @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findGroupedByUser(
       {
         page: parseInt(page, 10) || 1,
         pageSize: parseInt(pageSize, 10) || 20,
         status,
-        adminId,
+        targetUserId,
+        adminId: legacyAdminId,
         keyword,
         username,
         listFilter,
       },
-      user,
+      currentUser,
     );
     return ResponseHelper.success(result, '获取贷款记录成功');
   }
@@ -72,16 +74,24 @@ export class LoanAccountsController {
   @UseGuards(AuthGuard)
   @Get('list-stats')
   async getListStats(
-    @Query('adminId') adminId?: string,
+    @Query('targetUserId') targetUserId?: string,
+    @Query('adminId') legacyAdminId?: string,
     @Query('username') username?: string,
     @Query('listFilter') listFilter?: string,
     @Query('status') status?: string,
     @Query('keyword') keyword?: string,
-    @CurrentUser() user?: { id: number; role: string },
+    @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findListStats(
-      { adminId, username, listFilter, status, keyword },
-      user,
+      {
+        targetUserId,
+        adminId: legacyAdminId,
+        username,
+        listFilter,
+        status,
+        keyword,
+      },
+      currentUser,
     );
     return ResponseHelper.success(result, '获取统计数据成功');
   }

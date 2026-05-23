@@ -971,6 +971,7 @@ export class LoanAccountsService {
   private async buildListWhereConditions(
     query: {
       status?: string;
+      targetUserId?: string;
       adminId?: string;
       keyword?: string;
       username?: string;
@@ -978,27 +979,32 @@ export class LoanAccountsService {
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { status, adminId, keyword, username, listFilter } = query;
+    const { status, targetUserId, adminId, keyword, username, listFilter } =
+      query;
 
     const baseAndParts: Record<string, unknown>[] = [];
     if (status) {
       baseAndParts.push({ status });
     }
 
-    const adminIdNum = adminId ? parseInt(adminId, 10) : NaN;
+    const targetUserIdNum = targetUserId
+      ? parseInt(targetUserId, 10)
+      : adminId
+        ? parseInt(adminId, 10)
+        : NaN;
     if (currentUser?.id) {
       const scope = await this.accessScopeService.resolveLoanAccountScope(
         currentUser.id,
-        Number.isNaN(adminIdNum) ? undefined : adminIdNum,
+        Number.isNaN(targetUserIdNum) ? undefined : targetUserIdNum,
       );
       if (!scope.isAllAccessible) {
         baseAndParts.push({
           id: { in: scope.loanAccountIds },
         });
       }
-    } else if (!Number.isNaN(adminIdNum)) {
+    } else if (!Number.isNaN(targetUserIdNum)) {
       baseAndParts.push({
-        loanAccountRoles: { some: { admin_id: adminIdNum } },
+        loanAccountRoles: { some: { admin_id: targetUserIdNum } },
       });
     }
 
@@ -1125,6 +1131,7 @@ export class LoanAccountsService {
       page: number;
       pageSize: number;
       status?: string;
+      targetUserId?: string;
       adminId?: string;
       keyword?: string;
       username?: string;
@@ -1274,6 +1281,7 @@ export class LoanAccountsService {
   async findListStats(
     query: {
       status?: string;
+      targetUserId?: string;
       adminId?: string;
       keyword?: string;
       username?: string;

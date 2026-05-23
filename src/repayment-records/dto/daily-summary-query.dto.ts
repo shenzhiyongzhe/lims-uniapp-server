@@ -5,6 +5,12 @@ export class DailySummaryQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
+  targetUserId?: number;
+
+  // backward compatibility
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
   adminId?: number;
 
   @IsString()

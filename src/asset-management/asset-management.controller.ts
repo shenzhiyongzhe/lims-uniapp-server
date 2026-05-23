@@ -28,45 +28,45 @@ export class AssetManagementController {
     return ResponseHelper.success(data, '获取所有风控人资产成功');
   }
 
-  @Get('collector/:adminId')
-  async getCollectorAsset(@Param('adminId') adminId: string) {
+  @Get('collector/:userId')
+  async getCollectorAsset(@Param('userId') userId: string) {
     const data = await this.assetManagementService.findCollectorAsset(
-      parseInt(adminId, 10),
+      parseInt(userId, 10),
     );
     return ResponseHelper.success(data, '获取负责人资产成功');
   }
 
-  @Get('risk-controller/:adminId')
-  async getRiskControllerAsset(@Param('adminId') adminId: string) {
+  @Get('risk-controller/:userId')
+  async getRiskControllerAsset(@Param('userId') userId: string) {
     const data = await this.assetManagementService.findRiskControllerAsset(
-      parseInt(adminId, 10),
+      parseInt(userId, 10),
     );
     return ResponseHelper.success(data, '获取风控人资产成功');
   }
 
-  @Put('collector/:adminId')
+  @Put('collector/:userId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN)
   async updateCollectorAsset(
-    @Param('adminId') adminId: string,
+    @Param('userId') userId: string,
     @Body() dto: UpdateCollectorAssetDto,
   ) {
     const data = await this.assetManagementService.updateCollectorAsset(
-      parseInt(adminId, 10),
+      parseInt(userId, 10),
       dto,
     );
     return ResponseHelper.success(data, '更新负责人资产成功');
   }
 
-  @Put('risk-controller/:adminId')
+  @Put('risk-controller/:userId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN)
   async updateRiskControllerAsset(
-    @Param('adminId') adminId: string,
+    @Param('userId') userId: string,
     @Body() dto: UpdateRiskControllerAssetDto,
   ) {
     const data = await this.assetManagementService.updateRiskControllerAsset(
-      parseInt(adminId, 10),
+      parseInt(userId, 10),
       dto,
     );
     return ResponseHelper.success(data, '更新风控人资产成功');
