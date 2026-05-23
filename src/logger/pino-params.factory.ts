@@ -18,9 +18,7 @@ function canResolvePinoPretty(): boolean {
 
 function resolveNodeEnv(config: ConfigService): string {
   return (
-    config.get<string>('NODE_ENV') ??
-    process.env.NODE_ENV ??
-    'development'
+    config.get<string>('NODE_ENV') ?? process.env.NODE_ENV ?? 'development'
   );
 }
 
@@ -35,10 +33,7 @@ const PINO_BUILTIN_LEVELS = new Set([
   'silent',
 ]);
 
-function normalizeLogLevel(
-  raw: string | undefined,
-  nodeEnv: string,
-): string {
+function normalizeLogLevel(raw: string | undefined, nodeEnv: string): string {
   const fallback = nodeEnv === 'production' ? 'info' : 'debug';
   if (raw == null || typeof raw !== 'string') return fallback;
   const s = raw.trim().toLowerCase();
@@ -91,8 +86,7 @@ export function buildPinoParams(config: ConfigService): Params {
             return false;
           },
         },
-    customReceivedMessage: (req) =>
-      `request_in ${req.method} ${req.url ?? ''}`,
+    customReceivedMessage: (req) => `request_in ${req.method} ${req.url ?? ''}`,
     customSuccessMessage: (req, res, responseTime) =>
       `request_out ${req.method} ${req.url ?? ''} status=${res.statusCode} timeMs=${responseTime}`,
     customErrorMessage: (req, res, err) =>

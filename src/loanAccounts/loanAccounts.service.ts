@@ -12,6 +12,7 @@ import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto
 import { LoanPredictionService } from '../loan-prediction/loan-prediction.service';
 import { AssetManagementService } from '../asset-management/asset-management.service';
 import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
+import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
 export class LoanAccountsService {
@@ -19,6 +20,7 @@ export class LoanAccountsService {
     private readonly prisma: PrismaService,
     private readonly loanPredictionService: LoanPredictionService,
     private readonly assetManagementService: AssetManagementService,
+    private readonly accessScopeService: AccessScopeService,
   ) {}
 
   private async logOperation(
@@ -431,8 +433,7 @@ export class LoanAccountsService {
         updateData.repaid_periods = data.repaid_periods;
       if (data.daily_repayment !== undefined)
         updateData.daily_repayment = data.daily_repayment;
-      if (data.status !== undefined)
-        updateData.status = data.status as LoanAccountStatus;
+      if (data.status !== undefined) updateData.status = data.status;
       if (data.company_cost !== undefined)
         updateData.company_cost = data.company_cost;
       if (data.apply_times !== undefined)
@@ -967,7 +968,7 @@ export class LoanAccountsService {
     });
   }
 
-  private buildListWhereConditions(
+  private async buildListWhereConditions(
     query: {
       status?: string;
       adminId?: string;
@@ -985,17 +986,19 @@ export class LoanAccountsService {
     }
 
     const adminIdNum = adminId ? parseInt(adminId, 10) : NaN;
-    if (!Number.isNaN(adminIdNum)) {
+    if (currentUser?.id) {
+      const scope = await this.accessScopeService.resolveLoanAccountScope(
+        currentUser.id,
+        Number.isNaN(adminIdNum) ? undefined : adminIdNum,
+      );
+      if (!scope.isAllAccessible) {
+        baseAndParts.push({
+          id: { in: scope.loanAccountIds },
+        });
+      }
+    } else if (!Number.isNaN(adminIdNum)) {
       baseAndParts.push({
         loanAccountRoles: { some: { admin_id: adminIdNum } },
-      });
-    } else if (
-      currentUser &&
-      (currentUser.role === 'COLLECTOR' ||
-        currentUser.role === 'RISK_CONTROLLER')
-    ) {
-      baseAndParts.push({
-        loanAccountRoles: { some: { admin_id: currentUser.id } },
       });
     }
 
@@ -1139,7 +1142,7 @@ export class LoanAccountsService {
       whereOverdueLoans,
       scheduleWhereTodayPaid,
       scheduleWhereTodayUnpaid,
-    } = this.buildListWhereConditions(query, currentUser);
+    } = await this.buildListWhereConditions(query, currentUser);
 
     const loanAccountInclude = {
       user: true,
@@ -1194,7 +1197,7 @@ export class LoanAccountsService {
       data = rows.map((loan) => ({
         ...loan,
         __rowKey: String(loan.id),
-      })) as unknown as Array<Record<string, unknown>>;
+      }));
       total = totalCount;
     } else if (tab === 'overdue') {
       const [loanRows, totalCount] = await Promise.all([
@@ -1226,7 +1229,7 @@ export class LoanAccountsService {
           ...rest,
           overdueScheduleCount: _count.repaymentSchedules,
           __rowKey: String(loan.id),
-        } as unknown as Record<string, unknown>;
+        };
       });
       total = totalCount;
     } else {
@@ -1250,7 +1253,7 @@ export class LoanAccountsService {
           ...loan,
           repaymentSchedules: [sch],
           __rowKey: `${loan.id}-${sch.id}`,
-        } as unknown as Record<string, unknown>;
+        };
       });
       total = totalCount;
     }
@@ -1279,7 +1282,7 @@ export class LoanAccountsService {
     currentUser?: { id: number; role: string },
   ) {
     const { baseAndParts, todayShanghai, yesterdayShanghai, scheduleSumWhere } =
-      this.buildListWhereConditions(query, currentUser);
+      await this.buildListWhereConditions(query, currentUser);
 
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 

@@ -54,7 +54,9 @@ export class OverdueSweepService implements OnApplicationBootstrap {
     const scheduleIdsWithRecord = new Set(
       existingOverdueRecords.map((r) => r.schedule_id),
     );
-    const rowsNeedNewRecord = rows.filter((r) => !scheduleIdsWithRecord.has(r.id));
+    const rowsNeedNewRecord = rows.filter(
+      (r) => !scheduleIdsWithRecord.has(r.id),
+    );
 
     await this.prisma.$transaction(async (tx) => {
       await tx.repaymentSchedule.updateMany({

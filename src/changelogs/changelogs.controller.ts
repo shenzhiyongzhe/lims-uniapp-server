@@ -14,9 +14,7 @@ export class ChangelogsController {
   constructor(private readonly changelogsService: ChangelogsService) {}
 
   @Get('recent')
-  async recent(
-    @Query('limit') limit?: string,
-  ): Promise<ApiResponseDto> {
+  async recent(@Query('limit') limit?: string): Promise<ApiResponseDto> {
     const items = await this.changelogsService.findRecent(
       limit ? parseInt(limit, 10) : 10,
     );

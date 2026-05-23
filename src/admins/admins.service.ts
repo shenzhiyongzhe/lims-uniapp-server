@@ -40,8 +40,7 @@ export class AdminsService {
 
     let normalizedUsername: string | null | undefined;
     if (usernameProvided) {
-      const s =
-        dto.username == null ? '' : String(dto.username).trim();
+      const s = dto.username == null ? '' : String(dto.username).trim();
       normalizedUsername = s.length === 0 ? null : s;
       if (normalizedUsername && normalizedUsername.length > 10) {
         throw new BadRequestException('用户名最多 10 个字符');

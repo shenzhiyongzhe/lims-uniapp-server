@@ -1,4 +1,10 @@
-import { IsDateString, IsEnum, IsNumber, IsOptional, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  Min,
+} from 'class-validator';
 import { LoanAccountStatus } from '@prisma/client';
 
 export class UpdateLoanAccountStatusDto {

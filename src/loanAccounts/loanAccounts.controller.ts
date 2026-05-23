@@ -166,9 +166,7 @@ export class LoanAccountsController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN)
   @Delete(':id')
-  async remove(
-    @Param('id', ParseIntPipe) id: number,
-  ): Promise<ApiResponseDto> {
+  async remove(@Param('id', ParseIntPipe) id: number): Promise<ApiResponseDto> {
     try {
       await this.loanAccountsService.remove(id);
       return ResponseHelper.success(null, '删除贷款记录成功');
@@ -176,10 +174,7 @@ export class LoanAccountsController {
       if (error instanceof NotFoundException) {
         return ResponseHelper.error(error.message, 404);
       }
-      return ResponseHelper.error(
-        `删除贷款记录失败: ${error.message}`,
-        500,
-      );
+      return ResponseHelper.error(`删除贷款记录失败: ${error.message}`, 500);
     }
   }
 }

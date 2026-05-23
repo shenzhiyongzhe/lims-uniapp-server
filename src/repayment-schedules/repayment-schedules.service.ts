@@ -1,9 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  RepaymentSchedule,
-  RepaymentScheduleStatus,
-} from '@prisma/client';
+import { RepaymentSchedule, RepaymentScheduleStatus } from '@prisma/client';
 
 type ScheduleOperationType = 'collect' | 'edit';
 
@@ -34,8 +31,9 @@ export class RepaymentSchedulesService {
     findMany: (args: object) => Promise<OperationLogRow[]>;
     create: (args: { data: object }) => Promise<unknown>;
   } {
-    return (this.prisma as unknown as { repaymentScheduleOperationLog: unknown })
-      .repaymentScheduleOperationLog as {
+    return (
+      this.prisma as unknown as { repaymentScheduleOperationLog: unknown }
+    ).repaymentScheduleOperationLog as {
       findMany: (args: object) => Promise<OperationLogRow[]>;
       create: (args: { data: object }) => Promise<unknown>;
     };
@@ -208,7 +206,11 @@ export class RepaymentSchedulesService {
       updatePayload.paid_at = new Date();
 
       await (
-        tx as unknown as { repaymentScheduleOperationLog: { create: (args: { data: object }) => Promise<unknown> } }
+        tx as unknown as {
+          repaymentScheduleOperationLog: {
+            create: (args: { data: object }) => Promise<unknown>;
+          };
+        }
       ).repaymentScheduleOperationLog.create({
         data: {
           schedule_id: data.id!,
@@ -249,7 +251,9 @@ export class RepaymentSchedulesService {
       });
 
       // 计算 repaid_periods：状态为 paid 的计划数量
-      const repaidPeriods = allSchedules.filter(s => s.status === 'paid').length;
+      const repaidPeriods = allSchedules.filter(
+        (s) => s.status === 'paid',
+      ).length;
 
       // 汇总所有还款计划的 paid_capital 和 paid_interest
       const totalPaidCapital = allSchedules.reduce(

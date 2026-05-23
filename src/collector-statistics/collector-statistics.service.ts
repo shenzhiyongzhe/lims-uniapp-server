@@ -12,7 +12,11 @@ export class CollectorStatisticsService {
 
   async getTopStatistics() {
     const allLoanAccounts = await this.prisma.loanAccount.findMany({
-      select: { handling_fee: true, receiving_amount: true, company_cost: true },
+      select: {
+        handling_fee: true,
+        receiving_amount: true,
+        company_cost: true,
+      },
     });
 
     const riskControllerTotalAmount = allLoanAccounts.reduce(

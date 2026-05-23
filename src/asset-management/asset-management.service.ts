@@ -3,6 +3,7 @@ import { LoanAccount } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
 import { UpdateRiskControllerAssetDto } from './dto/update-risk-controller-asset.dto';
+import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
 export class AssetManagementService implements OnModuleInit {
@@ -10,6 +11,7 @@ export class AssetManagementService implements OnModuleInit {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly accessScopeService: AccessScopeService,
   ) {}
 
   async onModuleInit() {
@@ -26,10 +28,17 @@ export class AssetManagementService implements OnModuleInit {
       where: { admin_id: adminId },
     });
 
-    const loanAccountIds = await this.getCollectorLoanAccountIds(adminId);
-    const { total_handling_fee, total_fines } = await this.calculateTotalAmounts(loanAccountIds);
+    const loanAccountIds =
+      await this.accessScopeService.getLoanAccountIdsByAdminRole(
+        adminId,
+        'collector',
+      );
+    const { total_handling_fee, total_fines } =
+      await this.calculateTotalAmounts(loanAccountIds);
 
-    const reduced_handling_fee = asset ? Number(asset.reduced_handling_fee || 0) : 0;
+    const reduced_handling_fee = asset
+      ? Number(asset.reduced_handling_fee || 0)
+      : 0;
     const reduced_fines = asset ? Number(asset.reduced_fines || 0) : 0;
 
     return {
@@ -48,7 +57,7 @@ export class AssetManagementService implements OnModuleInit {
       where: { role: 'COLLECTOR' },
       select: { id: true },
     });
-    return Promise.all(collectors.map(c => this.findCollectorAsset(c.id)));
+    return Promise.all(collectors.map((c) => this.findCollectorAsset(c.id)));
   }
 
   async findRiskControllerAsset(adminId: number) {
@@ -61,22 +70,29 @@ export class AssetManagementService implements OnModuleInit {
       where: { admin_id: adminId },
     });
 
-    const roles = await this.prisma.loanAccountRole.findMany({
-      where: { admin_id: adminId, role_type: 'risk_controller' },
-      select: { loan_account_id: true },
-    });
-
-    const loanAccountIds = roles.map((r) => r.loan_account_id);
+    const loanAccountIds =
+      await this.accessScopeService.getLoanAccountIdsByAdminRole(
+        adminId,
+        'risk_controller',
+      );
     let total_amount = 0;
 
     if (loanAccountIds.length > 0) {
       const allLoanAccounts = await this.prisma.loanAccount.findMany({
         where: { id: { in: loanAccountIds } },
-        select: { handling_fee: true, receiving_amount: true, company_cost: true },
+        select: {
+          handling_fee: true,
+          receiving_amount: true,
+          company_cost: true,
+        },
       });
 
       total_amount = allLoanAccounts.reduce(
-        (sum, acc) => sum + Number(acc.handling_fee || 0) + Number(acc.receiving_amount || 0) - Number(acc.company_cost || 0),
+        (sum, acc) =>
+          sum +
+          Number(acc.handling_fee || 0) +
+          Number(acc.receiving_amount || 0) -
+          Number(acc.company_cost || 0),
         0,
       );
     }
@@ -97,7 +113,9 @@ export class AssetManagementService implements OnModuleInit {
       where: { role: 'RISK_CONTROLLER' },
       select: { id: true },
     });
-    return Promise.all(riskControllers.map(rc => this.findRiskControllerAsset(rc.id)));
+    return Promise.all(
+      riskControllers.map((rc) => this.findRiskControllerAsset(rc.id)),
+    );
   }
 
   async updateCollectorAsset(adminId: number, dto: UpdateCollectorAssetDto) {
@@ -116,7 +134,10 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
-  async updateRiskControllerAsset(adminId: number, dto: UpdateRiskControllerAssetDto) {
+  async updateRiskControllerAsset(
+    adminId: number,
+    dto: UpdateRiskControllerAssetDto,
+  ) {
     await this.prisma.riskControllerAssetManagement.upsert({
       where: { admin_id: adminId },
       update: {},
@@ -135,7 +156,11 @@ export class AssetManagementService implements OnModuleInit {
     adminId: number,
     _loanAccount: LoanAccount,
   ): Promise<void> {
-    const loanAccountIds = await this.getCollectorLoanAccountIds(adminId);
+    const loanAccountIds =
+      await this.accessScopeService.getLoanAccountIdsByAdminRole(
+        adminId,
+        'collector',
+      );
     const { total_handling_fee, total_fines } =
       await this.calculateTotalAmounts(loanAccountIds);
 
@@ -157,17 +182,11 @@ export class AssetManagementService implements OnModuleInit {
     adminId: number,
     _loanAccount: LoanAccount,
   ): Promise<void> {
-    const roles = await this.prisma.loanAccountRole.findMany({
-      where: {
-        admin_id: adminId,
-        role_type: 'risk_controller',
-      },
-      select: {
-        loan_account_id: true,
-      },
-    });
-
-    const loanAccountIds = roles.map((r) => r.loan_account_id);
+    const loanAccountIds =
+      await this.accessScopeService.getLoanAccountIdsByAdminRole(
+        adminId,
+        'risk_controller',
+      );
     let total_amount = 0;
 
     if (loanAccountIds.length > 0) {
@@ -202,16 +221,9 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
-  private async getCollectorLoanAccountIds(adminId: number): Promise<number[]> {
-    const roles = await this.prisma.loanAccountRole.findMany({
-      where: { admin_id: adminId, role_type: 'collector' },
-      select: { loan_account_id: true },
-    });
-    return roles.map((r) => r.loan_account_id);
-  }
-
   private async calculateTotalAmounts(loanAccountIds: number[]) {
-    if (loanAccountIds.length === 0) return { total_handling_fee: 0, total_fines: 0 };
+    if (loanAccountIds.length === 0)
+      return { total_handling_fee: 0, total_fines: 0 };
 
     const accounts = await this.prisma.loanAccount.findMany({
       where: { id: { in: loanAccountIds } },
@@ -219,8 +231,14 @@ export class AssetManagementService implements OnModuleInit {
     });
 
     return {
-      total_handling_fee: accounts.reduce((sum, a) => sum + Number(a.handling_fee || 0), 0),
-      total_fines: accounts.reduce((sum, a) => sum + Number(a.total_fines || 0), 0),
+      total_handling_fee: accounts.reduce(
+        (sum, a) => sum + Number(a.handling_fee || 0),
+        0,
+      ),
+      total_fines: accounts.reduce(
+        (sum, a) => sum + Number(a.total_fines || 0),
+        0,
+      ),
     };
   }
 }

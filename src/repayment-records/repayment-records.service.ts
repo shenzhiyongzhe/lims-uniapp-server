@@ -4,7 +4,11 @@ import { RepaymentRecordResponseDto } from './dto/repayment-record-response.dto'
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { CollectorSummaryQueryDto } from './dto/collector-summary-query.dto';
 import { DailySummaryQueryDto } from './dto/daily-summary-query.dto';
-import { getShanghaiYmdParts, utcMidnightFromYmd } from '../common/business-date';
+import {
+  getShanghaiYmdParts,
+  utcMidnightFromYmd,
+} from '../common/business-date';
+import { AccessScopeService } from '../access-scope/access-scope.service';
 
 type DailyLoanBalanceItemType =
   | 'YESTERDAY_DUE_LOAN'
@@ -38,7 +42,10 @@ type DailyLoanBalanceResult = {
 
 @Injectable()
 export class RepaymentRecordsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessScopeService: AccessScopeService,
+  ) {}
 
   async findAllWithPagination(
     query: PaginationQueryDto,
@@ -57,13 +64,25 @@ export class RepaymentRecordsService {
       username,
     } = query;
     const skip = (page - 1) * pageSize;
-    const loanIds = await this.getScopedLoanIds(adminId, riskControllerId, collectorId);
+    const scope = await this.accessScopeService.resolveLoanAccountScope(
+      adminId,
+      scopeCollectorAdminId,
+    );
 
-    let where: any = { loan_id: { in: loanIds } };
+    const where: any = {};
+    if (!scope.isAllAccessible) {
+      where.loan_id = { in: scope.loanAccountIds };
+    }
     if (userId) where.user_id = userId;
-    if (loanId) where.loan_id = loanId;
-    if (scopeCollectorAdminId)
-      where.actual_collector_id = scopeCollectorAdminId;
+    if (loanId) {
+      where.AND = [...(where.AND || []), { loan_id: loanId }];
+    }
+    if (riskControllerId || collectorId) {
+      where.loan_account = {};
+      if (riskControllerId)
+        where.loan_account.risk_controller_id = riskControllerId;
+      if (collectorId) where.loan_account.collector_id = collectorId;
+    }
     if (username) {
       where.user = {
         username: { contains: username.trim() },
@@ -106,8 +125,11 @@ export class RepaymentRecordsService {
     };
   }
 
-  async getCollectorSummary(query: CollectorSummaryQueryDto, adminId: number) {
-    const { adminId: scopeCollectorAdminId, targetDate } = query;
+  async getScopedRepaymentSummary(
+    query: CollectorSummaryQueryDto,
+    adminId: number,
+  ) {
+    const { adminId: targetAdminId, targetDate } = query;
     const now = targetDate ? new Date(targetDate) : new Date();
     const dayStart = this.getDayStart(now);
     const dayEnd = this.getDayEnd(now);
@@ -118,10 +140,13 @@ export class RepaymentRecordsService {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-    const loanIds = await this.getScopedLoanIds(adminId);
-    const baseWhere: any = { loan_id: { in: loanIds } };
-    if (scopeCollectorAdminId) {
-      baseWhere.actual_collector_id = scopeCollectorAdminId;
+    const scope = await this.accessScopeService.resolveLoanAccountScope(
+      adminId,
+      targetAdminId,
+    );
+    const baseWhere: any = {};
+    if (!scope.isAllAccessible) {
+      baseWhere.loan_id = { in: scope.loanAccountIds };
     }
 
     const [todayRecords, yesterdayRecords, monthRecords] = await Promise.all([
@@ -134,37 +159,49 @@ export class RepaymentRecordsService {
         select: { paid_amount: true },
       }),
       this.prisma.repaymentRecord.findMany({
-        where: { ...baseWhere, paid_at: { gte: monthStart, lt: nextMonthStart } },
+        where: {
+          ...baseWhere,
+          paid_at: { gte: monthStart, lt: nextMonthStart },
+        },
         select: { paid_amount: true },
       }),
     ]);
 
     const dailyLoanBalance = await this.getDailyLoanBalance({
-      adminId,
+      requestAdminId: adminId,
       targetDate: now,
-      scopeCollectorAdminId,
+      targetAdminId,
       persist: false,
     });
 
     return {
-      monthAmount: monthRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
-      yesterdayAmount: yesterdayRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
-      todayAmount: todayRecords.reduce((sum, r) => sum + Number(r.paid_amount ?? 0), 0),
+      monthAmount: monthRecords.reduce(
+        (sum, r) => sum + Number(r.paid_amount ?? 0),
+        0,
+      ),
+      yesterdayAmount: yesterdayRecords.reduce(
+        (sum, r) => sum + Number(r.paid_amount ?? 0),
+        0,
+      ),
+      todayAmount: todayRecords.reduce(
+        (sum, r) => sum + Number(r.paid_amount ?? 0),
+        0,
+      ),
       todayCount: new Set(todayRecords.map((r) => r.loan_id)).size,
       dailyLoanBalance,
     };
   }
 
   async getDailyLoanBalance(params: {
-    adminId: number;
+    requestAdminId: number;
     targetDate?: Date;
-    scopeCollectorAdminId?: number;
+    targetAdminId?: number;
     persist?: boolean;
   }): Promise<DailyLoanBalanceResult> {
     const {
-      adminId,
+      requestAdminId,
       targetDate = new Date(),
-      scopeCollectorAdminId,
+      targetAdminId,
       persist = false,
     } = params;
     const businessDate = this.getBusinessDate(targetDate);
@@ -174,22 +211,24 @@ export class RepaymentRecordsService {
     const dayStart = this.getDayStart(targetDate);
     const dayEnd = this.getDayEnd(targetDate);
 
-    const loanIds = await this.getScopedLoanIds(adminId);
+    const scope = await this.accessScopeService.resolveLoanAccountScope(
+      requestAdminId,
+      targetAdminId,
+    );
+    const loanIds = scope.loanAccountIds;
+    const loanIdFilter = scope.isAllAccessible ? undefined : { in: loanIds };
+    const scopedBalanceAdminId = scope.isAllAccessible
+      ? requestAdminId
+      : scope.scopedAdminId || requestAdminId;
     const loansWhere: any = {
-      id: { in: loanIds },
+      ...(loanIdFilter ? { id: loanIdFilter } : {}),
       due_start_date: yesterdayDate,
     };
-    if (scopeCollectorAdminId) {
-      loansWhere.collector_id = scopeCollectorAdminId;
-    }
 
     const repaymentWhere: any = {
-      loan_id: { in: loanIds },
+      ...(loanIdFilter ? { loan_id: loanIdFilter } : {}),
       paid_at: { gte: dayStart, lte: dayEnd },
     };
-    if (scopeCollectorAdminId) {
-      repaymentWhere.actual_collector_id = scopeCollectorAdminId;
-    }
 
     const [yesterdayLoans, todayRepayments, previousRow] = await Promise.all([
       this.prisma.loanAccount.findMany({
@@ -213,37 +252,42 @@ export class RepaymentRecordsService {
       }),
       this.prisma.collectorDailyLoanBalance.findFirst({
         where: {
-          admin_id: adminId,
+          admin_id: scopedBalanceAdminId,
           date: { lt: businessDate },
         },
         orderBy: { date: 'desc' },
       }),
     ]);
 
-    const yesterdayLoanItems: DailyLoanBalanceItem[] = yesterdayLoans.map((loan) => {
-      const amount = -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
-      return {
-        loanId: loan.id,
-        amount,
-        type: 'YESTERDAY_DUE_LOAN',
-        label: '借出',
-        isEarlySettlement: false,
-        remark: '',
-      };
-    });
+    const yesterdayLoanItems: DailyLoanBalanceItem[] = yesterdayLoans.map(
+      (loan) => {
+        const amount =
+          -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
+        return {
+          loanId: loan.id,
+          amount,
+          type: 'YESTERDAY_DUE_LOAN',
+          label: '借出',
+          isEarlySettlement: false,
+          remark: '',
+        };
+      },
+    );
 
-    const todayRepaidItems: DailyLoanBalanceItem[] = todayRepayments.map((row) => {
-      const remark = row.remark ?? '';
-      const isEarlySettlement = remark === '提前结清';
-      return {
-        loanId: row.loan_id,
-        amount: Number(row.paid_amount ?? 0),
-        type: isEarlySettlement ? 'TODAY_EARLY_SETTLEMENT' : 'TODAY_REPAY',
-        label: isEarlySettlement ? '清' : '',
-        isEarlySettlement,
-        remark,
-      };
-    });
+    const todayRepaidItems: DailyLoanBalanceItem[] = todayRepayments.map(
+      (row) => {
+        const remark = row.remark ?? '';
+        const isEarlySettlement = remark === '提前结清';
+        return {
+          loanId: row.loan_id,
+          amount: Number(row.paid_amount ?? 0),
+          type: isEarlySettlement ? 'TODAY_EARLY_SETTLEMENT' : 'TODAY_REPAY',
+          label: isEarlySettlement ? '清' : '',
+          isEarlySettlement,
+          remark,
+        };
+      },
+    );
 
     const previousTotal = Number(previousRow?.today_total ?? 0);
     const yesterdayLoanTotal = yesterdayLoanItems.reduce(
@@ -264,19 +308,25 @@ export class RepaymentRecordsService {
       yesterdayLoanItems,
       todayRepaidItems,
       expression: {
-        yesterdayLoans: this.formatExpression(yesterdayLoanItems, yesterdayLoanTotal),
-        todayRepayments: this.formatExpression(todayRepaidItems, todayRepaidTotal),
+        yesterdayLoans: this.formatExpression(
+          yesterdayLoanItems,
+          yesterdayLoanTotal,
+        ),
+        todayRepayments: this.formatExpression(
+          todayRepaidItems,
+          todayRepaidTotal,
+        ),
         summary: `${this.formatNumber(previousTotal)}${this.formatSigned(yesterdayLoanTotal)}${this.formatSigned(todayRepaidTotal)}=${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
-      adminId,
+      adminId: scopedBalanceAdminId,
     };
 
     if (persist) {
       await this.prisma.collectorDailyLoanBalance.upsert({
         where: {
           admin_id_date: {
-            admin_id: adminId,
+            admin_id: scopedBalanceAdminId,
             date: businessDate,
           },
         },
@@ -289,7 +339,7 @@ export class RepaymentRecordsService {
           today_repaid_items: result.todayRepaidItems as any,
         },
         create: {
-          admin_id: adminId,
+          admin_id: scopedBalanceAdminId,
           date: businessDate,
           previous_total: previousTotal,
           yesterday_loan_total: yesterdayLoanTotal,
@@ -309,27 +359,29 @@ export class RepaymentRecordsService {
     targetDate: Date,
   ): Promise<DailyLoanBalanceResult> {
     return this.getDailyLoanBalance({
-      adminId,
+      requestAdminId: adminId,
       targetDate,
       persist: true,
     });
   }
 
   async getDailySummary(query: DailySummaryQueryDto, adminId: number) {
-    const { adminId: scopeCollectorAdminId, month } = query;
+    const { adminId: targetAdminId, month } = query;
     const [yearStr, monthStr] = month.split('-');
     const year = Number(yearStr);
     const monthIndex = Number(monthStr) - 1;
     const monthStart = new Date(year, monthIndex, 1);
     const nextMonthStart = new Date(year, monthIndex + 1, 1);
 
-    const loanIds = await this.getScopedLoanIds(adminId);
+    const scope = await this.accessScopeService.resolveLoanAccountScope(
+      adminId,
+      targetAdminId,
+    );
     const where: any = {
-      loan_id: { in: loanIds },
       paid_at: { gte: monthStart, lt: nextMonthStart },
     };
-    if (scopeCollectorAdminId) {
-      where.actual_collector_id = scopeCollectorAdminId;
+    if (!scope.isAllAccessible) {
+      where.loan_id = { in: scope.loanAccountIds };
     }
 
     const rows = await this.prisma.repaymentRecord.findMany({
@@ -341,7 +393,10 @@ export class RepaymentRecordsService {
       orderBy: { paid_at: 'asc' },
     });
 
-    const dayMap = new Map<string, { totalPaidAmount: number; count: number }>();
+    const dayMap = new Map<
+      string,
+      { totalPaidAmount: number; count: number }
+    >();
     rows.forEach((row) => {
       const date = row.paid_at.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
@@ -357,35 +412,6 @@ export class RepaymentRecordsService {
         count: value.count,
       }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }
-
-  private async getScopedLoanIds(
-    adminId: number,
-    riskControllerId?: number,
-    collectorId?: number,
-  ): Promise<number[]> {
-    const admin = await this.prisma.admin.findUnique({
-      where: { id: adminId },
-      select: { id: true, role: true },
-    });
-
-    if (!admin) throw new Error('管理员不存在');
-
-    const loanAccountWhere: any = {};
-    if (admin.role === 'RISK_CONTROLLER') {
-      loanAccountWhere.risk_controller_id = admin.id;
-      if (collectorId) loanAccountWhere.collector_id = collectorId;
-    } else if (admin.role === 'COLLECTOR') {
-      loanAccountWhere.collector_id = admin.id;
-      if (riskControllerId) loanAccountWhere.risk_controller_id = riskControllerId;
-    }
-
-    const loanAccount = await this.prisma.loanAccount.findMany({
-      where: loanAccountWhere,
-      select: { id: true },
-    });
-
-    return loanAccount.map((la) => la.id);
   }
 
   private getDayStart(date: Date) {
@@ -414,7 +440,10 @@ export class RepaymentRecordsService {
     return this.formatNumber(value);
   }
 
-  private formatExpression(items: DailyLoanBalanceItem[], total: number): string {
+  private formatExpression(
+    items: DailyLoanBalanceItem[],
+    total: number,
+  ): string {
     if (!items.length) {
       return `0=${this.formatNumber(total)}`;
     }

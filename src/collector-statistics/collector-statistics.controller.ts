@@ -20,8 +20,7 @@ export class CollectorStatisticsController {
 
   @Get('statistics')
   async getTopStatistics() {
-    const statistics =
-      await this.collectorStatisticsService.getTopStatistics();
+    const statistics = await this.collectorStatisticsService.getTopStatistics();
     return ResponseHelper.success(statistics, '获取统计数据成功');
   }
 

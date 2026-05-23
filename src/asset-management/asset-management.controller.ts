@@ -11,7 +11,9 @@ import { UpdateRiskControllerAssetDto } from './dto/update-risk-controller-asset
 @Controller('asset-management')
 @UseGuards(AuthGuard)
 export class AssetManagementController {
-  constructor(private readonly assetManagementService: AssetManagementService) {}
+  constructor(
+    private readonly assetManagementService: AssetManagementService,
+  ) {}
 
   @Get('collector')
   async getAllCollectorAssets() {
@@ -21,35 +23,52 @@ export class AssetManagementController {
 
   @Get('risk-controller')
   async getAllRiskControllerAssets() {
-    const data = await this.assetManagementService.findAllRiskControllerAssets();
+    const data =
+      await this.assetManagementService.findAllRiskControllerAssets();
     return ResponseHelper.success(data, '获取所有风控人资产成功');
   }
 
   @Get('collector/:adminId')
   async getCollectorAsset(@Param('adminId') adminId: string) {
-    const data = await this.assetManagementService.findCollectorAsset(parseInt(adminId, 10));
+    const data = await this.assetManagementService.findCollectorAsset(
+      parseInt(adminId, 10),
+    );
     return ResponseHelper.success(data, '获取负责人资产成功');
   }
 
   @Get('risk-controller/:adminId')
   async getRiskControllerAsset(@Param('adminId') adminId: string) {
-    const data = await this.assetManagementService.findRiskControllerAsset(parseInt(adminId, 10));
+    const data = await this.assetManagementService.findRiskControllerAsset(
+      parseInt(adminId, 10),
+    );
     return ResponseHelper.success(data, '获取风控人资产成功');
   }
 
   @Put('collector/:adminId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN)
-  async updateCollectorAsset(@Param('adminId') adminId: string, @Body() dto: UpdateCollectorAssetDto) {
-    const data = await this.assetManagementService.updateCollectorAsset(parseInt(adminId, 10), dto);
+  async updateCollectorAsset(
+    @Param('adminId') adminId: string,
+    @Body() dto: UpdateCollectorAssetDto,
+  ) {
+    const data = await this.assetManagementService.updateCollectorAsset(
+      parseInt(adminId, 10),
+      dto,
+    );
     return ResponseHelper.success(data, '更新负责人资产成功');
   }
 
   @Put('risk-controller/:adminId')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.ADMIN)
-  async updateRiskControllerAsset(@Param('adminId') adminId: string, @Body() dto: UpdateRiskControllerAssetDto) {
-    const data = await this.assetManagementService.updateRiskControllerAsset(parseInt(adminId, 10), dto);
+  async updateRiskControllerAsset(
+    @Param('adminId') adminId: string,
+    @Body() dto: UpdateRiskControllerAssetDto,
+  ) {
+    const data = await this.assetManagementService.updateRiskControllerAsset(
+      parseInt(adminId, 10),
+      dto,
+    );
     return ResponseHelper.success(data, '更新风控人资产成功');
   }
 }

@@ -141,7 +141,7 @@ export class AuthController {
 
     const wxUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${appSecret}&js_code=${code}&grant_type=authorization_code`;
     const response = await fetch(wxUrl);
-    const data = await response.json() as any;
+    const data = await response.json();
 
     if (data.errcode) {
       throw new UnauthorizedException(`微信授权失败: ${data.errmsg}`);

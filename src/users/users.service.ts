@@ -22,7 +22,7 @@ export class UsersService {
       where: { username },
     });
     if (existing) return existing;
-    
+
     return this.prisma.user.create({
       data: {
         username,

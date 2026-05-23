@@ -99,7 +99,7 @@ export class AuthJwtService {
   // 检查token是否即将过期（剩余时间少于5分钟）
   isTokenExpiringSoon(token: string): boolean {
     try {
-      const decoded = this.jwtService.decode(token) as { exp: number } | null;
+      const decoded = this.jwtService.decode(token);
       if (!decoded || !decoded.exp) {
         return true;
       }
