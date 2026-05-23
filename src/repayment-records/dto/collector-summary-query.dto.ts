@@ -7,12 +7,6 @@ export class CollectorSummaryQueryDto {
   @IsNumber()
   targetUserId?: number;
 
-  // backward compatibility
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  adminId?: number;
-
   @IsOptional()
   @IsString()
   targetDate?: string;

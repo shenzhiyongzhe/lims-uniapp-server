@@ -49,7 +49,6 @@ export class LoanAccountsController {
     @Query('pageSize') pageSize: string,
     @Query('status') status?: string,
     @Query('targetUserId') targetUserId?: string,
-    @Query('adminId') legacyAdminId?: string,
     @Query('keyword') keyword?: string,
     @Query('username') username?: string,
     @Query('listFilter') listFilter?: string,
@@ -61,7 +60,6 @@ export class LoanAccountsController {
         pageSize: parseInt(pageSize, 10) || 20,
         status,
         targetUserId,
-        adminId: legacyAdminId,
         keyword,
         username,
         listFilter,
@@ -75,7 +73,6 @@ export class LoanAccountsController {
   @Get('list-stats')
   async getListStats(
     @Query('targetUserId') targetUserId?: string,
-    @Query('adminId') legacyAdminId?: string,
     @Query('username') username?: string,
     @Query('listFilter') listFilter?: string,
     @Query('status') status?: string,
@@ -85,7 +82,6 @@ export class LoanAccountsController {
     const result = await this.loanAccountsService.findListStats(
       {
         targetUserId,
-        adminId: legacyAdminId,
         username,
         listFilter,
         status,

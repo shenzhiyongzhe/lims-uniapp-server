@@ -57,7 +57,6 @@ export class RepaymentRecordsService {
       userId,
       loanId,
       targetUserId,
-      adminId: legacyTargetUserId,
       startDate,
       endDate,
       riskControllerId,
@@ -65,10 +64,9 @@ export class RepaymentRecordsService {
       username,
     } = query;
     const skip = (page - 1) * pageSize;
-    const scopedTargetUserId = targetUserId ?? legacyTargetUserId;
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
-      scopedTargetUserId,
+      targetUserId,
     );
 
     const where: any = {};
@@ -131,7 +129,7 @@ export class RepaymentRecordsService {
     query: CollectorSummaryQueryDto,
     requestUserId: number,
   ) {
-    const targetUserId = query.targetUserId ?? query.adminId;
+    const targetUserId = query.targetUserId;
     const { targetDate } = query;
     const now = targetDate ? new Date(targetDate) : new Date();
     const dayStart = this.getDayStart(now);
@@ -369,7 +367,7 @@ export class RepaymentRecordsService {
   }
 
   async getDailySummary(query: DailySummaryQueryDto, requestUserId: number) {
-    const targetUserId = query.targetUserId ?? query.adminId;
+    const targetUserId = query.targetUserId;
     const { month } = query;
     const [yearStr, monthStr] = month.split('-');
     const year = Number(yearStr);

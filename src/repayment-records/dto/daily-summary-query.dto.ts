@@ -7,12 +7,6 @@ export class DailySummaryQueryDto {
   @IsNumber()
   targetUserId?: number;
 
-  // backward compatibility
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  adminId?: number;
-
   @IsString()
   @Matches(/^\d{4}-\d{2}$/, { message: 'month 必须为 YYYY-MM 格式' })
   month!: string;

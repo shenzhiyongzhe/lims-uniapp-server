@@ -18,15 +18,12 @@ export class StatisticsController {
     @Query()
     query: GetStatisticsDto & {
       targetUserId?: string;
-      adminId?: string;
     },
     @CurrentUser() currentUser: { id: number },
   ) {
     const targetUserId = query.targetUserId
       ? parseInt(query.targetUserId, 10)
-      : query.adminId
-        ? parseInt(query.adminId, 10)
-        : undefined;
+      : undefined;
     const statistics = await this.statisticsService.getScopedStatistics(
       currentUser.id,
       targetUserId,

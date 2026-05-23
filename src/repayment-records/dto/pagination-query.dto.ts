@@ -30,12 +30,6 @@ export class PaginationQueryDto {
   @IsNumber()
   targetUserId?: number;
 
-  // backward compatibility
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  adminId?: number;
-
   @IsOptional()
   startDate?: string;
 

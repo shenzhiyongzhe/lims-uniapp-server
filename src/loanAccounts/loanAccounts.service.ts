@@ -972,26 +972,20 @@ export class LoanAccountsService {
     query: {
       status?: string;
       targetUserId?: string;
-      adminId?: string;
       keyword?: string;
       username?: string;
       listFilter?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { status, targetUserId, adminId, keyword, username, listFilter } =
-      query;
+    const { status, targetUserId, keyword, username, listFilter } = query;
 
     const baseAndParts: Record<string, unknown>[] = [];
     if (status) {
       baseAndParts.push({ status });
     }
 
-    const targetUserIdNum = targetUserId
-      ? parseInt(targetUserId, 10)
-      : adminId
-        ? parseInt(adminId, 10)
-        : NaN;
+    const targetUserIdNum = targetUserId ? parseInt(targetUserId, 10) : NaN;
     if (currentUser?.id) {
       const scope = await this.accessScopeService.resolveLoanAccountScope(
         currentUser.id,
@@ -1132,7 +1126,6 @@ export class LoanAccountsService {
       pageSize: number;
       status?: string;
       targetUserId?: string;
-      adminId?: string;
       keyword?: string;
       username?: string;
       listFilter?: string;
@@ -1282,7 +1275,6 @@ export class LoanAccountsService {
     query: {
       status?: string;
       targetUserId?: string;
-      adminId?: string;
       keyword?: string;
       username?: string;
       listFilter?: string;
