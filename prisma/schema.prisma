@@ -36,7 +36,7 @@ model Admin {
   token_version                 Int                            @default(1)
   assetReductionHistory         AssetReductionHistory[]        @relation("AssetReductionHistory")
   collectorAssetManagement      CollectorAssetManagement?
-  dailyStatistics               DailyStatistics[]
+
   loanAccountRoles              LoanAccountRole[]
   loanAccountsAsCollector       LoanAccount[]                  @relation("CollectorLoanAccounts")
   loanAccountsAsRiskController  LoanAccount[]                  @relation("RiskControllerLoanAccounts")
@@ -220,51 +220,7 @@ model OverdueRecord {
   @@map("overdue_records")
 }
 
-model DailyStatistics {
-  id                          Int      @id @default(autoincrement())
-  date                        DateTime @db.Date
-  created_at                  DateTime @default(now())
-  updated_at                  DateTime @updatedAt
-  admin_id                    Int
-  admin_name                  String   @db.VarChar(10)
-  role                        String   @db.VarChar(20)
-  total_fines                 Decimal  @default(0.00) @db.Decimal(12, 2)
-  total_handling_fee          Decimal  @default(0.00) @db.Decimal(12, 2)
-  active_count                Int      @default(0)
-  last_month_blacklist_count  Int      @default(0)
-  last_month_fines            Decimal  @default(0.00) @db.Decimal(12, 2)
-  last_month_handling_fee     Decimal  @default(0.00) @db.Decimal(12, 2)
-  this_month_blacklist_count  Int      @default(0)
-  this_month_fines            Decimal  @default(0.00) @db.Decimal(12, 2)
-  this_month_handling_fee     Decimal  @default(0.00) @db.Decimal(12, 2)
-  this_month_negotiated_count Int      @default(0)
-  this_month_new_amount       Decimal  @default(0.00) @db.Decimal(12, 2)
-  this_month_settled_amount   Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_blacklist_count       Int      @default(0)
-  today_collection            Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_fines                 Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_handling_fee          Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_negotiated_count      Int      @default(0)
-  today_new_amount            Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_paid_count            Int      @default(0)
-  today_pending_count         Int      @default(0)
-  today_settled_amount        Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_unpaid_amount         Decimal  @default(0.00) @db.Decimal(12, 2)
-  total_amount                Decimal  @default(0.00) @db.Decimal(12, 2)
-  total_blacklist_count       Int      @default(0)
-  total_in_stock_amount       Decimal  @default(0.00) @db.Decimal(12, 2)
-  total_in_stock_count        Int      @default(0)
-  total_negotiated_count      Int      @default(0)
-  total_received_amount       Decimal  @default(0.00) @db.Decimal(12, 2)
-  yesterday_collection        Decimal  @default(0.00) @db.Decimal(12, 2)
-  yesterday_overdue_count     Int      @default(0)
-  admin                       Admin    @relation(fields: [admin_id], references: [id])
 
-  @@unique([admin_id, date, role])
-  @@index([date])
-  @@index([admin_id])
-  @@map("daily_statistics")
-}
 
 model DailyLoanBalance {
   id                 Int      @id @default(autoincrement())

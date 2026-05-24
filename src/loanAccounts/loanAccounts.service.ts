@@ -954,31 +954,185 @@ export class LoanAccountsService {
     });
   }
 
-  async findRelatedAdmins() {
-    return this.prisma.admin.findMany({
-      where: {
-        role: { in: ['COLLECTOR', 'RISK_CONTROLLER'] },
+  private async buildSearchWhereConditions(
+    query: { username?: string; id?: string },
+    currentUser?: { id: number; role: string },
+  ) {
+    const baseAndParts: Record<string, unknown>[] = [];
+
+    if (currentUser?.id) {
+      const scope = await this.accessScopeService.resolveLoanAccountScope(
+        currentUser.id,
+        undefined,
+      );
+      if (!scope.isAllAccessible) {
+        baseAndParts.push({
+          id: { in: scope.loanAccountIds },
+        });
+      }
+    }
+
+    const idTrim = query.id?.trim();
+    if (idTrim) {
+      const loanId = parseInt(idTrim, 10);
+      if (!Number.isNaN(loanId)) {
+        baseAndParts.push({ id: loanId });
+      }
+    }
+
+    const usernameTrim = query.username?.trim();
+    if (usernameTrim) {
+      baseAndParts.push({
+        user: { username: { contains: usernameTrim } },
+      });
+    }
+
+    return baseAndParts;
+  }
+
+  private async computeListStatistics(baseAndParts: Record<string, unknown>[]) {
+    const { today: todayShanghai } = getShanghaiBusinessTodayAndYesterday();
+    const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
+
+    const todayStart = todayShanghai;
+    const tomorrowStart = new Date(todayStart.getTime() + 86400000);
+    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+
+    const pendingNegotiatedStatus = {
+      status: {
+        in: ['pending', 'negotiated'] satisfies LoanAccountStatus[],
       },
-      select: {
-        id: true,
-        username: true,
-        nickname: true,
-        role: true,
+    };
+    const pendingNegotiatedWhere =
+      baseAndParts.length > 0
+        ? { AND: [...baseAndParts, pendingNegotiatedStatus] }
+        : pendingNegotiatedStatus;
+
+    const recordScopeWhere = { loan_account: baseWhere };
+
+    const [
+      pendingNegotiatedAgg,
+      allLoansFeeAgg,
+      todayRecordAgg,
+      yesterdayRecordAgg,
+    ] = await Promise.all([
+      this.prisma.loanAccount.aggregate({
+        where: pendingNegotiatedWhere,
+        _sum: {
+          loan_amount: true,
+          paid_capital: true,
+          paid_interest: true,
+        },
+      }),
+      this.prisma.loanAccount.aggregate({
+        where: baseWhere,
+        _sum: { handling_fee: true, total_fines: true },
+      }),
+      this.prisma.repaymentRecord.aggregate({
+        where: {
+          ...recordScopeWhere,
+          paid_at: { gte: todayStart, lt: tomorrowStart },
+        },
+        _sum: { paid_amount: true },
+      }),
+      this.prisma.repaymentRecord.aggregate({
+        where: {
+          ...recordScopeWhere,
+          paid_at: { gte: yesterdayStart, lt: todayStart },
+        },
+        _sum: { paid_amount: true },
+      }),
+    ]);
+
+    const inStock = this.toNumber(pendingNegotiatedAgg._sum.loan_amount);
+    const remainingDebt =
+      this.toNumber(pendingNegotiatedAgg._sum.loan_amount) -
+      this.toNumber(pendingNegotiatedAgg._sum.paid_capital);
+
+    return {
+      statistics: {
+        inStock,
+        remainingDebt,
+        handlingFee: this.toNumber(allLoansFeeAgg._sum.handling_fee),
+        fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
+        todayReceived: this.toNumber(todayRecordAgg._sum.paid_amount),
+        yesterdayReceived: this.toNumber(yesterdayRecordAgg._sum.paid_amount),
       },
-    });
+    };
+  }
+
+  async searchLoanAccounts(
+    query: {
+      page: number;
+      pageSize: number;
+      username?: string;
+      id?: string;
+    },
+    currentUser?: { id: number; role: string },
+  ) {
+    const { page, pageSize, username, id } = query;
+    const hasUsername = Boolean(username?.trim());
+    const hasId = Boolean(id?.trim());
+
+    if (!hasUsername && !hasId) {
+      return {
+        data: [],
+        total: 0,
+        statistics: {
+          inStock: 0,
+          remainingDebt: 0,
+          handlingFee: 0,
+          fines: 0,
+          todayReceived: 0,
+          yesterdayReceived: 0,
+        },
+      };
+    }
+
+    const baseAndParts = await this.buildSearchWhereConditions(
+      { username, id },
+      currentUser,
+    );
+    const where = baseAndParts.length ? { AND: baseAndParts } : {};
+    const skip = (page - 1) * pageSize;
+
+    const loanAccountInclude = {
+      user: true,
+      collector: { select: { id: true, username: true, nickname: true } },
+      risk_controller: { select: { id: true, username: true, nickname: true } },
+    };
+
+    const [rows, totalCount, statsResult] = await Promise.all([
+      this.prisma.loanAccount.findMany({
+        where,
+        skip,
+        take: pageSize,
+        include: loanAccountInclude,
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.loanAccount.count({ where }),
+      this.computeListStatistics(baseAndParts),
+    ]);
+
+    return {
+      data: rows.map((loan) => ({
+        ...loan,
+        __rowKey: String(loan.id),
+      })),
+      total: totalCount,
+      statistics: statsResult.statistics,
+    };
   }
 
   private async buildListWhereConditions(
     query: {
       status?: string;
       targetUserId?: string;
-      keyword?: string;
-      username?: string;
       listFilter?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { status, targetUserId, keyword, username, listFilter } = query;
+    const { status, targetUserId, listFilter } = query;
 
     const baseAndParts: Record<string, unknown>[] = [];
     if (status) {
@@ -999,27 +1153,6 @@ export class LoanAccountsService {
     } else if (!Number.isNaN(targetUserIdNum)) {
       baseAndParts.push({
         loanAccountRoles: { some: { admin_id: targetUserIdNum } },
-      });
-    }
-
-    const usernameTrim = username?.trim();
-    if (usernameTrim) {
-      if (/^\d+$/.test(usernameTrim)) {
-        const loanId = parseInt(usernameTrim, 10);
-        if (!Number.isNaN(loanId)) {
-          baseAndParts.push({ id: loanId });
-        }
-      } else {
-        baseAndParts.push({
-          user: { username: { contains: usernameTrim } },
-        });
-      }
-    } else if (keyword?.trim()) {
-      baseAndParts.push({
-        OR: [
-          { user: { username: { contains: keyword.trim() } } },
-          { note: { contains: keyword.trim() } },
-        ],
       });
     }
 
@@ -1126,8 +1259,6 @@ export class LoanAccountsService {
       pageSize: number;
       status?: string;
       targetUserId?: string;
-      keyword?: string;
-      username?: string;
       listFilter?: string;
     },
     currentUser?: { id: number; role: string },
@@ -1177,7 +1308,9 @@ export class LoanAccountsService {
       this.prisma.loanAccount.count({ where: whereOverdueLoans }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
-      this.findRelatedAdmins(),
+      currentUser?.id
+        ? this.accessScopeService.getAssociatedAdmins(currentUser.id)
+        : Promise.resolve([]),
     ]);
 
     let data: Array<Record<string, unknown>>;
@@ -1287,69 +1420,14 @@ export class LoanAccountsService {
     query: {
       status?: string;
       targetUserId?: string;
-      keyword?: string;
-      username?: string;
       listFilter?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { baseAndParts, todayShanghai, yesterdayShanghai, scheduleSumWhere } =
-      await this.buildListWhereConditions(query, currentUser);
-
-    const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
-
-    const pendingNegotiatedStatus = {
-      status: {
-        in: ['pending', 'negotiated'] satisfies LoanAccountStatus[],
-      },
-    };
-    const pendingNegotiatedWhere =
-      baseAndParts.length > 0
-        ? { AND: [...baseAndParts, pendingNegotiatedStatus] }
-        : pendingNegotiatedStatus;
-
-    const [
-      pendingNegotiatedAgg,
-      allLoansFeeAgg,
-      todaySchedAgg,
-      yesterdaySchedAgg,
-    ] = await Promise.all([
-      this.prisma.loanAccount.aggregate({
-        where: pendingNegotiatedWhere,
-        _sum: {
-          loan_amount: true,
-          paid_capital: true,
-          paid_interest: true,
-        },
-      }),
-      this.prisma.loanAccount.aggregate({
-        where: baseWhere,
-        _sum: { handling_fee: true, total_fines: true },
-      }),
-      this.prisma.repaymentSchedule.aggregate({
-        where: { ...scheduleSumWhere, due_start_date: todayShanghai },
-        _sum: { paid_amount: true },
-      }),
-      this.prisma.repaymentSchedule.aggregate({
-        where: { ...scheduleSumWhere, due_start_date: yesterdayShanghai },
-        _sum: { paid_amount: true },
-      }),
-    ]);
-
-    const inStock = this.toNumber(pendingNegotiatedAgg._sum.loan_amount);
-    const remainingDebt =
-      this.toNumber(pendingNegotiatedAgg._sum.loan_amount) -
-      this.toNumber(pendingNegotiatedAgg._sum.paid_capital);
-
-    return {
-      statistics: {
-        inStock,
-        remainingDebt,
-        handlingFee: this.toNumber(allLoansFeeAgg._sum.handling_fee),
-        fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
-        todayReceived: this.toNumber(todaySchedAgg._sum.paid_amount),
-        yesterdayReceived: this.toNumber(yesterdaySchedAgg._sum.paid_amount),
-      },
-    };
+    const { baseAndParts } = await this.buildListWhereConditions(
+      query,
+      currentUser,
+    );
+    return this.computeListStatistics(baseAndParts);
   }
 }

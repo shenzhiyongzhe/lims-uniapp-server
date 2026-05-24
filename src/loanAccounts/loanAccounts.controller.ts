@@ -47,14 +47,33 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard)
+  @Get('search')
+  async search(
+    @Query('page') page: string,
+    @Query('pageSize') pageSize: string,
+    @Query('username') username?: string,
+    @Query('id') id?: string,
+    @CurrentUser() currentUser?: { id: number; role: string },
+  ): Promise<ApiResponseDto> {
+    const result = await this.loanAccountsService.searchLoanAccounts(
+      {
+        page: parseInt(page, 10) || 1,
+        pageSize: parseInt(pageSize, 10) || 20,
+        username,
+        id,
+      },
+      currentUser,
+    );
+    return ResponseHelper.success(result, '搜索贷款记录成功');
+  }
+
+  @UseGuards(AuthGuard)
   @Get('grouped-by-user')
   async findGroupedByUser(
     @Query('page') page: string,
     @Query('pageSize') pageSize: string,
     @Query('status') status?: string,
     @Query('targetUserId') targetUserId?: string,
-    @Query('keyword') keyword?: string,
-    @Query('username') username?: string,
     @Query('listFilter') listFilter?: string,
     @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
@@ -64,8 +83,6 @@ export class LoanAccountsController {
         pageSize: parseInt(pageSize, 10) || 20,
         status,
         targetUserId,
-        keyword,
-        username,
         listFilter,
       },
       currentUser,
@@ -77,19 +94,15 @@ export class LoanAccountsController {
   @Get('list-stats')
   async getListStats(
     @Query('targetUserId') targetUserId?: string,
-    @Query('username') username?: string,
     @Query('listFilter') listFilter?: string,
     @Query('status') status?: string,
-    @Query('keyword') keyword?: string,
     @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findListStats(
       {
         targetUserId,
-        username,
         listFilter,
         status,
-        keyword,
       },
       currentUser,
     );

@@ -51,7 +51,6 @@ export class StatisticsService {
     loanAccountIds: number[] | undefined,
     targetDate?: Date,
     scopedUserId?: number,
-    includeYesterdayTotal: boolean = true,
   ): Promise<any> {
     if (loanAccountIds && loanAccountIds.length === 0) {
       return this.getEmptyStatisticsWithYesterday();
@@ -222,7 +221,7 @@ export class StatisticsService {
       },
     });
 
-    const result = {
+    return {
       totalAmount,
       todayNewAmount,
       todaySettledAmount,
@@ -240,24 +239,6 @@ export class StatisticsService {
       lastMonthSettledCount,
       yesterdayTotalAmount: 0,
     };
-
-    if (includeYesterdayTotal) {
-      const yesterdayDateForDb = new Date(
-        yesterdayStart.toISOString().split('T')[0] + 'T12:00:00.000Z',
-      );
-      const yesterdayStats = await this.prisma.dailyStatistics.aggregate({
-        where: {
-          date: yesterdayDateForDb,
-          ...(scopedUserId ? { admin_id: scopedUserId } : {}),
-        },
-        _sum: { total_amount: true },
-      });
-      result.yesterdayTotalAmount = Number(
-        yesterdayStats._sum.total_amount || 0,
-      );
-    }
-
-    return result;
   }
 
   async getAdminStatistics(): Promise<any[]> {
