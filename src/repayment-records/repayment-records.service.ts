@@ -135,15 +135,23 @@ export class RepaymentRecordsService {
     const { targetDate } = query;
     const refDate = targetDate ? new Date(targetDate) : new Date();
     const businessDate = getShanghaiBusinessDate(refDate);
-    const yesterdayBusinessDate = new Date(businessDate.getTime() - 24 * 60 * 60 * 1000);
-    const { start: dayStart, end: dayEnd } = getBusinessDayTimestampRange(businessDate);
-    const { start: yesterday, end: yesterdayEnd } = getBusinessDayTimestampRange(yesterdayBusinessDate);
+    const yesterdayBusinessDate = new Date(
+      businessDate.getTime() - 24 * 60 * 60 * 1000,
+    );
+    const { start: dayStart, end: dayEnd } =
+      getBusinessDayTimestampRange(businessDate);
+    const { start: yesterday, end: yesterdayEnd } =
+      getBusinessDayTimestampRange(yesterdayBusinessDate);
 
     // Month range: from the 1st of Shanghai month at 06:00 to start of next month at 06:00
     // Approximate with calendar month start (good enough for monthly totals)
     const shanghaiParts = getShanghaiYmdParts(refDate);
-    const monthStart = new Date(Date.UTC(shanghaiParts.y, shanghaiParts.m - 1, 1) - 2 * 3600 * 1000);
-    const nextMonthStart = new Date(Date.UTC(shanghaiParts.y, shanghaiParts.m, 1) - 2 * 3600 * 1000);
+    const monthStart = new Date(
+      Date.UTC(shanghaiParts.y, shanghaiParts.m - 1, 1) - 2 * 3600 * 1000,
+    );
+    const nextMonthStart = new Date(
+      Date.UTC(shanghaiParts.y, shanghaiParts.m, 1) - 2 * 3600 * 1000,
+    );
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
@@ -175,13 +183,17 @@ export class RepaymentRecordsService {
     const [yesterdayDailyBalance, todayDailyBalance] = await Promise.all([
       this.getDailyLoanBalance({
         requestUserId,
-        targetDate: new Date(yesterdayBusinessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000), // noon of yesterday business day
+        targetDate: new Date(
+          yesterdayBusinessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000,
+        ), // noon of yesterday business day
         targetUserId,
         persist: false,
       }),
       this.getDailyLoanBalance({
         requestUserId,
-        targetDate: new Date(businessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000), // noon of today business day
+        targetDate: new Date(
+          businessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000,
+        ), // noon of today business day
         targetUserId,
         persist: false,
       }),
@@ -219,7 +231,8 @@ export class RepaymentRecordsService {
       persist = false,
     } = params;
     const businessDate = getShanghaiBusinessDate(targetDate);
-    const { start: dayStart, end: dayEnd } = getBusinessDayTimestampRange(businessDate);
+    const { start: dayStart, end: dayEnd } =
+      getBusinessDayTimestampRange(businessDate);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
@@ -420,9 +433,15 @@ export class RepaymentRecordsService {
     // Use 06:00 Shanghai boundary for month range
     // Month starts at: 1st day of month, 06:00 Shanghai = UTC (last day of prev month) 22:00
     const monthStartBusinessDate = new Date(Date.UTC(year, monthIndex, 1));
-    const monthStartTs = new Date(monthStartBusinessDate.getTime() - 2 * 3600 * 1000);
-    const nextMonthStartBusinessDate = new Date(Date.UTC(year, monthIndex + 1, 1));
-    const nextMonthStartTs = new Date(nextMonthStartBusinessDate.getTime() - 2 * 3600 * 1000);
+    const monthStartTs = new Date(
+      monthStartBusinessDate.getTime() - 2 * 3600 * 1000,
+    );
+    const nextMonthStartBusinessDate = new Date(
+      Date.UTC(year, monthIndex + 1, 1),
+    );
+    const nextMonthStartTs = new Date(
+      nextMonthStartBusinessDate.getTime() - 2 * 3600 * 1000,
+    );
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
@@ -452,7 +471,9 @@ export class RepaymentRecordsService {
     rows.forEach((row) => {
       // Map paid_at to the business day it belongs to:
       // paid_at + 2h gives us the "business timestamp" starting from 00:00 of the business day
-      const businessTs = new Date(row.paid_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000);
+      const businessTs = new Date(
+        row.paid_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000,
+      );
       const date = businessTs.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
       old.totalPaidAmount += Number(row.paid_amount ?? 0);
@@ -477,7 +498,6 @@ export class RepaymentRecordsService {
     const { end } = getBusinessDayTimestampRange(getShanghaiBusinessDate(date));
     return new Date(end.getTime() - 1);
   }
-
 
   private formatNumber(value: number): string {
     return Number(value || 0).toLocaleString('zh-CN');
@@ -530,7 +550,10 @@ export class RepaymentRecordsService {
       paid_amount: Number(record.paid_amount ?? 0),
       paid_at: record.paid_at,
       actual_collector_id: record.actual_collector_id || undefined,
-      actual_collector_name: record.actual_collector?.nickname || undefined,
+      actual_collector_name:
+        record.actual_collector?.username ||
+        record.actual_collector?.nickname ||
+        undefined,
       user_name: record.user?.username || undefined,
       repaid_periods: record.loan_account?.repaid_periods || 0,
       total_periods: record.loan_account?.total_periods || undefined,
