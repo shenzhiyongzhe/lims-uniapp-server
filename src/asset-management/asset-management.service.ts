@@ -1,9 +1,22 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { LoanAccount } from '@prisma/client';
+import { LoanAccount, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
 import { UpdateRiskControllerAssetDto } from './dto/update-risk-controller-asset.dto';
 import { AccessScopeService } from '../access-scope/access-scope.service';
+import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
+
+type AssetOperator = { id: number; role?: string };
+
+type RecordHistoryParams = {
+  adminId: number;
+  assetType: 'collector' | 'risk_controller';
+  fieldName: string;
+  oldValue: number;
+  inputValue: number;
+  newValue: number;
+  operator?: AssetOperator;
+};
 
 @Injectable()
 export class AssetManagementService implements OnModuleInit {
@@ -40,6 +53,7 @@ export class AssetManagementService implements OnModuleInit {
       ? Number(asset.reduced_handling_fee || 0)
       : 0;
     const reduced_fines = asset ? Number(asset.reduced_fines || 0) : 0;
+    const deposit = asset ? Number(asset.deposit || 0) : 0;
 
     return {
       id: asset?.id || 0,
@@ -49,6 +63,7 @@ export class AssetManagementService implements OnModuleInit {
       remaining_fines: total_fines - reduced_fines,
       reduced_handling_fee,
       reduced_fines,
+      deposit,
     };
   }
 
@@ -118,38 +133,189 @@ export class AssetManagementService implements OnModuleInit {
     );
   }
 
-  async updateCollectorAsset(userId: number, dto: UpdateCollectorAssetDto) {
-    await this.prisma.collectorAssetManagement.upsert({
-      where: { admin_id: userId },
-      update: {},
-      create: { admin_id: userId },
-    });
+  async adjustCollectorDeposit(
+    userId: number,
+    delta: number,
+    operator?: AssetOperator,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.collectorAssetManagement.upsert({
+        where: { admin_id: userId },
+        update: {},
+        create: { admin_id: userId },
+      });
 
-    return this.prisma.collectorAssetManagement.update({
-      where: { admin_id: userId },
-      data: {
-        reduced_handling_fee: dto.reduced_handling_fee,
-        reduced_fines: dto.reduced_fines,
-      },
+      const oldDeposit = Number(existing.deposit || 0);
+      const newDeposit = oldDeposit + delta;
+
+      const updated = await tx.collectorAssetManagement.update({
+        where: { admin_id: userId },
+        data: { deposit: newDeposit },
+      });
+
+      await this.recordAssetHistory(tx, {
+        adminId: userId,
+        assetType: 'collector',
+        fieldName: 'deposit',
+        oldValue: oldDeposit,
+        inputValue: delta,
+        newValue: newDeposit,
+        operator,
+      });
+
+      return {
+        admin_id: userId,
+        deposit: Number(updated.deposit),
+      };
+    });
+  }
+
+  async updateCollectorAsset(
+    userId: number,
+    dto: UpdateCollectorAssetDto,
+    operator?: AssetOperator,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.collectorAssetManagement.upsert({
+        where: { admin_id: userId },
+        update: {},
+        create: { admin_id: userId },
+      });
+
+      const oldReducedHandling = Number(existing.reduced_handling_fee || 0);
+      const oldReducedFines = Number(existing.reduced_fines || 0);
+
+      const newReducedHandling =
+        dto.reduced_handling_fee !== undefined
+          ? dto.reduced_handling_fee
+          : oldReducedHandling;
+      const newReducedFines =
+        dto.reduced_fines !== undefined ? dto.reduced_fines : oldReducedFines;
+
+      const updated = await tx.collectorAssetManagement.update({
+        where: { admin_id: userId },
+        data: {
+          reduced_handling_fee: newReducedHandling,
+          reduced_fines: newReducedFines,
+        },
+      });
+
+      if (
+        dto.reduced_handling_fee !== undefined &&
+        newReducedHandling !== oldReducedHandling
+      ) {
+        await this.recordAssetHistory(tx, {
+          adminId: userId,
+          assetType: 'collector',
+          fieldName: 'reduced_handling_fee',
+          oldValue: oldReducedHandling,
+          inputValue: newReducedHandling,
+          newValue: newReducedHandling,
+          operator,
+        });
+      }
+
+      if (
+        dto.reduced_fines !== undefined &&
+        newReducedFines !== oldReducedFines
+      ) {
+        await this.recordAssetHistory(tx, {
+          adminId: userId,
+          assetType: 'collector',
+          fieldName: 'reduced_fines',
+          oldValue: oldReducedFines,
+          inputValue: newReducedFines,
+          newValue: newReducedFines,
+          operator,
+        });
+      }
+
+      return updated;
     });
   }
 
   async updateRiskControllerAsset(
     userId: number,
     dto: UpdateRiskControllerAssetDto,
+    operator?: AssetOperator,
   ) {
-    await this.prisma.riskControllerAssetManagement.upsert({
-      where: { admin_id: userId },
-      update: {},
-      create: { admin_id: userId },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.riskControllerAssetManagement.upsert({
+        where: { admin_id: userId },
+        update: {},
+        create: { admin_id: userId },
+      });
 
-    return this.prisma.riskControllerAssetManagement.update({
-      where: { admin_id: userId },
-      data: {
-        reduced_amount: dto.reduced_amount,
-      },
+      const oldReducedAmount = Number(existing.reduced_amount || 0);
+      const newReducedAmount =
+        dto.reduced_amount !== undefined
+          ? dto.reduced_amount
+          : oldReducedAmount;
+
+      const updated = await tx.riskControllerAssetManagement.update({
+        where: { admin_id: userId },
+        data: { reduced_amount: newReducedAmount },
+      });
+
+      if (
+        dto.reduced_amount !== undefined &&
+        newReducedAmount !== oldReducedAmount
+      ) {
+        await this.recordAssetHistory(tx, {
+          adminId: userId,
+          assetType: 'risk_controller',
+          fieldName: 'reduced_amount',
+          oldValue: oldReducedAmount,
+          inputValue: newReducedAmount,
+          newValue: newReducedAmount,
+          operator,
+        });
+      }
+
+      return updated;
     });
+  }
+
+  async findAssetHistory(query: QueryAssetHistoryDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 50;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.AssetReductionHistoryWhereInput = {};
+    if (query.adminId) {
+      where.admin_id = query.adminId;
+    }
+    if (query.assetType) {
+      where.asset_type = query.assetType;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.assetReductionHistory.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.assetReductionHistory.count({ where }),
+    ]);
+
+    return {
+      data: data.map((row) => ({
+        id: row.id,
+        admin_id: row.admin_id,
+        asset_type: row.asset_type,
+        field_name: row.field_name,
+        old_value: Number(row.old_value),
+        input_value: Number(row.input_value),
+        new_value: Number(row.new_value),
+        updated_by_admin_id: row.updated_by_admin_id,
+        updated_by_admin_username: row.updated_by_admin_username,
+        created_at: row.created_at,
+      })),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async updateCollectorAssetFromLoanAccount(
@@ -217,6 +383,33 @@ export class AssetManagementService implements OnModuleInit {
       create: {
         admin_id: userId,
         total_amount,
+      },
+    });
+  }
+
+  private async recordAssetHistory(
+    tx: Prisma.TransactionClient,
+    params: RecordHistoryParams,
+  ) {
+    let operatorUsername: string | null = null;
+    if (params.operator?.id) {
+      const op = await tx.admin.findUnique({
+        where: { id: params.operator.id },
+        select: { username: true },
+      });
+      operatorUsername = op?.username ?? null;
+    }
+
+    await tx.assetReductionHistory.create({
+      data: {
+        admin_id: params.adminId,
+        asset_type: params.assetType,
+        field_name: params.fieldName,
+        old_value: params.oldValue,
+        input_value: params.inputValue,
+        new_value: params.newValue,
+        updated_by_admin_id: params.operator?.id ?? null,
+        updated_by_admin_username: operatorUsername,
       },
     });
   }

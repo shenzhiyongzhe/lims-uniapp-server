@@ -253,6 +253,7 @@ model CollectorAssetManagement {
   updated_at           DateTime @updatedAt
   reduced_fines        Decimal  @default(0.00) @db.Decimal(10, 2)
   reduced_handling_fee Decimal  @default(0.00) @db.Decimal(10, 2)
+  deposit              Decimal  @default(0.00) @db.Decimal(10, 2)
   admin                Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("collector_asset_management")
