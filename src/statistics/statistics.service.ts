@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  getShanghaiBusinessDate,
+  getBusinessDayTimestampRange,
+} from '../common/business-date';
 
 @Injectable()
 export class StatisticsService {
@@ -10,15 +14,14 @@ export class StatisticsService {
   ) {}
 
   private getBusinessDayStart(date?: Date): Date {
-    const d = date ? new Date(date) : new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
+    const businessDate = getShanghaiBusinessDate(date);
+    return getBusinessDayTimestampRange(businessDate).start;
   }
 
   private getBusinessDayEnd(date?: Date): Date {
-    const d = date ? new Date(date) : new Date();
-    d.setHours(23, 59, 59, 999);
-    return d;
+    const businessDate = getShanghaiBusinessDate(date);
+    // end is exclusive (start of next business day), subtract 1ms for inclusive end
+    return new Date(getBusinessDayTimestampRange(businessDate).end.getTime() - 1);
   }
 
   async getScopedStatistics(
@@ -56,12 +59,10 @@ export class StatisticsService {
       return this.getEmptyStatisticsWithYesterday();
     }
 
-    const todayStart = this.getBusinessDayStart(targetDate);
-    const todayEnd = this.getBusinessDayEnd(targetDate);
-    const yesterdayStart = new Date(todayStart);
-    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    const yesterdayEnd = new Date(todayEnd);
-    yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+    const businessDate = getShanghaiBusinessDate(targetDate);
+    const { start: todayStart, end: todayEnd } = getBusinessDayTimestampRange(businessDate);
+    const yesterdayBusinessDate = new Date(businessDate.getTime() - 24 * 60 * 60 * 1000);
+    const { start: yesterdayStart, end: yesterdayEnd } = getBusinessDayTimestampRange(yesterdayBusinessDate);
 
     const now = targetDate || new Date();
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -93,8 +94,8 @@ export class StatisticsService {
         where: {
           ...loanFilter,
           due_start_date: {
-            gte: todayStart,
-            lt: new Date(todayStart.getTime() + 86400000),
+            gte: businessDate,
+            lt: new Date(businessDate.getTime() + 86400000),
           },
         },
         select: { loan_amount: true },
@@ -107,8 +108,8 @@ export class StatisticsService {
           ...loanFilter,
           status: 'settled',
           due_end_date: {
-            gte: todayStart,
-            lt: new Date(todayStart.getTime() + 86400000),
+            gte: businessDate,
+            lt: new Date(businessDate.getTime() + 86400000),
           },
         },
         select: { loan_amount: true },

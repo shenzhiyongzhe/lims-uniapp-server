@@ -20,7 +20,7 @@ export class OverdueSweepService implements OnApplicationBootstrap {
     }
   }
 
-  @Cron('0 6 * * *', { timeZone: 'Asia/Shanghai' })
+  @Cron('59 59 5 * * *', { timeZone: 'Asia/Shanghai' })
   async sweepYesterdayPendingToOverdue(): Promise<void> {
     const { yesterday } = getShanghaiBusinessTodayAndYesterday();
 

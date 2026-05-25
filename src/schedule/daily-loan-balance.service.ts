@@ -2,7 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepaymentRecordsService } from '../repayment-records/repayment-records.service';
-import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
+import { getShanghaiBusinessDate } from '../common/business-date';
 
 @Injectable()
 export class DailyLoanBalanceService implements OnApplicationBootstrap {
@@ -28,9 +28,10 @@ export class DailyLoanBalanceService implements OnApplicationBootstrap {
     }
   }
 
-  @Cron('59 59 23 * * *', { timeZone: 'Asia/Shanghai' })
+  @Cron('59 59 5 * * *', { timeZone: 'Asia/Shanghai' })
   async snapshotDailyLoanBalance(): Promise<void> {
-    const { today } = getShanghaiBusinessTodayAndYesterday();
+    // At 05:59:59 the business day is still "yesterday" (boundary is 06:00)
+    const today = getShanghaiBusinessDate();
 
     const admins = await this.prisma.admin.findMany({
       select: { id: true },

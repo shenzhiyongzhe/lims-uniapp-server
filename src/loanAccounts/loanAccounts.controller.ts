@@ -47,6 +47,13 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard)
+  @Get('assignable-admins')
+  async findAssignableAdmins(): Promise<ApiResponseDto> {
+    const admins = await this.loanAccountsService.findAssignableAdmins();
+    return ResponseHelper.success(admins, '获取可分配管理员成功');
+  }
+
+  @UseGuards(AuthGuard)
   @Get('search')
   async search(
     @Query('page') page: string,

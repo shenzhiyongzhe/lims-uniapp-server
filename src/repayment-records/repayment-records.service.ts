@@ -6,7 +6,8 @@ import { CollectorSummaryQueryDto } from './dto/collector-summary-query.dto';
 import { DailySummaryQueryDto } from './dto/daily-summary-query.dto';
 import {
   getShanghaiYmdParts,
-  utcMidnightFromYmd,
+  getShanghaiBusinessDate,
+  getBusinessDayTimestampRange,
 } from '../common/business-date';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 
@@ -132,15 +133,17 @@ export class RepaymentRecordsService {
   ) {
     const targetUserId = query.targetUserId;
     const { targetDate } = query;
-    const now = targetDate ? new Date(targetDate) : new Date();
-    const dayStart = this.getDayStart(now);
-    const dayEnd = this.getDayEnd(now);
-    const yesterday = new Date(dayStart);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayEnd = new Date(dayEnd);
-    yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const refDate = targetDate ? new Date(targetDate) : new Date();
+    const businessDate = getShanghaiBusinessDate(refDate);
+    const yesterdayBusinessDate = new Date(businessDate.getTime() - 24 * 60 * 60 * 1000);
+    const { start: dayStart, end: dayEnd } = getBusinessDayTimestampRange(businessDate);
+    const { start: yesterday, end: yesterdayEnd } = getBusinessDayTimestampRange(yesterdayBusinessDate);
+
+    // Month range: from the 1st of Shanghai month at 06:00 to start of next month at 06:00
+    // Approximate with calendar month start (good enough for monthly totals)
+    const shanghaiParts = getShanghaiYmdParts(refDate);
+    const monthStart = new Date(Date.UTC(shanghaiParts.y, shanghaiParts.m - 1, 1) - 2 * 3600 * 1000);
+    const nextMonthStart = new Date(Date.UTC(shanghaiParts.y, shanghaiParts.m, 1) - 2 * 3600 * 1000);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
@@ -153,11 +156,11 @@ export class RepaymentRecordsService {
 
     const [todayRecords, yesterdayRecords, monthRecords] = await Promise.all([
       this.prisma.repaymentRecord.findMany({
-        where: { ...baseWhere, paid_at: { gte: dayStart, lte: dayEnd } },
+        where: { ...baseWhere, paid_at: { gte: dayStart, lt: dayEnd } },
         select: { paid_amount: true, loan_id: true },
       }),
       this.prisma.repaymentRecord.findMany({
-        where: { ...baseWhere, paid_at: { gte: yesterday, lte: yesterdayEnd } },
+        where: { ...baseWhere, paid_at: { gte: yesterday, lt: yesterdayEnd } },
         select: { paid_amount: true },
       }),
       this.prisma.repaymentRecord.findMany({
@@ -172,13 +175,13 @@ export class RepaymentRecordsService {
     const [yesterdayDailyBalance, todayDailyBalance] = await Promise.all([
       this.getDailyLoanBalance({
         requestUserId,
-        targetDate: yesterday,
+        targetDate: new Date(yesterdayBusinessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000), // noon of yesterday business day
         targetUserId,
         persist: false,
       }),
       this.getDailyLoanBalance({
         requestUserId,
-        targetDate: now,
+        targetDate: new Date(businessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000), // noon of today business day
         targetUserId,
         persist: false,
       }),
@@ -215,9 +218,8 @@ export class RepaymentRecordsService {
       targetUserId,
       persist = false,
     } = params;
-    const businessDate = this.getBusinessDate(targetDate);
-    const dayStart = this.getDayStart(targetDate);
-    const dayEnd = this.getDayEnd(targetDate);
+    const businessDate = getShanghaiBusinessDate(targetDate);
+    const { start: dayStart, end: dayEnd } = getBusinessDayTimestampRange(businessDate);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
@@ -254,7 +256,9 @@ export class RepaymentRecordsService {
           handling_fee: true,
         },
       });
-      const totalLentBefore = -Number(loansBefore._sum.company_cost || 0) + Number(loansBefore._sum.handling_fee || 0);
+      const totalLentBefore =
+        -Number(loansBefore._sum.company_cost || 0) +
+        Number(loansBefore._sum.handling_fee || 0);
 
       const repaymentsBefore = await this.prisma.repaymentRecord.aggregate({
         where: {
@@ -303,21 +307,19 @@ export class RepaymentRecordsService {
       }),
     ]);
 
-    const todayLoanItems: DailyLoanBalanceItem[] = todayLoans.map(
-      (loan) => {
-        const amount =
-          -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
-        return {
-          loanId: loan.id,
-          amount,
-          type: 'TODAY_LOAN',
-          label: '借出',
-          isEarlySettlement: false,
-          isOverdueRepaid: false,
-          remark: '',
-        };
-      },
-    );
+    const todayLoanItems: DailyLoanBalanceItem[] = todayLoans.map((loan) => {
+      const amount =
+        -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
+      return {
+        loanId: loan.id,
+        amount,
+        type: 'TODAY_LOAN',
+        label: '借出',
+        isEarlySettlement: false,
+        isOverdueRepaid: false,
+        remark: '',
+      };
+    });
 
     const todayRepaidItems: DailyLoanBalanceItem[] = todayRepayments.map(
       (row) => {
@@ -328,7 +330,7 @@ export class RepaymentRecordsService {
           loanId: row.loan_id,
           amount: Number(row.paid_amount ?? 0),
           type: isEarlySettlement ? 'TODAY_EARLY_SETTLEMENT' : 'TODAY_REPAY',
-          label: isEarlySettlement ? '清' : (isOverdue ? '补' : ''),
+          label: isEarlySettlement ? '清' : isOverdue ? '补' : '',
           isEarlySettlement,
           isOverdueRepaid: isOverdue,
           remark,
@@ -354,15 +356,12 @@ export class RepaymentRecordsService {
       todayLoanItems,
       todayRepaidItems,
       expression: {
-        todayLoans: this.formatExpression(
-          todayLoanItems,
-          todayLoanTotal,
-        ),
+        todayLoans: this.formatTodayLoansExpression(todayLoans, todayLoanTotal),
         todayRepayments: this.formatExpression(
           todayRepaidItems,
           todayRepaidTotal,
         ),
-        summary: `${this.formatNumber(previousTotal)}${this.formatSigned(todayLoanTotal)}${this.formatSigned(todayRepaidTotal)}=${this.formatNumber(todayTotal)}`,
+        summary: `${this.formatNumber(todayTotal)}=${this.formatNumber(previousTotal)}${this.formatSigned(todayLoanTotal)}${this.formatSigned(todayRepaidTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
       userId: scopedBalanceUserId,
@@ -417,15 +416,20 @@ export class RepaymentRecordsService {
     const [yearStr, monthStr] = month.split('-');
     const year = Number(yearStr);
     const monthIndex = Number(monthStr) - 1;
-    const monthStart = new Date(year, monthIndex, 1);
-    const nextMonthStart = new Date(year, monthIndex + 1, 1);
+
+    // Use 06:00 Shanghai boundary for month range
+    // Month starts at: 1st day of month, 06:00 Shanghai = UTC (last day of prev month) 22:00
+    const monthStartBusinessDate = new Date(Date.UTC(year, monthIndex, 1));
+    const monthStartTs = new Date(monthStartBusinessDate.getTime() - 2 * 3600 * 1000);
+    const nextMonthStartBusinessDate = new Date(Date.UTC(year, monthIndex + 1, 1));
+    const nextMonthStartTs = new Date(nextMonthStartBusinessDate.getTime() - 2 * 3600 * 1000);
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
       targetUserId,
     );
     const where: any = {
-      paid_at: { gte: monthStart, lt: nextMonthStart },
+      paid_at: { gte: monthStartTs, lt: nextMonthStartTs },
     };
     if (!scope.isAllAccessible) {
       where.loan_id = { in: scope.loanAccountIds };
@@ -444,8 +448,12 @@ export class RepaymentRecordsService {
       string,
       { totalPaidAmount: number; count: number }
     >();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
     rows.forEach((row) => {
-      const date = row.paid_at.toISOString().slice(0, 10);
+      // Map paid_at to the business day it belongs to:
+      // paid_at + 2h gives us the "business timestamp" starting from 00:00 of the business day
+      const businessTs = new Date(row.paid_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000);
+      const date = businessTs.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
       old.totalPaidAmount += Number(row.paid_amount ?? 0);
       old.count += 1;
@@ -462,21 +470,14 @@ export class RepaymentRecordsService {
   }
 
   private getDayStart(date: Date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
+    return getBusinessDayTimestampRange(getShanghaiBusinessDate(date)).start;
   }
 
   private getDayEnd(date: Date) {
-    const d = new Date(date);
-    d.setHours(23, 59, 59, 999);
-    return d;
+    const { end } = getBusinessDayTimestampRange(getShanghaiBusinessDate(date));
+    return new Date(end.getTime() - 1);
   }
 
-  private getBusinessDate(date: Date) {
-    const { y, m, d } = getShanghaiYmdParts(date);
-    return utcMidnightFromYmd(y, m, d);
-  }
 
   private formatNumber(value: number): string {
     return Number(value || 0).toLocaleString('zh-CN');
@@ -485,6 +486,24 @@ export class RepaymentRecordsService {
   private formatSigned(value: number): string {
     if (value >= 0) return `+${this.formatNumber(value)}`;
     return this.formatNumber(value);
+  }
+
+  /** 今日借出：5000 = -2600 + 100 -2600 + 100 */
+  private formatTodayLoansExpression(
+    loans: { company_cost: unknown; handling_fee: unknown }[],
+    total: number,
+  ): string {
+    if (!loans.length) {
+      return `0=0`;
+    }
+    const terms: string[] = [];
+    for (const loan of loans) {
+      const cost = Number(loan.company_cost ?? 0);
+      const fee = Number(loan.handling_fee ?? 0);
+      terms.push(`-${this.formatNumber(cost)}`);
+      terms.push(`+${this.formatNumber(fee)}`);
+    }
+    return `${this.formatNumber(total)}=${terms.join(' ')}`;
   }
 
   private formatExpression(

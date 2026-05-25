@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   LoanAccount,
   LoanAccountStatus,
+  ManagementRoles,
   RepaymentScheduleStatus,
 } from '@prisma/client';
 import { CreateLoanAccountDto } from './dto/create-loanAccount.dto';
@@ -11,7 +12,7 @@ import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto
 
 import { LoanPredictionService } from '../loan-prediction/loan-prediction.service';
 import { AssetManagementService } from '../asset-management/asset-management.service';
-import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
+import { getShanghaiBusinessTodayAndYesterday, getBusinessDayTimestampRange } from '../common/business-date';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
@@ -57,6 +58,24 @@ export class LoanAccountsService {
     return this.prisma.loanAccountOperationLog.findMany({
       where: { loan_id: loanId },
       orderBy: { created_at: 'desc' },
+    });
+  }
+
+  /** 创建/编辑方案时下拉：全部负责人与风控，不按当前用户关联过滤 */
+  async findAssignableAdmins() {
+    return this.prisma.admin.findMany({
+      where: {
+        role: {
+          in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER],
+        },
+      },
+      select: {
+        id: true,
+        username: true,
+        nickname: true,
+        role: true,
+      },
+      orderBy: [{ role: 'asc' }, { nickname: 'asc' }, { username: 'asc' }],
     });
   }
 
@@ -994,9 +1013,10 @@ export class LoanAccountsService {
     const { today: todayShanghai } = getShanghaiBusinessTodayAndYesterday();
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 
-    const todayStart = todayShanghai;
-    const tomorrowStart = new Date(todayStart.getTime() + 86400000);
-    const yesterdayStart = new Date(todayStart.getTime() - 86400000);
+    // Use 6AM-boundary timestamp ranges for paid_at queries
+    const todayRange = getBusinessDayTimestampRange(todayShanghai);
+    const yesterdayShanghai = new Date(todayShanghai.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayRange = getBusinessDayTimestampRange(yesterdayShanghai);
 
     const pendingNegotiatedStatus = {
       status: {
@@ -1031,14 +1051,14 @@ export class LoanAccountsService {
       this.prisma.repaymentRecord.aggregate({
         where: {
           ...recordScopeWhere,
-          paid_at: { gte: todayStart, lt: tomorrowStart },
+          paid_at: { gte: todayRange.start, lt: todayRange.end },
         },
         _sum: { paid_amount: true },
       }),
       this.prisma.repaymentRecord.aggregate({
         where: {
           ...recordScopeWhere,
-          paid_at: { gte: yesterdayStart, lt: todayStart },
+          paid_at: { gte: yesterdayRange.start, lt: yesterdayRange.end },
         },
         _sum: { paid_amount: true },
       }),
@@ -1158,20 +1178,28 @@ export class LoanAccountsService {
 
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 
-    const tab = (listFilter || 'history').toLowerCase();
+    const tab = (listFilter || 'blacklist').toLowerCase();
     const isScheduleTab =
       tab === 'overdue' || tab === 'today_paid' || tab === 'today_unpaid';
 
     const { today: todayShanghai, yesterday: yesterdayShanghai } =
       getShanghaiBusinessTodayAndYesterday();
 
-    const historyStatusFilter = {
-      status: { in: ['settled', 'blacklist'] satisfies LoanAccountStatus[] },
-    };
-    const whereHistory =
+    // blacklist tab: status = blacklist
+    const blacklistStatusFilter = { status: 'blacklist' as LoanAccountStatus };
+    const whereBlacklist =
       baseAndParts.length > 0
-        ? { AND: [...baseAndParts, historyStatusFilter] }
-        : historyStatusFilter;
+        ? { AND: [...baseAndParts, blacklistStatusFilter] }
+        : blacklistStatusFilter;
+
+    // completed tab: status in [settled, negotiated]
+    const completedStatusFilter = {
+      status: { in: ['settled', 'negotiated'] satisfies LoanAccountStatus[] },
+    };
+    const whereCompleted =
+      baseAndParts.length > 0
+        ? { AND: [...baseAndParts, completedStatusFilter] }
+        : completedStatusFilter;
 
     const activeLoanStatusFilter = {
       status: {
@@ -1242,7 +1270,8 @@ export class LoanAccountsService {
       isScheduleTab,
       todayShanghai,
       yesterdayShanghai,
-      whereHistory,
+      whereBlacklist,
+      whereCompleted,
       loanAccountWhereForScheduleTabs,
       scheduleWhereOverdue,
       whereOverdueLoans,
@@ -1269,7 +1298,8 @@ export class LoanAccountsService {
     const {
       tab,
       isScheduleTab,
-      whereHistory,
+      whereBlacklist,
+      whereCompleted,
       whereOverdueLoans,
       scheduleWhereTodayPaid,
       scheduleWhereTodayUnpaid,
@@ -1298,13 +1328,15 @@ export class LoanAccountsService {
       : null;
 
     const [
-      countTabHistory,
+      countTabBlacklist,
+      countTabCompleted,
       countTabOverdue,
       countTabTodayPaid,
       countTabTodayUnpaid,
       relatedAdmins,
     ] = await Promise.all([
-      this.prisma.loanAccount.count({ where: whereHistory }),
+      this.prisma.loanAccount.count({ where: whereBlacklist }),
+      this.prisma.loanAccount.count({ where: whereCompleted }),
       this.prisma.loanAccount.count({ where: whereOverdueLoans }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
@@ -1316,16 +1348,17 @@ export class LoanAccountsService {
     let data: Array<Record<string, unknown>>;
     let total: number;
 
-    if (tab === 'history') {
+    if (tab === 'blacklist' || tab === 'completed') {
+      const whereTab = tab === 'blacklist' ? whereBlacklist : whereCompleted;
       const [rows, totalCount] = await Promise.all([
         this.prisma.loanAccount.findMany({
-          where: whereHistory,
+          where: whereTab,
           skip,
           take: pageSize,
           include: loanAccountInclude,
           orderBy: { created_at: 'desc' },
         }),
-        this.prisma.loanAccount.count({ where: whereHistory }),
+        this.prisma.loanAccount.count({ where: whereTab }),
       ]);
       data = rows.map((loan) => ({
         ...loan,
@@ -1408,7 +1441,8 @@ export class LoanAccountsService {
       total,
       relatedAdmins,
       listFilterCounts: {
-        history: countTabHistory,
+        blacklist: countTabBlacklist,
+        completed: countTabCompleted,
         overdue: countTabOverdue,
         today_paid: countTabTodayPaid,
         today_unpaid: countTabTodayUnpaid,

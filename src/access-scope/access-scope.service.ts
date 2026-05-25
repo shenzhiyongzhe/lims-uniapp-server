@@ -70,7 +70,7 @@ export class AccessScopeService {
     }
 
     if (admin.role === ManagementRoles.ADMIN) {
-      return this.prisma.admin.findMany({
+      const admins = await this.prisma.admin.findMany({
         where: {
           role: { in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER] },
         },
@@ -81,6 +81,7 @@ export class AccessScopeService {
           role: true,
         },
       });
+      return this.sortAdminsCollectorFirst(admins);
     }
 
     const myLoanIds = await this.getLoanAccountIdsByUserId(userId);
@@ -104,7 +105,22 @@ export class AccessScopeService {
       distinct: ['admin_id'],
     });
 
-    return otherRoles.map((r) => r.admin);
+    return this.sortAdminsCollectorFirst(otherRoles.map((r) => r.admin));
+  }
+
+  /** COLLECTOR 在前，RISK_CONTROLLER 在后 */
+  private sortAdminsCollectorFirst<T extends { role: ManagementRoles }>(
+    admins: T[],
+  ): T[] {
+    const roleOrder: Record<ManagementRoles, number> = {
+      [ManagementRoles.ADMIN]: 99,
+      [ManagementRoles.RISK_CONTROLLER]: 1,
+      [ManagementRoles.COLLECTOR]: 0,
+      [ManagementRoles.PENDING]: 99,
+    };
+    return [...admins].sort(
+      (a, b) => roleOrder[a.role] - roleOrder[b.role],
+    );
   }
 
   async getLoanAccountIdsByUserId(userId: number): Promise<number[]> {
