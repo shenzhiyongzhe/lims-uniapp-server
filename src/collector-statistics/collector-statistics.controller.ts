@@ -19,14 +19,26 @@ export class CollectorStatisticsController {
   ) {}
 
   @Get('statistics')
-  async getTopStatistics() {
-    const statistics = await this.collectorStatisticsService.getTopStatistics();
+  async getTopStatistics(
+    @Query()
+    query: {
+      targetUserId?: string;
+    },
+    @CurrentUser() currentUser: { id: number },
+  ) {
+    const targetUserId = query.targetUserId
+      ? parseInt(query.targetUserId, 10)
+      : undefined;
+    const statistics = await this.collectorStatisticsService.getTopStatistics(
+      currentUser.id,
+      targetUserId,
+    );
     return ResponseHelper.success(statistics, '获取统计数据成功');
   }
 
   @Get('payees')
-  async getPayees() {
-    const data = await this.collectorStatisticsService.getPayees();
+  async getCollectorPayeeList() {
+    const data = await this.collectorStatisticsService.getCollectorPayeeList();
     return ResponseHelper.success(data, '获取收款人列表成功');
   }
 

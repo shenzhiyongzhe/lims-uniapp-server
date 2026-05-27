@@ -10,6 +10,11 @@ import {
   getBusinessDayTimestampRange,
 } from '../common/business-date';
 import { AccessScopeService } from '../access-scope/access-scope.service';
+import {
+  calcLoanDisbursementDelta,
+  calcLoanDisbursementDeltaTotal,
+  calcPaidAmountTotal,
+} from '../common/loan-account-math';
 
 type DailyLoanBalanceItemType =
   | 'TODAY_LOAN'
@@ -257,11 +262,11 @@ export class RepaymentRecordsService {
     let previousTotal = 0;
     let previousRow: any = null;
 
-    if (targetUserId) {
-      // 交集模式下，动态算出之前的累计余额
+    if (targetUserId || scope.isAllAccessible) {
+      // 交集模式或 admin 全量模式下，动态算出之前的累计余额（避免读取陈旧归档）
       const loansBefore = await this.prisma.loanAccount.aggregate({
         where: {
-          id: { in: loanIds },
+          ...(loanIdFilter ? { id: loanIdFilter } : {}),
           due_start_date: { lt: businessDate },
         },
         _sum: {
@@ -269,20 +274,23 @@ export class RepaymentRecordsService {
           handling_fee: true,
         },
       });
-      const totalLentBefore =
-        -Number(loansBefore._sum.company_cost || 0) +
-        Number(loansBefore._sum.handling_fee || 0);
+      const totalLentBefore = calcLoanDisbursementDelta({
+        company_cost: loansBefore._sum.company_cost,
+        handling_fee: loansBefore._sum.handling_fee,
+      });
 
       const repaymentsBefore = await this.prisma.repaymentRecord.aggregate({
         where: {
-          loan_id: { in: loanIds },
+          ...(loanIdFilter ? { loan_id: loanIdFilter } : {}),
           paid_at: { lt: dayStart },
         },
         _sum: {
           paid_amount: true,
         },
       });
-      const totalRepaidBefore = Number(repaymentsBefore._sum.paid_amount || 0);
+      const totalRepaidBefore = calcPaidAmountTotal([
+        { paid_amount: repaymentsBefore._sum.paid_amount },
+      ]);
 
       previousTotal = totalLentBefore + totalRepaidBefore;
     } else {
@@ -321,8 +329,7 @@ export class RepaymentRecordsService {
     ]);
 
     const todayLoanItems: DailyLoanBalanceItem[] = todayLoans.map((loan) => {
-      const amount =
-        -Number(loan.company_cost ?? 0) + Number(loan.handling_fee ?? 0);
+      const amount = calcLoanDisbursementDelta(loan);
       return {
         loanId: loan.id,
         amount,
@@ -351,13 +358,9 @@ export class RepaymentRecordsService {
       },
     );
 
-    const todayLoanTotal = todayLoanItems.reduce(
-      (sum, item) => sum + item.amount,
-      0,
-    );
-    const todayRepaidTotal = todayRepaidItems.reduce(
-      (sum, item) => sum + item.amount,
-      0,
+    const todayLoanTotal = calcLoanDisbursementDeltaTotal(todayLoans);
+    const todayRepaidTotal = calcPaidAmountTotal(
+      todayRepaidItems.map((item) => ({ paid_amount: item.amount })),
     );
     const todayTotal = previousTotal + todayLoanTotal + todayRepaidTotal;
 
@@ -374,7 +377,7 @@ export class RepaymentRecordsService {
           todayRepaidItems,
           todayRepaidTotal,
         ),
-        summary: `${this.formatNumber(todayTotal)}=${this.formatNumber(previousTotal)}${this.formatSigned(todayLoanTotal)}${this.formatSigned(todayRepaidTotal)}`,
+        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayRepaidTotal)} = ${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
       userId: scopedBalanceUserId,

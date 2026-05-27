@@ -1,17 +1,31 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AccessScopeService } from '../access-scope/access-scope.service';
+import { calcLoanAccountNetTotal } from '../common/loan-account-math';
 
 @Injectable()
 export class CollectorStatisticsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly accessScopeService: AccessScopeService,
+  ) {}
 
   private toNumber(value: any): number {
     if (value === null || value === undefined) return 0;
     return parseFloat(String(value)) || 0;
   }
 
-  async getTopStatistics() {
+  async getTopStatistics(requestUserId: number, targetUserId?: number) {
+    const scope = await this.accessScopeService.resolveLoanAccountScope(
+      requestUserId,
+      targetUserId,
+    );
+    const loanFilter = scope.isAllAccessible
+      ? {}
+      : { id: { in: scope.loanAccountIds } };
+
     const allLoanAccounts = await this.prisma.loanAccount.findMany({
+      where: loanFilter,
       select: {
         handling_fee: true,
         receiving_amount: true,
@@ -19,14 +33,7 @@ export class CollectorStatisticsService {
       },
     });
 
-    const riskControllerTotalAmount = allLoanAccounts.reduce(
-      (sum, account) =>
-        sum +
-        this.toNumber(account.handling_fee) +
-        this.toNumber(account.receiving_amount) -
-        this.toNumber(account.company_cost),
-      0,
-    );
+    const riskControllerTotalAmount = calcLoanAccountNetTotal(allLoanAccounts);
 
     const allCollectorAssets =
       await this.prisma.collectorAssetManagement.findMany({
@@ -63,7 +70,7 @@ export class CollectorStatisticsService {
     };
   }
 
-  async getPayees() {
+  async getCollectorPayeeList() {
     const collectors = await this.prisma.admin.findMany({
       where: { role: 'COLLECTOR' },
       select: { id: true, nickname: true },

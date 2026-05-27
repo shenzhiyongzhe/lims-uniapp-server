@@ -5,6 +5,12 @@ import {
   getShanghaiBusinessDate,
   getBusinessDayTimestampRange,
 } from '../common/business-date';
+import {
+  calcLoanAccountNetTotal,
+  calcLoanDisbursementDelta,
+  calcLoanDisbursementDeltaTotal,
+  calcPaidAmountTotal,
+} from '../common/loan-account-math';
 
 @Injectable()
 export class StatisticsService {
@@ -68,6 +74,9 @@ export class StatisticsService {
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const loanFilter = loanAccountIds ? { id: { in: loanAccountIds } } : {};
+    const repaymentLoanFilter = loanAccountIds
+      ? { loan_id: { in: loanAccountIds } }
+      : {};
 
     const allLoanAccounts = await this.prisma.loanAccount.findMany({
       where: loanFilter,
@@ -80,14 +89,56 @@ export class StatisticsService {
       },
     });
 
-    const totalAmount = allLoanAccounts.reduce(
-      (sum, acc) =>
-        sum +
-        Number(acc.handling_fee || 0) +
-        Number(acc.receiving_amount || 0) -
-        Number(acc.company_cost || 0),
-      0,
-    );
+    const netPortfolioAmount = calcLoanAccountNetTotal(allLoanAccounts);
+
+    const loansBefore = await this.prisma.loanAccount.aggregate({
+      where: {
+        ...loanFilter,
+        due_start_date: { lt: businessDate },
+      },
+      _sum: {
+        company_cost: true,
+        handling_fee: true,
+      },
+    });
+    const totalLentBefore = calcLoanDisbursementDelta({
+      company_cost: loansBefore._sum.company_cost,
+      handling_fee: loansBefore._sum.handling_fee,
+    });
+
+    const repaymentsBefore = await this.prisma.repaymentRecord.aggregate({
+      where: {
+        ...repaymentLoanFilter,
+        paid_at: { lt: todayStart },
+      },
+      _sum: { paid_amount: true },
+    });
+    const totalRepaidBefore = calcPaidAmountTotal([
+      { paid_amount: repaymentsBefore._sum.paid_amount },
+    ]);
+
+    const todayLoanRows = await this.prisma.loanAccount.findMany({
+      where: {
+        ...loanFilter,
+        due_start_date: businessDate,
+      },
+      select: { company_cost: true, handling_fee: true },
+    });
+    const todayLoanTotal = calcLoanDisbursementDeltaTotal(todayLoanRows);
+
+    const todayRepaymentAgg = await this.prisma.repaymentRecord.aggregate({
+      where: {
+        ...repaymentLoanFilter,
+        paid_at: { gte: todayStart, lt: todayEnd },
+      },
+      _sum: { paid_amount: true },
+    });
+    const todayRepaidTotal = calcPaidAmountTotal([
+      { paid_amount: todayRepaymentAgg._sum.paid_amount },
+    ]);
+
+    const previousTotal = totalLentBefore + totalRepaidBefore;
+    const rollingTodayTotal = previousTotal + todayLoanTotal + todayRepaidTotal;
 
     const todayNewAmount = (
       await this.prisma.loanAccount.findMany({
@@ -223,7 +274,8 @@ export class StatisticsService {
     });
 
     return {
-      totalAmount,
+      totalAmount: rollingTodayTotal,
+      netPortfolioAmount,
       todayNewAmount,
       todaySettledAmount,
       thisMonthNewAmount,
@@ -238,7 +290,7 @@ export class StatisticsService {
       lastMonthBlacklistCount,
       lastMonthNewCount,
       lastMonthSettledCount,
-      yesterdayTotalAmount: 0,
+      yesterdayTotalAmount: previousTotal,
     };
   }
 

@@ -1144,6 +1144,17 @@ export class LoanAccountsService {
     };
   }
 
+  private pickOverdueTabSchedule<T extends { status: string }>(
+    loanStatus: string,
+    schedules: T[],
+  ): T | undefined {
+    if (!schedules.length) return undefined;
+    if (loanStatus === 'negotiated') {
+      return schedules.find((s) => s.status === 'pending') ?? schedules[0];
+    }
+    return schedules.find((s) => s.status === 'overdue') ?? schedules[0];
+  }
+
   private async buildListWhereConditions(
     query: {
       status?: string;
@@ -1178,7 +1189,7 @@ export class LoanAccountsService {
 
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 
-    const tab = (listFilter || 'blacklist').toLowerCase();
+    const tab = (listFilter || 'completed').toLowerCase();
     const isScheduleTab =
       tab === 'overdue' || tab === 'today_paid' || tab === 'today_unpaid';
 
@@ -1192,10 +1203,8 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, blacklistStatusFilter] }
         : blacklistStatusFilter;
 
-    // completed tab: status in [settled, negotiated]
-    const completedStatusFilter = {
-      status: { in: ['settled', 'negotiated'] satisfies LoanAccountStatus[] },
-    };
+    // completed tab: status = settled
+    const completedStatusFilter = { status: 'settled' as LoanAccountStatus };
     const whereCompleted =
       baseAndParts.length > 0
         ? { AND: [...baseAndParts, completedStatusFilter] }
@@ -1216,7 +1225,12 @@ export class LoanAccountsService {
       loan_account: { is: loanAccountWhereForScheduleTabs },
     };
 
-    const whereOverdueLoans = {
+    const whereOverdueNegotiated =
+      baseAndParts.length > 0
+        ? { AND: [...baseAndParts, { status: 'negotiated' as const }] }
+        : { status: 'negotiated' as const };
+
+    const whereOverdueBySchedule = {
       AND: [
         loanAccountWhereForScheduleTabs,
         { repaymentSchedules: { some: { status: 'overdue' as const } } },
@@ -1239,6 +1253,10 @@ export class LoanAccountsService {
           },
         },
       ],
+    };
+
+    const whereOverdueLoans = {
+      OR: [whereOverdueNegotiated, whereOverdueBySchedule],
     };
     const scheduleWhereTodayPaid = {
       due_start_date: todayShanghai,
@@ -1375,9 +1393,13 @@ export class LoanAccountsService {
           include: {
             ...loanAccountInclude,
             repaymentSchedules: {
-              where: { status: 'overdue' },
+              where: {
+                status: {
+                  in: ['overdue', 'pending', 'active'] satisfies RepaymentScheduleStatus[],
+                },
+              },
               orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
-              take: 1,
+              take: 5,
               include: scheduleWithLatestRecordRemark,
             },
             _count: {
@@ -1390,9 +1412,11 @@ export class LoanAccountsService {
         this.prisma.loanAccount.count({ where: whereOverdueLoans }),
       ]);
       data = loanRows.map((loan) => {
-        const { _count, ...rest } = loan;
+        const { _count, repaymentSchedules, ...rest } = loan;
+        const picked = this.pickOverdueTabSchedule(loan.status, repaymentSchedules);
         return {
           ...rest,
+          repaymentSchedules: picked ? [picked] : [],
           overdueScheduleCount: _count.repaymentSchedules,
           __rowKey: String(loan.id),
         };
