@@ -31,6 +31,15 @@ type DailyLoanBalanceItem = {
   remark: string;
 };
 
+type DepositProcessResult = {
+  startBalance: number;
+  todayDelta: number;
+  line1Expression: string;
+  rcBreakdown: { id: number; name: string; amount: number }[];
+  line2Expression: string;
+  rcTotal: number;
+};
+
 type DailyLoanBalanceResult = {
   previousTotal: number;
   todayLoanTotal: number;
@@ -158,13 +167,30 @@ export class RepaymentRecordsService {
       Date.UTC(shanghaiParts.y, shanghaiParts.m, 1) - 2 * 3600 * 1000,
     );
 
-    const scope = await this.accessScopeService.resolveLoanAccountScope(
-      requestUserId,
-      targetUserId,
-    );
+    const [scope, requestUser] = await Promise.all([
+      this.accessScopeService.resolveLoanAccountScope(requestUserId, targetUserId),
+      this.prisma.admin.findUnique({
+        where: { id: requestUserId },
+        select: { role: true },
+      }),
+    ]);
     const baseWhere: any = {};
     if (!scope.isAllAccessible) {
       baseWhere.loan_id = { in: scope.loanAccountIds };
+    }
+
+    // Determine collectorId for deposit process (only for COLLECTOR role)
+    let collectorId: number | null = null;
+    if (requestUser?.role === 'COLLECTOR') {
+      collectorId = requestUserId;
+    } else if (requestUser?.role === 'ADMIN' && targetUserId) {
+      const targetUser = await this.prisma.admin.findUnique({
+        where: { id: targetUserId },
+        select: { role: true },
+      });
+      if (targetUser?.role === 'COLLECTOR') {
+        collectorId = targetUserId;
+      }
     }
 
     const [todayRecords, yesterdayRecords, monthRecords] = await Promise.all([
@@ -185,12 +211,17 @@ export class RepaymentRecordsService {
       }),
     ]);
 
-    const [yesterdayDailyBalance, todayDailyBalance] = await Promise.all([
+    const [
+      yesterdayDailyBalance,
+      todayDailyBalance,
+      todayDepositProcess,
+      yesterdayDepositProcess,
+    ] = await Promise.all([
       this.getDailyLoanBalance({
         requestUserId,
         targetDate: new Date(
           yesterdayBusinessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000,
-        ), // noon of yesterday business day
+        ),
         targetUserId,
         persist: false,
       }),
@@ -198,10 +229,16 @@ export class RepaymentRecordsService {
         requestUserId,
         targetDate: new Date(
           businessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000,
-        ), // noon of today business day
+        ),
         targetUserId,
         persist: false,
       }),
+      collectorId
+        ? this.buildDepositProcess(collectorId, dayStart, dayEnd)
+        : Promise.resolve(null),
+      collectorId
+        ? this.buildDepositProcess(collectorId, yesterday, yesterdayEnd)
+        : Promise.resolve(null),
     ]);
 
     return {
@@ -220,6 +257,8 @@ export class RepaymentRecordsService {
       todayCount: new Set(todayRecords.map((r) => r.loan_id)).size,
       yesterdayDailyBalance,
       todayDailyBalance,
+      todayDepositProcess,
+      yesterdayDepositProcess,
     };
   }
 
@@ -543,6 +582,114 @@ export class RepaymentRecordsService {
       return item.isEarlySettlement ? `${signed}(清)` : signed;
     });
     return `${parts.join('')}=${this.formatNumber(total)}`;
+  }
+
+  private async buildDepositProcess(
+    collectorId: number,
+    dayStart: Date,
+    dayEnd: Date,
+  ): Promise<DepositProcessResult> {
+    const [asset, historyRows, historyFromDayStart, rcLoanRows] =
+      await Promise.all([
+        this.prisma.collectorAssetManagement.findUnique({
+          where: { admin_id: collectorId },
+          select: { deposit: true },
+        }),
+        // Operations strictly within this business day (for the line1 delta term)
+        this.prisma.assetReductionHistory.findMany({
+          where: {
+            admin_id: collectorId,
+            field_name: 'deposit',
+            created_at: { gte: dayStart, lt: dayEnd },
+          },
+          select: { input_value: true },
+        }),
+        // All operations from dayStart onwards (to compute the pre-day start balance)
+        this.prisma.assetReductionHistory.findMany({
+          where: {
+            admin_id: collectorId,
+            field_name: 'deposit',
+            created_at: { gte: dayStart },
+          },
+          select: { input_value: true },
+        }),
+        this.prisma.loanAccount.findMany({
+          where: { collector_id: collectorId },
+          select: {
+            risk_controller_id: true,
+            risk_controller: { select: { username: true } },
+          },
+          distinct: ['risk_controller_id'],
+        }),
+      ]);
+
+    const D_current = Number(asset?.deposit ?? 0);
+    const todayDelta = historyRows.reduce(
+      (s, r) => s + Number(r.input_value),
+      0,
+    );
+    // Subtract everything from dayStart onwards so startBalance reflects the
+    // balance at the very beginning of this business day, regardless of how
+    // many subsequent days have had operations since then.
+    const deltaFromDayStart = historyFromDayStart.reduce(
+      (s, r) => s + Number(r.input_value),
+      0,
+    );
+    const startBalance = D_current - deltaFromDayStart;
+
+    const rcBreakdown: { id: number; name: string; amount: number }[] = [];
+    if (rcLoanRows.length > 0) {
+      await Promise.all(
+        rcLoanRows.map(async (row) => {
+          const rcId = row.risk_controller_id;
+          const agg = await this.prisma.repaymentRecord.aggregate({
+            where: {
+              loan_account: {
+                collector_id: collectorId,
+                risk_controller_id: rcId,
+              },
+              paid_at: { gte: dayStart, lt: dayEnd },
+            },
+            _sum: { paid_amount: true },
+          });
+          const amount = Number(agg._sum.paid_amount ?? 0);
+          rcBreakdown.push({
+            id: rcId,
+            name: (row.risk_controller?.username ?? String(rcId)).charAt(0),
+            amount,
+          });
+        }),
+      );
+      rcBreakdown.sort((a, b) => a.id - b.id);
+    }
+
+    const rcTotal = rcBreakdown.reduce((s, r) => s + r.amount, 0);
+
+    const line1Expression =
+      todayDelta === 0
+        ? this.formatNumber(startBalance)
+        : `${this.formatNumber(startBalance)}${this.formatSigned(todayDelta)}`;
+
+    let line2Expression: string;
+    if (rcBreakdown.length === 0) {
+      line2Expression = `0=${this.formatNumber(0)}`;
+    } else {
+      const parts = rcBreakdown.map((rc, idx) => {
+        const amt = this.formatNumber(rc.amount);
+        if (idx === 0) return `${amt}${rc.name}`;
+        return `+${amt}${rc.name}`;
+      });
+      line2Expression = `${parts.join('')}=${this.formatNumber(rcTotal)}`;
+    }
+
+    return {
+      startBalance,
+      todayDelta,
+      line1Expression,
+      rcBreakdown,
+      line2Expression,
+      rcTotal,
+    };
   }
 
   toResponse(record: any): RepaymentRecordResponseDto {
