@@ -6,6 +6,7 @@ import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import * as path from 'path';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -15,6 +16,9 @@ async function bootstrap() {
 
   // 关闭 Express 自动 ETag，避免 GET 接口返回 304 空 body，导致前端拿不到数据
   app.set('etag', false);
+
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
     prefix: '/uploads',

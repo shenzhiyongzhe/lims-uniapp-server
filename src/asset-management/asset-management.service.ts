@@ -16,6 +16,7 @@ type RecordHistoryParams = {
   inputValue: number;
   newValue: number;
   operator?: AssetOperator;
+  remark?: string;
 };
 
 @Injectable()
@@ -137,6 +138,7 @@ export class AssetManagementService implements OnModuleInit {
     userId: number,
     delta: number,
     operator?: AssetOperator,
+    remark?: string,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.collectorAssetManagement.upsert({
@@ -161,6 +163,7 @@ export class AssetManagementService implements OnModuleInit {
         inputValue: delta,
         newValue: newDeposit,
         operator,
+        remark,
       });
 
       return {
@@ -204,12 +207,13 @@ export class AssetManagementService implements OnModuleInit {
         dto.reduced_handling_fee !== undefined &&
         newReducedHandling !== oldReducedHandling
       ) {
+        const deltaReducedHandling = newReducedHandling - oldReducedHandling;
         await this.recordAssetHistory(tx, {
           adminId: userId,
           assetType: 'collector',
           fieldName: 'reduced_handling_fee',
           oldValue: oldReducedHandling,
-          inputValue: newReducedHandling,
+          inputValue: deltaReducedHandling,
           newValue: newReducedHandling,
           operator,
         });
@@ -219,12 +223,13 @@ export class AssetManagementService implements OnModuleInit {
         dto.reduced_fines !== undefined &&
         newReducedFines !== oldReducedFines
       ) {
+        const deltaReducedFines = newReducedFines - oldReducedFines;
         await this.recordAssetHistory(tx, {
           adminId: userId,
           assetType: 'collector',
           fieldName: 'reduced_fines',
           oldValue: oldReducedFines,
-          inputValue: newReducedFines,
+          inputValue: deltaReducedFines,
           newValue: newReducedFines,
           operator,
         });
@@ -261,12 +266,13 @@ export class AssetManagementService implements OnModuleInit {
         dto.reduced_amount !== undefined &&
         newReducedAmount !== oldReducedAmount
       ) {
+        const deltaReducedAmount = newReducedAmount - oldReducedAmount;
         await this.recordAssetHistory(tx, {
           adminId: userId,
           assetType: 'risk_controller',
           fieldName: 'reduced_amount',
           oldValue: oldReducedAmount,
-          inputValue: newReducedAmount,
+          inputValue: deltaReducedAmount,
           newValue: newReducedAmount,
           operator,
         });
@@ -310,6 +316,7 @@ export class AssetManagementService implements OnModuleInit {
         new_value: Number(row.new_value),
         updated_by_admin_id: row.updated_by_admin_id,
         updated_by_admin_username: row.updated_by_admin_username,
+        remark: row.remark,
         created_at: row.created_at,
       })),
       total,
@@ -410,6 +417,7 @@ export class AssetManagementService implements OnModuleInit {
         new_value: params.newValue,
         updated_by_admin_id: params.operator?.id ?? null,
         updated_by_admin_username: operatorUsername,
+        remark: params.remark ?? null,
       },
     });
   }

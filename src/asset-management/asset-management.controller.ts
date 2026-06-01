@@ -91,6 +91,7 @@ export class AssetManagementController {
       parseInt(userId, 10),
       dto.delta,
       operator,
+      dto.remark,
     );
     return ResponseHelper.success(data, '调整存款成功');
   }

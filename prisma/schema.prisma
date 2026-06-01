@@ -26,7 +26,7 @@ model Admin {
   role                          ManagementRoles
   openid                        String?                        @unique @db.VarChar(100)
   nickname                      String?                        @db.VarChar(100)
-  avatar_url                    String?                        @db.VarChar(255)
+  avatar_url                    String?                        @db.Text
   createdAt                     DateTime                       @default(now())
   updatedAt                     DateTime?                      @updatedAt
   failed_login_attempts         Int                            @default(0)
@@ -297,6 +297,7 @@ model AssetReductionHistory {
   new_value                 Decimal  @db.Decimal(10, 2)
   updated_by_admin_id       Int?
   updated_by_admin_username String?  @db.VarChar(50)
+  remark                    String?  @db.VarChar(200)
   created_at                DateTime @default(now())
   updated_at                DateTime @updatedAt
   admin                     Admin    @relation("AssetReductionHistory", fields: [admin_id], references: [id], onDelete: Cascade)
