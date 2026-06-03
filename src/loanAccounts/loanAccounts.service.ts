@@ -1268,7 +1268,14 @@ export class LoanAccountsService {
       status: {
         in: ['pending', 'active'] satisfies RepaymentScheduleStatus[],
       },
-      loan_account: { is: loanAccountWhereForScheduleTabs },
+      loan_account: {
+        is: {
+          AND: [
+            loanAccountWhereForScheduleTabs,
+            { status: { not: 'negotiated' as const } },
+          ],
+        },
+      },
     };
 
     const scheduleSumWhere = {
@@ -1368,49 +1375,43 @@ export class LoanAccountsService {
 
     if (tab === 'blacklist' || tab === 'completed') {
       const whereTab = tab === 'blacklist' ? whereBlacklist : whereCompleted;
-      const [rows, totalCount] = await Promise.all([
-        this.prisma.loanAccount.findMany({
-          where: whereTab,
-          skip,
-          take: pageSize,
-          include: loanAccountInclude,
-          orderBy: { created_at: 'desc' },
-        }),
-        this.prisma.loanAccount.count({ where: whereTab }),
-      ]);
+      const rows = await this.prisma.loanAccount.findMany({
+        where: whereTab,
+        skip,
+        take: pageSize,
+        include: loanAccountInclude,
+        orderBy: { created_at: 'desc' },
+      });
       data = rows.map((loan) => ({
         ...loan,
         __rowKey: String(loan.id),
       }));
-      total = totalCount;
+      total = tab === 'blacklist' ? countTabBlacklist : countTabCompleted;
     } else if (tab === 'overdue') {
-      const [loanRows, totalCount] = await Promise.all([
-        this.prisma.loanAccount.findMany({
-          where: whereOverdueLoans,
-          skip,
-          take: pageSize,
-          orderBy: { created_at: 'desc' },
-          include: {
-            ...loanAccountInclude,
-            repaymentSchedules: {
-              where: {
-                status: {
-                  in: ['overdue', 'pending', 'active'] satisfies RepaymentScheduleStatus[],
-                },
+      const loanRows = await this.prisma.loanAccount.findMany({
+        where: whereOverdueLoans,
+        skip,
+        take: pageSize,
+        orderBy: { created_at: 'desc' },
+        include: {
+          ...loanAccountInclude,
+          repaymentSchedules: {
+            where: {
+              status: {
+                in: ['overdue', 'pending', 'active'] satisfies RepaymentScheduleStatus[],
               },
-              orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
-              take: 5,
-              include: scheduleWithLatestRecordRemark,
             },
-            _count: {
-              select: {
-                repaymentSchedules: { where: { status: 'overdue' } },
-              },
+            orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
+            take: 5,
+            include: scheduleWithLatestRecordRemark,
+          },
+          _count: {
+            select: {
+              repaymentSchedules: { where: { status: 'overdue' } },
             },
           },
-        }),
-        this.prisma.loanAccount.count({ where: whereOverdueLoans }),
-      ]);
+        },
+      });
       data = loanRows.map((loan) => {
         const { _count, repaymentSchedules, ...rest } = loan;
         const picked = this.pickOverdueTabSchedule(loan.status, repaymentSchedules);
@@ -1421,31 +1422,28 @@ export class LoanAccountsService {
           __rowKey: String(loan.id),
         };
       });
-      total = totalCount;
+      total = countTabOverdue;
     } else {
       const sw = currentScheduleWhere!;
-      const [scheduleRows, totalCount] = await Promise.all([
-        this.prisma.repaymentSchedule.findMany({
-          where: sw,
-          skip,
-          take: pageSize,
-          orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
-          include: {
-            ...scheduleWithLatestRecordRemark,
-            loan_account: {
-              include: {
-                ...loanAccountInclude,
-                _count: {
-                  select: {
-                    repaymentSchedules: { where: { status: 'overdue' as const } },
-                  },
+      const scheduleRows = await this.prisma.repaymentSchedule.findMany({
+        where: sw,
+        skip,
+        take: pageSize,
+        orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+        include: {
+          ...scheduleWithLatestRecordRemark,
+          loan_account: {
+            include: {
+              ...loanAccountInclude,
+              _count: {
+                select: {
+                  repaymentSchedules: { where: { status: 'overdue' as const } },
                 },
               },
             },
           },
-        }),
-        this.prisma.repaymentSchedule.count({ where: sw }),
-      ]);
+        },
+      });
       data = scheduleRows.map((sch) => {
         const { _count, ...loan } = sch.loan_account as typeof sch.loan_account & {
           _count?: { repaymentSchedules?: number };
@@ -1457,7 +1455,7 @@ export class LoanAccountsService {
           __rowKey: `${loan.id}-${sch.id}`,
         };
       });
-      total = totalCount;
+      total = tab === 'today_paid' ? countTabTodayPaid : countTabTodayUnpaid;
     }
 
     return {
