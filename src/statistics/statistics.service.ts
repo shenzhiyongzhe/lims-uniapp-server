@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   getShanghaiBusinessDate,
   getBusinessDayTimestampRange,
+  getShanghaiYmdParts,
 } from '../common/business-date';
 import {
   calcLoanAccountNetTotal,
@@ -71,8 +72,23 @@ export class StatisticsService {
     const { start: yesterdayStart, end: yesterdayEnd } = getBusinessDayTimestampRange(yesterdayBusinessDate);
 
     const now = targetDate || new Date();
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const shanghaiParts = getShanghaiYmdParts(now);
+    const thisMonthStart = new Date(
+      Date.UTC(shanghaiParts.y, shanghaiParts.m - 1, 1) - 2 * 3600 * 1000,
+    );
+    const nextMonthStart = new Date(
+      Date.UTC(shanghaiParts.y, shanghaiParts.m, 1) - 2 * 3600 * 1000,
+    );
+
+    let lastMonthY = shanghaiParts.y;
+    let lastMonthM = shanghaiParts.m - 1;
+    if (lastMonthM === 0) {
+      lastMonthM = 12;
+      lastMonthY -= 1;
+    }
+    const lastMonthStart = new Date(
+      Date.UTC(lastMonthY, lastMonthM - 1, 1) - 2 * 3600 * 1000,
+    );
     const loanFilter = loanAccountIds ? { id: { in: loanAccountIds } } : {};
     const repaymentLoanFilter = loanAccountIds
       ? { loan_id: { in: loanAccountIds } }
@@ -94,7 +110,7 @@ export class StatisticsService {
     const loansBefore = await this.prisma.loanAccount.aggregate({
       where: {
         ...loanFilter,
-        due_start_date: { lt: businessDate },
+        created_at: { lt: todayStart },
       },
       _sum: {
         company_cost: true,
@@ -120,7 +136,7 @@ export class StatisticsService {
     const todayLoanRows = await this.prisma.loanAccount.findMany({
       where: {
         ...loanFilter,
-        due_start_date: businessDate,
+        created_at: { gte: todayStart, lt: todayEnd },
       },
       select: { company_cost: true, handling_fee: true },
     });
@@ -144,9 +160,9 @@ export class StatisticsService {
       await this.prisma.loanAccount.findMany({
         where: {
           ...loanFilter,
-          due_start_date: {
-            gte: businessDate,
-            lt: new Date(businessDate.getTime() + 86400000),
+          created_at: {
+            gte: todayStart,
+            lt: todayEnd,
           },
         },
         select: { loan_amount: true },
@@ -158,9 +174,9 @@ export class StatisticsService {
         where: {
           ...loanFilter,
           status: 'settled',
-          due_end_date: {
-            gte: businessDate,
-            lt: new Date(businessDate.getTime() + 86400000),
+          status_changed_at: {
+            gte: todayStart,
+            lt: todayEnd,
           },
         },
         select: { loan_amount: true },
@@ -170,7 +186,7 @@ export class StatisticsService {
     const thisMonthNewAccounts = await this.prisma.loanAccount.findMany({
       where: {
         ...loanFilter,
-        due_start_date: { gte: thisMonthStart, lt: nextMonthStart },
+        created_at: { gte: thisMonthStart, lt: nextMonthStart },
       },
       select: { loan_amount: true },
     });
@@ -183,7 +199,7 @@ export class StatisticsService {
       where: {
         ...loanFilter,
         status: 'settled',
-        due_end_date: { gte: thisMonthStart, lt: nextMonthStart },
+        status_changed_at: { gte: thisMonthStart, lt: nextMonthStart },
       },
       select: { loan_amount: true },
     });
@@ -195,7 +211,7 @@ export class StatisticsService {
     const thisMonthAccounts = await this.prisma.loanAccount.findMany({
       where: {
         ...loanFilter,
-        due_start_date: { gte: thisMonthStart, lt: nextMonthStart },
+        created_at: { gte: thisMonthStart, lt: nextMonthStart },
       },
       select: { handling_fee: true, total_fines: true },
     });
@@ -224,12 +240,10 @@ export class StatisticsService {
       },
     });
 
-    const lastMonthStart = new Date(thisMonthStart);
-    lastMonthStart.setMonth(lastMonthStart.getMonth() - 1);
     const lastMonthAccounts = await this.prisma.loanAccount.findMany({
       where: {
         ...loanFilter,
-        due_start_date: { gte: lastMonthStart, lt: thisMonthStart },
+        created_at: { gte: lastMonthStart, lt: thisMonthStart },
       },
       select: { handling_fee: true, total_fines: true },
     });

@@ -347,3 +347,23 @@ enum RepaymentScheduleOperationType {
   edit
 }
 
+model DeletedLoan {
+  id              Int      @id @default(autoincrement())
+  loan_id         Int      @unique
+  user_id         Int
+  username        String   @db.VarChar(50)
+  loan_amount     Decimal  @db.Decimal(10, 2)
+  capital         Decimal  @db.Decimal(10, 2)
+  interest        Decimal  @db.Decimal(10, 2)
+  status          String   @db.VarChar(20)
+  total_periods   Int
+  repaid_periods  Int
+  due_start_date  DateTime @db.Date
+  due_end_date    DateTime @db.Date
+  deleted_at      DateTime @default(now())
+  deleted_by      Int?
+  data            Json     // Stores serialized { loan, schedules, repaymentRecords }
+  
+  @@map("deleted_loans")
+}
+

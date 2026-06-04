@@ -290,7 +290,7 @@ export class RepaymentRecordsService {
 
     const loansWhere: any = {
       ...(loanIdFilter ? { id: loanIdFilter } : {}),
-      due_start_date: businessDate,
+      created_at: { gte: dayStart, lt: dayEnd },
     };
 
     const repaymentWhere: any = {
@@ -306,7 +306,7 @@ export class RepaymentRecordsService {
       const loansBefore = await this.prisma.loanAccount.aggregate({
         where: {
           ...(loanIdFilter ? { id: loanIdFilter } : {}),
-          due_start_date: { lt: businessDate },
+          created_at: { lt: dayStart },
         },
         _sum: {
           company_cost: true,

@@ -62,4 +62,26 @@ export class DailyLoanBalanceService implements OnApplicationBootstrap {
       `Daily loan balance snapshot completed for ${admins.length} admin(s) on ${today.toISOString().slice(0, 10)}`,
     );
   }
+
+  @Cron('0 0 2 * * *', { timeZone: 'Asia/Shanghai' }) // Run daily at 02:00
+  async purgeOldDeletedLoans(): Promise<void> {
+    this.logger.log('Running deleted loans recycle bin cleanup...');
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const result = await this.prisma.deletedLoan.deleteMany({
+        where: {
+          deleted_at: {
+            lt: thirtyDaysAgo,
+          },
+        },
+      });
+      this.logger.log(
+        `Recycle bin cleanup completed: permanently deleted ${result.count} loan account(s).`,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'unknown cleanup error';
+      this.logger.error(`Recycle bin cleanup failed: ${message}`);
+    }
+  }
 }

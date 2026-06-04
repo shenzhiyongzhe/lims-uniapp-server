@@ -703,17 +703,98 @@ export class LoanAccountsService {
   }
 
   async remove(id: number): Promise<void> {
-    const loan = await this.prisma.loanAccount.findUnique({
+    const fullLoan = await this.prisma.loanAccount.findUnique({
       where: { id },
+      include: {
+        user: { select: { username: true } },
+        repaymentSchedules: true,
+        repaymentRecords: true,
+      },
     });
 
-    if (!loan) {
+    if (!fullLoan) {
       throw new NotFoundException('贷款记录不存在');
     }
 
-    const { collector_id, risk_controller_id } = loan;
+    const { collector_id, risk_controller_id } = fullLoan;
 
     await this.prisma.$transaction(async (tx) => {
+      const backupData = {
+        loan: {
+          loan_amount: fullLoan.loan_amount,
+          receiving_amount: fullLoan.receiving_amount,
+          to_hand_ratio: fullLoan.to_hand_ratio,
+          capital: fullLoan.capital,
+          interest: fullLoan.interest,
+          due_start_date: fullLoan.due_start_date,
+          due_end_date: fullLoan.due_end_date,
+          status: fullLoan.status,
+          handling_fee: fullLoan.handling_fee,
+          total_periods: fullLoan.total_periods,
+          repaid_periods: fullLoan.repaid_periods,
+          daily_repayment: fullLoan.daily_repayment,
+          company_cost: fullLoan.company_cost,
+          created_at: fullLoan.created_at,
+          created_by: fullLoan.created_by,
+          collector_id: fullLoan.collector_id,
+          risk_controller_id: fullLoan.risk_controller_id,
+          apply_times: fullLoan.apply_times,
+          status_changed_at: fullLoan.status_changed_at,
+          total_fines: fullLoan.total_fines,
+          paid_capital: fullLoan.paid_capital,
+          paid_interest: fullLoan.paid_interest,
+          early_settlement_capital: fullLoan.early_settlement_capital,
+          note: fullLoan.note,
+          ownership: fullLoan.ownership,
+          payer_name: fullLoan.payer_name,
+        },
+        schedules: fullLoan.repaymentSchedules.map(s => ({
+          period: s.period,
+          due_start_date: s.due_start_date,
+          due_amount: s.due_amount,
+          capital: s.capital,
+          interest: s.interest,
+          status: s.status,
+          paid_amount: s.paid_amount,
+          paid_at: s.paid_at,
+          fines: s.fines,
+          operator_admin_id: s.operator_admin_id,
+          operator_admin_name: s.operator_admin_name,
+          paid_capital: s.paid_capital,
+          paid_interest: s.paid_interest,
+        })),
+        repaymentRecords: fullLoan.repaymentRecords.map(r => ({
+          user_id: r.user_id,
+          paid_amount: r.paid_amount,
+          paid_at: r.paid_at,
+          paid_capital: r.paid_capital,
+          paid_fines: r.paid_fines,
+          paid_interest: r.paid_interest,
+          repayment_schedule_period: fullLoan.repaymentSchedules.find(s => s.id === r.repayment_schedule_id)?.period,
+          actual_collector_id: r.actual_collector_id,
+          remark: r.remark,
+          due_date: r.due_date,
+          is_overdue_repaid: r.is_overdue_repaid,
+        })),
+      };
+
+      await tx.deletedLoan.create({
+        data: {
+          loan_id: fullLoan.id,
+          user_id: fullLoan.user_id,
+          username: fullLoan.user?.username || '',
+          loan_amount: fullLoan.loan_amount,
+          capital: fullLoan.capital,
+          interest: fullLoan.interest,
+          status: fullLoan.status,
+          total_periods: fullLoan.total_periods,
+          repaid_periods: fullLoan.repaid_periods,
+          due_start_date: fullLoan.due_start_date,
+          due_end_date: fullLoan.due_end_date,
+          data: backupData as any,
+        },
+      });
+
       await tx.repaymentRecord.deleteMany({ where: { loan_id: id } });
       await tx.loanAccount.delete({ where: { id } });
     });
@@ -721,11 +802,11 @@ export class LoanAccountsService {
     try {
       await this.assetManagementService.updateCollectorAssetFromLoanAccount(
         collector_id,
-        loan,
+        fullLoan,
       );
       await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(
         risk_controller_id,
-        loan,
+        fullLoan,
       );
     } catch (error) {
       console.error('更新资产数据失败:', error);
@@ -1572,5 +1653,153 @@ export class LoanAccountsService {
       currentUser,
     );
     return this.computeListStatistics(baseAndParts);
+  }
+
+  async findDeletedLoans() {
+    return this.prisma.deletedLoan.findMany({
+      orderBy: { deleted_at: 'desc' },
+    });
+  }
+
+  async restoreDeletedLoan(loanId: number, restoredBy: number): Promise<any> {
+    const deletedRecord = await this.prisma.deletedLoan.findUnique({
+      where: { loan_id: loanId },
+    });
+
+    if (!deletedRecord) {
+      throw new NotFoundException('该删除记录不存在');
+    }
+
+    const backup = deletedRecord.data as any;
+    const loanData = backup.loan;
+    const schedulesData = backup.schedules || [];
+    const recordsData = backup.repaymentRecords || [];
+
+    const restored = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.loanAccount.create({
+        data: {
+          id: loanId,
+          user_id: deletedRecord.user_id,
+          loan_amount: loanData.loan_amount,
+          receiving_amount: loanData.receiving_amount,
+          risk_controller_id: loanData.risk_controller_id,
+          collector_id: loanData.collector_id,
+          company_cost: loanData.company_cost,
+          handling_fee: loanData.handling_fee,
+          to_hand_ratio: loanData.to_hand_ratio,
+          due_start_date: new Date(loanData.due_start_date),
+          due_end_date: new Date(loanData.due_end_date),
+          total_periods: loanData.total_periods,
+          repaid_periods: loanData.repaid_periods,
+          daily_repayment: loanData.daily_repayment,
+          apply_times: loanData.apply_times,
+          capital: loanData.capital,
+          interest: loanData.interest,
+          last_edit_pay_capital: loanData.capital,
+          last_edit_pay_interest: loanData.interest,
+          status: loanData.status,
+          total_fines: loanData.total_fines,
+          paid_capital: loanData.paid_capital,
+          paid_interest: loanData.paid_interest,
+          early_settlement_capital: loanData.early_settlement_capital,
+          status_changed_at: loanData.status_changed_at ? new Date(loanData.status_changed_at) : null,
+          note: loanData.note,
+          ownership: loanData.ownership,
+          payer_name: loanData.payer_name,
+          created_by: loanData.created_by,
+        },
+      });
+
+      const scheduleIdMap = new Map<number, number>();
+      for (const s of schedulesData) {
+        const createdSchedule = await tx.repaymentSchedule.create({
+          data: {
+            loan_id: created.id,
+            period: s.period,
+            due_start_date: new Date(s.due_start_date),
+            due_amount: s.due_amount,
+            capital: s.capital,
+            interest: s.interest,
+            status: s.status,
+            paid_amount: s.paid_amount,
+            paid_at: s.paid_at ? new Date(s.paid_at) : null,
+            fines: s.fines,
+            operator_admin_id: s.operator_admin_id,
+            operator_admin_name: s.operator_admin_name,
+            paid_capital: s.paid_capital,
+            paid_interest: s.paid_interest,
+          },
+        });
+        scheduleIdMap.set(s.period, createdSchedule.id);
+      }
+
+      for (const r of recordsData) {
+        let scheduleId: number | null = null;
+        if (r.repayment_schedule_period !== undefined) {
+          scheduleId = scheduleIdMap.get(r.repayment_schedule_period) || null;
+        }
+        await tx.repaymentRecord.create({
+          data: {
+            loan_id: created.id,
+            user_id: r.user_id,
+            paid_amount: r.paid_amount,
+            paid_at: new Date(r.paid_at),
+            paid_capital: r.paid_capital,
+            paid_fines: r.paid_fines,
+            paid_interest: r.paid_interest,
+            repayment_schedule_id: scheduleId,
+            actual_collector_id: r.actual_collector_id,
+            remark: r.remark,
+            due_date: r.due_date ? new Date(r.due_date) : null,
+            is_overdue_repaid: r.is_overdue_repaid,
+          },
+        });
+      }
+
+      await tx.loanAccountRole.createMany({
+        data: [
+          {
+            loan_account_id: created.id,
+            admin_id: created.collector_id,
+            role_type: 'collector',
+          },
+          {
+            loan_account_id: created.id,
+            admin_id: created.risk_controller_id,
+            role_type: 'risk_controller',
+          },
+        ],
+        skipDuplicates: true,
+      });
+
+      await this.logOperation(
+        tx,
+        created.id,
+        restoredBy,
+        'restore',
+        '恢复贷款记录（从回收站）',
+      );
+
+      await tx.deletedLoan.delete({
+        where: { id: deletedRecord.id },
+      });
+
+      return created;
+    });
+
+    try {
+      await this.assetManagementService.updateCollectorAssetFromLoanAccount(
+        restored.collector_id,
+        restored,
+      );
+      await this.assetManagementService.updateRiskControllerAssetFromLoanAccount(
+        restored.risk_controller_id,
+        restored,
+      );
+    } catch (error) {
+      console.error('更新资产数据失败:', error);
+    }
+
+    return restored;
   }
 }

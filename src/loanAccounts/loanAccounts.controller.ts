@@ -116,6 +116,33 @@ export class LoanAccountsController {
     return ResponseHelper.success(result, '获取统计数据成功');
   }
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.ADMIN)
+  @Get('deleted')
+  async findDeletedLoans(): Promise<ApiResponseDto> {
+    try {
+      const list = await this.loanAccountsService.findDeletedLoans();
+      return ResponseHelper.success(list, '获取已删除贷款记录成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`获取已删除贷款记录失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.ADMIN)
+  @Post('deleted/:id/restore')
+  async restoreDeletedLoan(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
+    try {
+      const restored = await this.loanAccountsService.restoreDeletedLoan(id, user.id);
+      return ResponseHelper.success(restored, '恢复贷款记录成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`恢复贷款记录失败: ${error.message}`, 500);
+    }
+  }
+
   @UseGuards(AuthGuard)
   @Get(':id')
   async findById(
