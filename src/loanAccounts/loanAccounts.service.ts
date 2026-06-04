@@ -1315,13 +1315,16 @@ export class LoanAccountsService {
         id: { in: futurePaidScheduleIds },
       });
     }
-    // 先查询未来的方案，并计算顺延的下一期
+    const paidTodayFutureLoanIds = new Set(futurePaidSchedules.map((s) => s.loan_id));
+
+    // 先查询未来的方案，并计算顺延的下一期，同时排除今天已还过的方案
     const futureLoans = await this.prisma.loanAccount.findMany({
       where: {
         AND: [
           loanAccountWhereForScheduleTabs,
           { status: { not: 'negotiated' as const } },
           { due_start_date: { gt: todayShanghai } },
+          { id: { notIn: Array.from(paidTodayFutureLoanIds) } },
         ],
       },
       select: {
