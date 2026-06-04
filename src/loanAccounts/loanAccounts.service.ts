@@ -1258,25 +1258,106 @@ export class LoanAccountsService {
     const whereOverdueLoans = {
       OR: [whereOverdueNegotiated, whereOverdueBySchedule],
     };
-    const scheduleWhereTodayPaid = {
-      due_start_date: todayShanghai,
-      status: 'paid' as const,
-      loan_account: { is: loanAccountWhereForScheduleTabs },
-    };
-    const scheduleWhereTodayUnpaid = {
-      due_start_date: todayShanghai,
-      status: {
-        in: ['pending', 'active'] satisfies RepaymentScheduleStatus[],
-      },
-      loan_account: {
-        is: {
-          AND: [
-            loanAccountWhereForScheduleTabs,
-            { status: { not: 'negotiated' as const } },
-          ],
+    const todayRange = getBusinessDayTimestampRange(todayShanghai);
+
+    // 查询未来的方案今天已还的还款计划
+    const futurePaidSchedules = await this.prisma.repaymentSchedule.findMany({
+      where: {
+        status: 'paid' as const,
+        loan_account: {
+          is: {
+            AND: [
+              loanAccountWhereForScheduleTabs,
+              { status: { not: 'negotiated' as const } },
+              { due_start_date: { gt: todayShanghai } },
+            ],
+          },
+        },
+        repaymentRecords: {
+          some: {
+            paid_at: {
+              gte: todayRange.start,
+              lt: todayRange.end,
+            },
+          },
         },
       },
+      select: {
+        id: true,
+        loan_id: true,
+        period: true,
+      },
+    });
+
+    const futurePaidScheduleMap = new Map<number, typeof futurePaidSchedules[0]>();
+    for (const sch of futurePaidSchedules) {
+      const existing = futurePaidScheduleMap.get(sch.loan_id);
+      if (!existing || sch.period > existing.period) {
+        futurePaidScheduleMap.set(sch.loan_id, sch);
+      }
+    }
+    const futurePaidScheduleIds = Array.from(futurePaidScheduleMap.values()).map(
+      (s) => s.id,
+    );
+
+    const scheduleWhereTodayPaid: any = {
+      OR: [
+        {
+          due_start_date: todayShanghai,
+          status: 'paid' as const,
+          loan_account: { is: loanAccountWhereForScheduleTabs },
+        },
+      ],
     };
+
+    if (futurePaidScheduleIds.length > 0) {
+      scheduleWhereTodayPaid.OR.push({
+        id: { in: futurePaidScheduleIds },
+      });
+    }
+    // 先查询未来的方案，并计算顺延的下一期
+    const futureLoans = await this.prisma.loanAccount.findMany({
+      where: {
+        AND: [
+          loanAccountWhereForScheduleTabs,
+          { status: { not: 'negotiated' as const } },
+          { due_start_date: { gt: todayShanghai } },
+        ],
+      },
+      select: {
+        id: true,
+        repaid_periods: true,
+      },
+    });
+
+    const futureScheduleConditions = futureLoans.map((loan) => ({
+      loan_id: loan.id,
+      period: loan.repaid_periods + 1,
+      status: 'pending' as const,
+    }));
+
+    const scheduleWhereTodayUnpaid: any = {
+      OR: [
+        {
+          due_start_date: todayShanghai,
+          status: {
+            in: ['pending', 'active'] satisfies RepaymentScheduleStatus[],
+          },
+          loan_account: {
+            is: {
+              AND: [
+                loanAccountWhereForScheduleTabs,
+                { status: { not: 'negotiated' as const } },
+              ],
+            },
+          },
+        },
+      ],
+    };
+
+    if (futureScheduleConditions.length > 0) {
+      scheduleWhereTodayUnpaid.OR.push(...futureScheduleConditions);
+    }
 
     const scheduleSumWhere = {
       paid_amount: { gt: 0 },
@@ -1323,6 +1404,7 @@ export class LoanAccountsService {
     const {
       tab,
       isScheduleTab,
+      todayShanghai,
       whereBlacklist,
       whereCompleted,
       whereOverdueLoans,
@@ -1448,10 +1530,12 @@ export class LoanAccountsService {
         const { _count, ...loan } = sch.loan_account as typeof sch.loan_account & {
           _count?: { repaymentSchedules?: number };
         };
+        const isFutureSchedule = loan.due_start_date.getTime() > todayShanghai.getTime();
         return {
           ...loan,
           repaymentSchedules: [sch],
           overdueScheduleCount: _count?.repaymentSchedules ?? 0,
+          isFutureSchedule,
           __rowKey: `${loan.id}-${sch.id}`,
         };
       });
