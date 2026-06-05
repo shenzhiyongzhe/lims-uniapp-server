@@ -11,3 +11,4 @@ node_modules
 /backups
 
 /deploy/postgresql/pgloader-production.load
+/scripts
