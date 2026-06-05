@@ -1502,16 +1502,12 @@ export class LoanAccountsService {
       countTabOverdue,
       countTabTodayPaid,
       countTabTodayUnpaid,
-      relatedAdmins,
     ] = await Promise.all([
       this.prisma.loanAccount.count({ where: whereBlacklist }),
       this.prisma.loanAccount.count({ where: whereCompleted }),
       this.prisma.loanAccount.count({ where: whereOverdueLoans }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
-      currentUser?.id
-        ? this.accessScopeService.getAssociatedAdmins(currentUser.id)
-        : Promise.resolve([]),
     ]);
 
     let data: Array<Record<string, unknown>>;
@@ -1613,7 +1609,6 @@ export class LoanAccountsService {
     return {
       data,
       total,
-      relatedAdmins,
       listFilterCounts: {
         blacklist: countTabBlacklist,
         completed: countTabCompleted,
