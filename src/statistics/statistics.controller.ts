@@ -16,18 +16,20 @@ export class StatisticsController {
   @Get()
   async getStatistics(
     @Query()
-    query: GetStatisticsDto & {
-      targetUserId?: string;
-    },
+    query: GetStatisticsDto,
     @CurrentUser() currentUser: { id: number },
   ) {
-    const targetUserId = query.targetUserId
-      ? parseInt(query.targetUserId, 10)
+    const collectorId = query.collectorId
+      ? parseInt(query.collectorId, 10)
       : undefined;
-    const statistics = await this.statisticsService.getScopedStatistics(
+    const riskControllerId = query.riskControllerId
+      ? parseInt(query.riskControllerId, 10)
+      : undefined;
+    const statistics = (await this.statisticsService.getScopedStatistics(
       currentUser.id,
-      targetUserId,
-    );
+      collectorId,
+      riskControllerId,
+    )) as Record<string, unknown>;
     return ResponseHelper.success(statistics, '统计数据获取成功');
   }
 

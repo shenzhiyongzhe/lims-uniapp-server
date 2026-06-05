@@ -3,11 +3,16 @@ import { Type } from 'class-transformer';
 
 export class CollectorSummaryQueryDto {
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  targetUserId?: number;
-
-  @IsOptional()
   @IsString()
   targetDate?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  collectorId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  riskControllerId?: number;
 }

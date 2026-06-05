@@ -22,16 +22,16 @@ export class CollectorStatisticsController {
   async getTopStatistics(
     @Query()
     query: {
-      targetUserId?: string;
+      collectorId?: string;
     },
     @CurrentUser() currentUser: { id: number },
   ) {
-    const targetUserId = query.targetUserId
-      ? parseInt(query.targetUserId, 10)
+    const collectorId = query.collectorId
+      ? parseInt(query.collectorId, 10)
       : undefined;
     const statistics = await this.collectorStatisticsService.getTopStatistics(
       currentUser.id,
-      targetUserId,
+      collectorId,
     );
     return ResponseHelper.success(statistics, '获取统计数据成功');
   }

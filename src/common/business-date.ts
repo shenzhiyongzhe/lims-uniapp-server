@@ -75,7 +75,9 @@ export function getBusinessDayTimestampRange(businessDate: Date): {
   // So business_day UTC_midnight - 2h gives us Shanghai 06:00 of that day
   const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
   const start = new Date(businessDate.getTime() - TWO_HOURS_MS);
-  const end = new Date(businessDate.getTime() + 24 * 60 * 60 * 1000 - TWO_HOURS_MS);
+  const end = new Date(
+    businessDate.getTime() + 24 * 60 * 60 * 1000 - TWO_HOURS_MS,
+  );
   return { start, end };
 }
 
@@ -91,4 +93,3 @@ export function getShanghaiBusinessTodayAndYesterday(ref: Date = new Date()): {
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   return { today, yesterday };
 }
-

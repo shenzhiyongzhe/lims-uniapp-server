@@ -12,7 +12,10 @@ import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto
 
 import { LoanPredictionService } from '../loan-prediction/loan-prediction.service';
 import { AssetManagementService } from '../asset-management/asset-management.service';
-import { getShanghaiBusinessTodayAndYesterday, getBusinessDayTimestampRange } from '../common/business-date';
+import {
+  getShanghaiBusinessTodayAndYesterday,
+  getBusinessDayTimestampRange,
+} from '../common/business-date';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
@@ -323,22 +326,6 @@ export class LoanAccountsService {
         data: { overdue_count: overdueSchedules.length },
       });
 
-      await tx.loanAccountRole.createMany({
-        data: [
-          {
-            loan_account_id: created.id,
-            admin_id: data.collector_id,
-            role_type: 'collector',
-          },
-          {
-            loan_account_id: created.id,
-            admin_id: data.risk_controller_id,
-            role_type: 'risk_controller',
-          },
-        ],
-        skipDuplicates: true,
-      });
-
       await this.logOperation(
         tx,
         created.id,
@@ -535,35 +522,7 @@ export class LoanAccountsService {
         }
       }
 
-      if (
-        data.risk_controller_id !== undefined ||
-        data.collector_id !== undefined
-      ) {
-        if (data.risk_controller_id !== undefined) {
-          await tx.loanAccountRole.deleteMany({
-            where: { loan_account_id: id, role_type: 'risk_controller' },
-          });
-          await tx.loanAccountRole.create({
-            data: {
-              loan_account_id: id,
-              admin_id: data.risk_controller_id,
-              role_type: 'risk_controller',
-            },
-          });
-        }
-        if (data.collector_id !== undefined) {
-          await tx.loanAccountRole.deleteMany({
-            where: { loan_account_id: id, role_type: 'collector' },
-          });
-          await tx.loanAccountRole.create({
-            data: {
-              loan_account_id: id,
-              admin_id: data.collector_id,
-              role_type: 'collector',
-            },
-          });
-        }
-      }
+
 
       // Log changes
       const admins = await tx.admin.findMany({
@@ -748,7 +707,7 @@ export class LoanAccountsService {
           ownership: fullLoan.ownership,
           payer_name: fullLoan.payer_name,
         },
-        schedules: fullLoan.repaymentSchedules.map(s => ({
+        schedules: fullLoan.repaymentSchedules.map((s) => ({
           period: s.period,
           due_start_date: s.due_start_date,
           due_amount: s.due_amount,
@@ -763,14 +722,16 @@ export class LoanAccountsService {
           paid_capital: s.paid_capital,
           paid_interest: s.paid_interest,
         })),
-        repaymentRecords: fullLoan.repaymentRecords.map(r => ({
+        repaymentRecords: fullLoan.repaymentRecords.map((r) => ({
           user_id: r.user_id,
           paid_amount: r.paid_amount,
           paid_at: r.paid_at,
           paid_capital: r.paid_capital,
           paid_fines: r.paid_fines,
           paid_interest: r.paid_interest,
-          repayment_schedule_period: fullLoan.repaymentSchedules.find(s => s.id === r.repayment_schedule_id)?.period,
+          repayment_schedule_period: fullLoan.repaymentSchedules.find(
+            (s) => s.id === r.repayment_schedule_id,
+          )?.period,
           actual_collector_id: r.actual_collector_id,
           remark: r.remark,
           due_date: r.due_date,
@@ -1066,9 +1027,7 @@ export class LoanAccountsService {
         undefined,
       );
       if (!scope.isAllAccessible) {
-        baseAndParts.push({
-          id: { in: scope.loanAccountIds },
-        });
+        baseAndParts.push(scope.whereClause);
       }
     }
 
@@ -1096,7 +1055,9 @@ export class LoanAccountsService {
 
     // Use 6AM-boundary timestamp ranges for paid_at queries
     const todayRange = getBusinessDayTimestampRange(todayShanghai);
-    const yesterdayShanghai = new Date(todayShanghai.getTime() - 24 * 60 * 60 * 1000);
+    const yesterdayShanghai = new Date(
+      todayShanghai.getTime() - 24 * 60 * 60 * 1000,
+    );
     const yesterdayRange = getBusinessDayTimestampRange(yesterdayShanghai);
 
     const pendingNegotiatedStatus = {
@@ -1239,33 +1200,44 @@ export class LoanAccountsService {
   private async buildListWhereConditions(
     query: {
       status?: string;
-      targetUserId?: string;
       listFilter?: string;
+      collectorId?: string;
+      riskControllerId?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { status, targetUserId, listFilter } = query;
+    const { status, listFilter, collectorId, riskControllerId } = query;
 
     const baseAndParts: Record<string, unknown>[] = [];
     if (status) {
       baseAndParts.push({ status });
     }
 
-    const targetUserIdNum = targetUserId ? parseInt(targetUserId, 10) : NaN;
+    const collectorIdNum = collectorId ? parseInt(collectorId, 10) : NaN;
+    const riskControllerIdNum = riskControllerId
+      ? parseInt(riskControllerId, 10)
+      : NaN;
+
     if (currentUser?.id) {
       const scope = await this.accessScopeService.resolveLoanAccountScope(
         currentUser.id,
-        Number.isNaN(targetUserIdNum) ? undefined : targetUserIdNum,
+        Number.isNaN(collectorIdNum) ? undefined : collectorIdNum,
+        Number.isNaN(riskControllerIdNum) ? undefined : riskControllerIdNum,
       );
       if (!scope.isAllAccessible) {
+        baseAndParts.push(scope.whereClause);
+      }
+    } else {
+      if (!Number.isNaN(collectorIdNum)) {
         baseAndParts.push({
-          id: { in: scope.loanAccountIds },
+          collector_id: collectorIdNum,
         });
       }
-    } else if (!Number.isNaN(targetUserIdNum)) {
-      baseAndParts.push({
-        loanAccountRoles: { some: { admin_id: targetUserIdNum } },
-      });
+      if (!Number.isNaN(riskControllerIdNum)) {
+        baseAndParts.push({
+          risk_controller_id: riskControllerIdNum,
+        });
+      }
     }
 
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
@@ -1370,16 +1342,19 @@ export class LoanAccountsService {
       },
     });
 
-    const futurePaidScheduleMap = new Map<number, typeof futurePaidSchedules[0]>();
+    const futurePaidScheduleMap = new Map<
+      number,
+      (typeof futurePaidSchedules)[0]
+    >();
     for (const sch of futurePaidSchedules) {
       const existing = futurePaidScheduleMap.get(sch.loan_id);
       if (!existing || sch.period > existing.period) {
         futurePaidScheduleMap.set(sch.loan_id, sch);
       }
     }
-    const futurePaidScheduleIds = Array.from(futurePaidScheduleMap.values()).map(
-      (s) => s.id,
-    );
+    const futurePaidScheduleIds = Array.from(
+      futurePaidScheduleMap.values(),
+    ).map((s) => s.id);
 
     const scheduleWhereTodayPaid: any = {
       OR: [
@@ -1396,7 +1371,9 @@ export class LoanAccountsService {
         id: { in: futurePaidScheduleIds },
       });
     }
-    const paidTodayFutureLoanIds = new Set(futurePaidSchedules.map((s) => s.loan_id));
+    const paidTodayFutureLoanIds = new Set(
+      futurePaidSchedules.map((s) => s.loan_id),
+    );
 
     // 先查询未来的方案，并计算顺延的下一期，同时排除今天已还过的方案
     const futureLoans = await this.prisma.loanAccount.findMany({
@@ -1477,8 +1454,9 @@ export class LoanAccountsService {
       page: number;
       pageSize: number;
       status?: string;
-      targetUserId?: string;
       listFilter?: string;
+      collectorId?: string;
+      riskControllerId?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
@@ -1564,7 +1542,11 @@ export class LoanAccountsService {
           repaymentSchedules: {
             where: {
               status: {
-                in: ['overdue', 'pending', 'active'] satisfies RepaymentScheduleStatus[],
+                in: [
+                  'overdue',
+                  'pending',
+                  'active',
+                ] satisfies RepaymentScheduleStatus[],
               },
             },
             orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
@@ -1580,7 +1562,10 @@ export class LoanAccountsService {
       });
       data = loanRows.map((loan) => {
         const { _count, repaymentSchedules, ...rest } = loan;
-        const picked = this.pickOverdueTabSchedule(loan.status, repaymentSchedules);
+        const picked = this.pickOverdueTabSchedule(
+          loan.status,
+          repaymentSchedules,
+        );
         return {
           ...rest,
           repaymentSchedules: picked ? [picked] : [],
@@ -1611,10 +1596,9 @@ export class LoanAccountsService {
         },
       });
       data = scheduleRows.map((sch) => {
-        const { _count, ...loan } = sch.loan_account as typeof sch.loan_account & {
-          _count?: { repaymentSchedules?: number };
-        };
-        const isFutureSchedule = loan.due_start_date.getTime() > todayShanghai.getTime();
+        const { _count, ...loan } = sch.loan_account;
+        const isFutureSchedule =
+          loan.due_start_date.getTime() > todayShanghai.getTime();
         return {
           ...loan,
           repaymentSchedules: [sch],
@@ -1643,8 +1627,9 @@ export class LoanAccountsService {
   async findListStats(
     query: {
       status?: string;
-      targetUserId?: string;
       listFilter?: string;
+      collectorId?: string;
+      riskControllerId?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
@@ -1702,7 +1687,9 @@ export class LoanAccountsService {
           paid_capital: loanData.paid_capital,
           paid_interest: loanData.paid_interest,
           early_settlement_capital: loanData.early_settlement_capital,
-          status_changed_at: loanData.status_changed_at ? new Date(loanData.status_changed_at) : null,
+          status_changed_at: loanData.status_changed_at
+            ? new Date(loanData.status_changed_at)
+            : null,
           note: loanData.note,
           ownership: loanData.ownership,
           payer_name: loanData.payer_name,
@@ -1756,21 +1743,7 @@ export class LoanAccountsService {
         });
       }
 
-      await tx.loanAccountRole.createMany({
-        data: [
-          {
-            loan_account_id: created.id,
-            admin_id: created.collector_id,
-            role_type: 'collector',
-          },
-          {
-            loan_account_id: created.id,
-            admin_id: created.risk_controller_id,
-            role_type: 'risk_controller',
-          },
-        ],
-        skipDuplicates: true,
-      });
+
 
       await this.logOperation(
         tx,

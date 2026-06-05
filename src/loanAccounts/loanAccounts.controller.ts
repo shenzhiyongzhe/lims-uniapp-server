@@ -41,7 +41,9 @@ export class LoanAccountsController {
 
   @UseGuards(AuthGuard)
   @Get('related-admins')
-  async findRelatedAdmins(@CurrentUser() user: { id: number }): Promise<ApiResponseDto> {
+  async findRelatedAdmins(
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
     const admins = await this.accessScopeService.getAssociatedAdmins(user.id);
     return ResponseHelper.success(admins, '获取相关管理员成功');
   }
@@ -80,8 +82,9 @@ export class LoanAccountsController {
     @Query('page') page: string,
     @Query('pageSize') pageSize: string,
     @Query('status') status?: string,
-    @Query('targetUserId') targetUserId?: string,
     @Query('listFilter') listFilter?: string,
+    @Query('collectorId') collectorId?: string,
+    @Query('riskControllerId') riskControllerId?: string,
     @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findGroupedByUser(
@@ -89,8 +92,9 @@ export class LoanAccountsController {
         page: parseInt(page, 10) || 1,
         pageSize: parseInt(pageSize, 10) || 20,
         status,
-        targetUserId,
         listFilter,
+        collectorId,
+        riskControllerId,
       },
       currentUser,
     );
@@ -100,16 +104,18 @@ export class LoanAccountsController {
   @UseGuards(AuthGuard)
   @Get('list-stats')
   async getListStats(
-    @Query('targetUserId') targetUserId?: string,
     @Query('listFilter') listFilter?: string,
     @Query('status') status?: string,
+    @Query('collectorId') collectorId?: string,
+    @Query('riskControllerId') riskControllerId?: string,
     @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findListStats(
       {
-        targetUserId,
         listFilter,
         status,
+        collectorId,
+        riskControllerId,
       },
       currentUser,
     );
@@ -124,7 +130,10 @@ export class LoanAccountsController {
       const list = await this.loanAccountsService.findDeletedLoans();
       return ResponseHelper.success(list, '获取已删除贷款记录成功');
     } catch (error: any) {
-      return ResponseHelper.error(`获取已删除贷款记录失败: ${error.message}`, 500);
+      return ResponseHelper.error(
+        `获取已删除贷款记录失败: ${error.message}`,
+        500,
+      );
     }
   }
 
@@ -136,7 +145,10 @@ export class LoanAccountsController {
     @CurrentUser() user: { id: number },
   ): Promise<ApiResponseDto> {
     try {
-      const restored = await this.loanAccountsService.restoreDeletedLoan(id, user.id);
+      const restored = await this.loanAccountsService.restoreDeletedLoan(
+        id,
+        user.id,
+      );
       return ResponseHelper.success(restored, '恢复贷款记录成功');
     } catch (error: any) {
       return ResponseHelper.error(`恢复贷款记录失败: ${error.message}`, 500);

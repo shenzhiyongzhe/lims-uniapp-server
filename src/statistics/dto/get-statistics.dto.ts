@@ -12,4 +12,12 @@ export class GetStatisticsDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  collectorId?: string;
+
+  @IsOptional()
+  @IsString()
+  riskControllerId?: string;
 }

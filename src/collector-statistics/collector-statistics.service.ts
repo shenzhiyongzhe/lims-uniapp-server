@@ -15,14 +15,12 @@ export class CollectorStatisticsService {
     return parseFloat(String(value)) || 0;
   }
 
-  async getTopStatistics(requestUserId: number, targetUserId?: number) {
+  async getTopStatistics(requestUserId: number, collectorId?: number) {
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
-      targetUserId,
+      collectorId,
     );
-    const loanFilter = scope.isAllAccessible
-      ? {}
-      : { id: { in: scope.loanAccountIds } };
+    const loanFilter = scope.whereClause;
 
     const allLoanAccounts = await this.prisma.loanAccount.findMany({
       where: loanFilter,

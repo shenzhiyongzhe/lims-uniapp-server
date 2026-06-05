@@ -26,11 +26,6 @@ export class PaginationQueryDto {
   loanId?: number;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  targetUserId?: number;
-
-  @IsOptional()
   startDate?: string;
 
   @IsOptional()

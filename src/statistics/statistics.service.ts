@@ -28,48 +28,35 @@ export class StatisticsService {
   private getBusinessDayEnd(date?: Date): Date {
     const businessDate = getShanghaiBusinessDate(date);
     // end is exclusive (start of next business day), subtract 1ms for inclusive end
-    return new Date(getBusinessDayTimestampRange(businessDate).end.getTime() - 1);
+    return new Date(
+      getBusinessDayTimestampRange(businessDate).end.getTime() - 1,
+    );
   }
 
   async getScopedStatistics(
     requestUserId: number,
-    targetUserId?: number,
+    collectorId?: number,
+    riskControllerId?: number,
     targetDate?: Date,
   ): Promise<any> {
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
-      targetUserId,
+      collectorId,
+      riskControllerId,
     );
     return this.getDetailedStatisticsByLoanScope(
-      scope.isAllAccessible ? undefined : scope.loanAccountIds,
+      scope.whereClause,
       targetDate,
-      scope.isAllAccessible ? undefined : scope.scopedUserId,
-    );
-  }
-
-  private async getLoanAccountIdsByUserRole(
-    userId: number,
-    roleType: 'collector' | 'risk_controller',
-  ): Promise<number[]> {
-    return this.accessScopeService.getLoanAccountIdsByUserRole(
-      userId,
-      roleType,
     );
   }
 
   private async getDetailedStatisticsByLoanScope(
-    loanAccountIds: number[] | undefined,
+    loanAccountWhere: any,
     targetDate?: Date,
-    scopedUserId?: number,
   ): Promise<any> {
-    if (loanAccountIds && loanAccountIds.length === 0) {
-      return this.getEmptyStatisticsWithYesterday();
-    }
-
     const businessDate = getShanghaiBusinessDate(targetDate);
-    const { start: todayStart, end: todayEnd } = getBusinessDayTimestampRange(businessDate);
-    const yesterdayBusinessDate = new Date(businessDate.getTime() - 24 * 60 * 60 * 1000);
-    const { start: yesterdayStart, end: yesterdayEnd } = getBusinessDayTimestampRange(yesterdayBusinessDate);
+    const { start: todayStart, end: todayEnd } =
+      getBusinessDayTimestampRange(businessDate);
 
     const now = targetDate || new Date();
     const shanghaiParts = getShanghaiYmdParts(now);
@@ -89,10 +76,10 @@ export class StatisticsService {
     const lastMonthStart = new Date(
       Date.UTC(lastMonthY, lastMonthM - 1, 1) - 2 * 3600 * 1000,
     );
-    const loanFilter = loanAccountIds ? { id: { in: loanAccountIds } } : {};
-    const repaymentLoanFilter = loanAccountIds
-      ? { loan_id: { in: loanAccountIds } }
-      : {};
+    const loanFilter = loanAccountWhere;
+    const repaymentLoanFilter = {
+      loan_account: loanAccountWhere,
+    };
 
     const allLoanAccounts = await this.prisma.loanAccount.findMany({
       where: loanFilter,
@@ -309,33 +296,48 @@ export class StatisticsService {
   }
 
   async getAdminStatistics(): Promise<any[]> {
-    const roles = await this.prisma.loanAccountRole.findMany({
-      where: { role_type: { in: ['collector', 'risk_controller'] } },
-      include: { admin: { select: { id: true, nickname: true } } },
-      distinct: ['admin_id', 'role_type'],
+    const collectors = await this.prisma.admin.findMany({
+      where: {
+        loanAccountsAsCollector: { some: {} },
+      },
+      select: { id: true, nickname: true },
+    });
+
+    const riskControllers = await this.prisma.admin.findMany({
+      where: {
+        loanAccountsAsRiskController: { some: {} },
+      },
+      select: { id: true, nickname: true },
     });
 
     const results: any[] = [];
-    for (const role of roles) {
-      const loanAccountIds = await this.getLoanAccountIdsByUserRole(
-        role.admin_id,
-        role.role_type as 'collector' | 'risk_controller',
-      );
-      const statistics = await this.getDetailedStatisticsByLoanScope(
-        loanAccountIds,
+
+    for (const c of collectors) {
+      const statistics = (await this.getDetailedStatisticsByLoanScope(
+        { collector_id: c.id },
         undefined,
-        role.admin_id,
-      );
+      )) as Record<string, unknown>;
       results.push({
-        admin_id: role.admin_id,
-        admin_name:
-          role.role_type === 'collector'
-            ? role.admin.nickname || ''
-            : role.admin.nickname || '',
-        role: role.role_type,
+        admin_id: c.id,
+        admin_name: c.nickname || '',
+        role: 'collector',
         ...statistics,
       });
     }
+
+    for (const rc of riskControllers) {
+      const statistics = (await this.getDetailedStatisticsByLoanScope(
+        { risk_controller_id: rc.id },
+        undefined,
+      )) as Record<string, unknown>;
+      results.push({
+        admin_id: rc.id,
+        admin_name: rc.nickname || '',
+        role: 'risk_controller',
+        ...statistics,
+      });
+    }
+
     return results;
   }
 

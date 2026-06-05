@@ -72,7 +72,6 @@ export class RepaymentRecordsService {
       pageSize = 20,
       userId,
       loanId,
-      targetUserId,
       startDate,
       endDate,
       riskControllerId,
@@ -82,22 +81,16 @@ export class RepaymentRecordsService {
     const skip = (page - 1) * pageSize;
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
-      targetUserId,
+      collectorId ? Number(collectorId) : undefined,
+      riskControllerId ? Number(riskControllerId) : undefined,
     );
 
-    const where: any = {};
-    if (!scope.isAllAccessible) {
-      where.loan_id = { in: scope.loanAccountIds };
-    }
+    const where: any = {
+      loan_account: scope.whereClause,
+    };
     if (userId) where.user_id = userId;
     if (loanId) {
       where.AND = [...(where.AND || []), { loan_id: loanId }];
-    }
-    if (riskControllerId || collectorId) {
-      where.loan_account = {};
-      if (riskControllerId)
-        where.loan_account.risk_controller_id = riskControllerId;
-      if (collectorId) where.loan_account.collector_id = collectorId;
     }
     if (username) {
       where.user = {
@@ -145,7 +138,8 @@ export class RepaymentRecordsService {
     query: CollectorSummaryQueryDto,
     requestUserId: number,
   ) {
-    const targetUserId = query.targetUserId;
+    const collectorId = query.collectorId;
+    const riskControllerId = query.riskControllerId;
     const { targetDate } = query;
     const refDate = targetDate ? new Date(targetDate) : new Date();
     const businessDate = getShanghaiBusinessDate(refDate);
@@ -168,28 +162,27 @@ export class RepaymentRecordsService {
     );
 
     const [scope, requestUser] = await Promise.all([
-      this.accessScopeService.resolveLoanAccountScope(requestUserId, targetUserId),
+      this.accessScopeService.resolveLoanAccountScope(
+        requestUserId,
+        collectorId,
+        riskControllerId,
+      ),
       this.prisma.admin.findUnique({
         where: { id: requestUserId },
         select: { role: true },
       }),
     ]);
-    const baseWhere: any = {};
-    if (!scope.isAllAccessible) {
-      baseWhere.loan_id = { in: scope.loanAccountIds };
-    }
+    const baseWhere: any = {
+      loan_account: scope.whereClause,
+    };
 
     // Determine collectorId for deposit process (only for COLLECTOR role)
-    let collectorId: number | null = null;
+    let collectorIdForDeposit: number | null = null;
     if (requestUser?.role === 'COLLECTOR') {
-      collectorId = requestUserId;
-    } else if (requestUser?.role === 'ADMIN' && targetUserId) {
-      const targetUser = await this.prisma.admin.findUnique({
-        where: { id: targetUserId },
-        select: { role: true },
-      });
-      if (targetUser?.role === 'COLLECTOR') {
-        collectorId = targetUserId;
+      collectorIdForDeposit = requestUserId;
+    } else if (requestUser?.role === 'ADMIN') {
+      if (collectorId) {
+        collectorIdForDeposit = collectorId;
       }
     }
 
@@ -222,7 +215,8 @@ export class RepaymentRecordsService {
         targetDate: new Date(
           yesterdayBusinessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000,
         ),
-        targetUserId,
+        collectorId,
+        riskControllerId,
         persist: false,
       }),
       this.getDailyLoanBalance({
@@ -230,14 +224,19 @@ export class RepaymentRecordsService {
         targetDate: new Date(
           businessDate.getTime() + 2 * 3600 * 1000 + 12 * 3600 * 1000,
         ),
-        targetUserId,
+        collectorId,
+        riskControllerId,
         persist: false,
       }),
-      collectorId
-        ? this.buildDepositProcess(collectorId, dayStart, dayEnd)
+      collectorIdForDeposit
+        ? this.buildDepositProcess(collectorIdForDeposit, dayStart, dayEnd)
         : Promise.resolve(null),
-      collectorId
-        ? this.buildDepositProcess(collectorId, yesterday, yesterdayEnd)
+      collectorIdForDeposit
+        ? this.buildDepositProcess(
+            collectorIdForDeposit,
+            yesterday,
+            yesterdayEnd,
+          )
         : Promise.resolve(null),
     ]);
 
@@ -265,13 +264,15 @@ export class RepaymentRecordsService {
   async getDailyLoanBalance(params: {
     requestUserId: number;
     targetDate?: Date;
-    targetUserId?: number;
+    collectorId?: number;
+    riskControllerId?: number;
     persist?: boolean;
   }): Promise<DailyLoanBalanceResult> {
     const {
       requestUserId,
       targetDate = new Date(),
-      targetUserId,
+      collectorId,
+      riskControllerId,
       persist = false,
     } = params;
     const businessDate = getShanghaiBusinessDate(targetDate);
@@ -280,32 +281,31 @@ export class RepaymentRecordsService {
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
-      targetUserId,
+      collectorId,
+      riskControllerId,
     );
-    const loanIds = scope.loanAccountIds;
-    const loanIdFilter = scope.isAllAccessible ? undefined : { in: loanIds };
     const scopedBalanceUserId = scope.isAllAccessible
       ? requestUserId
       : scope.scopedUserId || requestUserId;
 
     const loansWhere: any = {
-      ...(loanIdFilter ? { id: loanIdFilter } : {}),
+      ...scope.whereClause,
       created_at: { gte: dayStart, lt: dayEnd },
     };
 
     const repaymentWhere: any = {
-      ...(loanIdFilter ? { loan_id: loanIdFilter } : {}),
+      loan_account: scope.whereClause,
       paid_at: { gte: dayStart, lte: dayEnd },
     };
 
     let previousTotal = 0;
     let previousRow: any = null;
 
-    if (targetUserId || scope.isAllAccessible) {
+    if (collectorId || riskControllerId || scope.isAllAccessible) {
       // 交集模式或 admin 全量模式下，动态算出之前的累计余额（避免读取陈旧归档）
       const loansBefore = await this.prisma.loanAccount.aggregate({
         where: {
-          ...(loanIdFilter ? { id: loanIdFilter } : {}),
+          ...scope.whereClause,
           created_at: { lt: dayStart },
         },
         _sum: {
@@ -320,7 +320,7 @@ export class RepaymentRecordsService {
 
       const repaymentsBefore = await this.prisma.repaymentRecord.aggregate({
         where: {
-          ...(loanIdFilter ? { loan_id: loanIdFilter } : {}),
+          loan_account: scope.whereClause,
           paid_at: { lt: dayStart },
         },
         _sum: {
@@ -466,7 +466,8 @@ export class RepaymentRecordsService {
   }
 
   async getDailySummary(query: DailySummaryQueryDto, requestUserId: number) {
-    const targetUserId = query.targetUserId;
+    const collectorId = query.collectorId;
+    const riskControllerId = query.riskControllerId;
     const { month } = query;
     const [yearStr, monthStr] = month.split('-');
     const year = Number(yearStr);
@@ -487,14 +488,13 @@ export class RepaymentRecordsService {
 
     const scope = await this.accessScopeService.resolveLoanAccountScope(
       requestUserId,
-      targetUserId,
+      collectorId,
+      riskControllerId,
     );
     const where: any = {
       paid_at: { gte: monthStartTs, lt: nextMonthStartTs },
+      loan_account: scope.whereClause,
     };
-    if (!scope.isAllAccessible) {
-      where.loan_id = { in: scope.loanAccountIds };
-    }
 
     const rows = await this.prisma.repaymentRecord.findMany({
       where,

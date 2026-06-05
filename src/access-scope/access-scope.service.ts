@@ -4,11 +4,10 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export type ResolvedDataScope = {
   requestUserId: number;
-  targetUserId?: number;
   isRequesterPlatformAdminRole: boolean;
   isAllAccessible: boolean;
   scopedUserId?: number;
-  loanAccountIds: number[];
+  whereClause: any;
 };
 
 @Injectable()
@@ -17,7 +16,8 @@ export class AccessScopeService {
 
   async resolveLoanAccountScope(
     requestUserId: number,
-    targetUserId?: number,
+    collectorId?: number,
+    riskControllerId?: number,
   ): Promise<ResolvedDataScope> {
     const requester = await this.prisma.admin.findUnique({
       where: { id: requestUserId },
@@ -30,32 +30,49 @@ export class AccessScopeService {
 
     const isRequesterPlatformAdminRole =
       requester.role === ManagementRoles.ADMIN;
-    const canViewAll = isRequesterPlatformAdminRole && !targetUserId;
+    const canViewAll =
+      isRequesterPlatformAdminRole && !collectorId && !riskControllerId;
 
-    let loanAccountIds: number[] = [];
+    const whereClause: any = {};
     if (isRequesterPlatformAdminRole) {
-      if (targetUserId) {
-        loanAccountIds = await this.getLoanAccountIdsByUserId(targetUserId);
+      if (collectorId) {
+        whereClause.collector_id = collectorId;
+      }
+      if (riskControllerId) {
+        whereClause.risk_controller_id = riskControllerId;
       }
     } else {
-      const requesterLoans = await this.getLoanAccountIdsByUserId(requestUserId);
-      if (targetUserId) {
-        const targetLoans = await this.getLoanAccountIdsByUserId(targetUserId);
-        loanAccountIds = requesterLoans.filter((id) => targetLoans.includes(id));
+      if (requester.role === ManagementRoles.COLLECTOR) {
+        whereClause.collector_id = requestUserId;
+        if (riskControllerId) {
+          whereClause.risk_controller_id = riskControllerId;
+        }
+      } else if (requester.role === ManagementRoles.RISK_CONTROLLER) {
+        whereClause.risk_controller_id = requestUserId;
+        if (collectorId) {
+          whereClause.collector_id = collectorId;
+        }
       } else {
-        loanAccountIds = requesterLoans;
+        return {
+          requestUserId,
+          isRequesterPlatformAdminRole,
+          isAllAccessible: false,
+          scopedUserId: undefined,
+          whereClause: { id: -1 },
+        };
       }
     }
 
     return {
       requestUserId,
-      targetUserId,
       isRequesterPlatformAdminRole,
       isAllAccessible: canViewAll,
       scopedUserId: isRequesterPlatformAdminRole
-        ? targetUserId || undefined
-        : requestUserId,
-      loanAccountIds,
+        ? collectorId || undefined
+        : requester.role === ManagementRoles.COLLECTOR
+          ? requestUserId
+          : collectorId || undefined,
+      whereClause,
     };
   }
 
@@ -72,7 +89,9 @@ export class AccessScopeService {
     if (admin.role === ManagementRoles.ADMIN) {
       const admins = await this.prisma.admin.findMany({
         where: {
-          role: { in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER] },
+          role: {
+            in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER],
+          },
         },
         select: {
           id: true,
@@ -84,28 +103,44 @@ export class AccessScopeService {
       return this.sortAdminsCollectorFirst(admins);
     }
 
-    const myLoanIds = await this.getLoanAccountIdsByUserId(userId);
-    if (myLoanIds.length === 0) return [];
-
-    const otherRoles = await this.prisma.loanAccountRole.findMany({
+    const myLoans = await this.prisma.loanAccount.findMany({
       where: {
-        loan_account_id: { in: myLoanIds },
-        admin_id: { not: userId },
+        OR: [
+          { collector_id: userId },
+          { risk_controller_id: userId },
+        ],
       },
       select: {
-        admin: {
-          select: {
-            id: true,
-            username: true,
-            nickname: true,
-            role: true,
-          },
-        },
+        collector_id: true,
+        risk_controller_id: true,
       },
-      distinct: ['admin_id'],
     });
 
-    return this.sortAdminsCollectorFirst(otherRoles.map((r) => r.admin));
+    const otherAdminIds = new Set<number>();
+    for (const loan of myLoans) {
+      if (loan.collector_id && loan.collector_id !== userId) {
+        otherAdminIds.add(loan.collector_id);
+      }
+      if (loan.risk_controller_id && loan.risk_controller_id !== userId) {
+        otherAdminIds.add(loan.risk_controller_id);
+      }
+    }
+
+    if (otherAdminIds.size === 0) return [];
+
+    const otherAdmins = await this.prisma.admin.findMany({
+      where: {
+        id: { in: Array.from(otherAdminIds) },
+      },
+      select: {
+        id: true,
+        username: true,
+        nickname: true,
+        role: true,
+      },
+    });
+
+    return this.sortAdminsCollectorFirst(otherAdmins);
   }
 
   /** COLLECTOR 在前，RISK_CONTROLLER 在后 */
@@ -118,9 +153,7 @@ export class AccessScopeService {
       [ManagementRoles.COLLECTOR]: 0,
       [ManagementRoles.PENDING]: 99,
     };
-    return [...admins].sort(
-      (a, b) => roleOrder[a.role] - roleOrder[b.role],
-    );
+    return [...admins].sort((a, b) => roleOrder[a.role] - roleOrder[b.role]);
   }
 
   async getLoanAccountIdsByUserId(userId: number): Promise<number[]> {
@@ -131,14 +164,21 @@ export class AccessScopeService {
     userId: number,
     roleType?: 'collector' | 'risk_controller',
   ): Promise<number[]> {
-    const roles = await this.prisma.loanAccountRole.findMany({
-      where: {
-        admin_id: userId,
-        ...(roleType ? { role_type: roleType } : {}),
-      },
-      select: { loan_account_id: true },
-      distinct: ['loan_account_id'],
+    const whereClause: any = {};
+    if (roleType === 'collector') {
+      whereClause.collector_id = userId;
+    } else if (roleType === 'risk_controller') {
+      whereClause.risk_controller_id = userId;
+    } else {
+      whereClause.OR = [
+        { collector_id: userId },
+        { risk_controller_id: userId },
+      ];
+    }
+    const loans = await this.prisma.loanAccount.findMany({
+      where: whereClause,
+      select: { id: true },
     });
-    return roles.map((r) => r.loan_account_id);
+    return loans.map((l) => l.id);
   }
 }

@@ -33,9 +33,12 @@ export const calcLoanDisbursementDelta = (
 
 export const calcLoanDisbursementDeltaTotal = (
   accounts: LoanDisbursementFields[],
-): number => accounts.reduce((sum, account) => sum + calcLoanDisbursementDelta(account), 0);
+): number =>
+  accounts.reduce(
+    (sum, account) => sum + calcLoanDisbursementDelta(account),
+    0,
+  );
 
 export const calcPaidAmountTotal = (
   rows: Array<{ paid_amount?: unknown }>,
-): number =>
-  rows.reduce((sum, row) => sum + toNumber(row.paid_amount), 0);
+): number => rows.reduce((sum, row) => sum + toNumber(row.paid_amount), 0);
