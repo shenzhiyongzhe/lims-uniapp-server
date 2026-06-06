@@ -159,6 +159,7 @@ export class AuthController {
           role: 'PENDING',
           openid,
           nickname,
+          username: nickname ? nickname.slice(0, 10).trim() : null,
           avatar_url,
         },
       });
