@@ -36,15 +36,15 @@ export class AuthController {
       return ResponseHelper.error('未登录', 401);
     }
 
-    const admin = await this.prisma.admin.findUnique({
+    const staff = await this.prisma.staff.findUnique({
       where: { id: user.id },
       select: { id: true, username: true, nickname: true, role: true },
     });
-    if (!admin) {
+    if (!staff) {
       return ResponseHelper.error('用户不存在', 404);
     }
     return ResponseHelper.success(
-      { code: 200, message: '验证成功', valid: true, data: admin },
+      { code: 200, message: '验证成功', valid: true, data: staff },
       '验证成功',
     );
   }
@@ -67,30 +67,30 @@ export class AuthController {
       throw new UnauthorizedException('Refresh token无效或已过期');
     }
 
-    const admin = await this.prisma.admin.findUnique({
+    const staff = await this.prisma.staff.findUnique({
       where: { id: payload.id },
       select: { id: true, openid: true, role: true, token_version: true },
     });
 
-    if (!admin) {
+    if (!staff) {
       throw new UnauthorizedException('用户不存在');
     }
 
-    if (payload.tokenVersion !== admin.token_version) {
+    if (payload.tokenVersion !== staff.token_version) {
       throw new UnauthorizedException('Token已失效，请重新登录');
     }
 
     const newAccessToken = this.authJwtService.generateAccessToken({
-      id: admin.id,
-      openid: admin.openid ?? '',
-      role: admin.role,
+      id: staff.id,
+      openid: staff.openid ?? '',
+      role: staff.role,
     });
 
     const newRefreshToken = this.authJwtService.generateRefreshToken({
-      id: admin.id,
-      openid: admin.openid ?? '',
-      role: admin.role,
-      tokenVersion: admin.token_version,
+      id: staff.id,
+      openid: staff.openid ?? '',
+      role: staff.role,
+      tokenVersion: staff.token_version,
     });
 
     const isProduction = process.env.NODE_ENV === 'production';
@@ -149,12 +149,12 @@ export class AuthController {
 
     const openid = data.openid;
 
-    let admin = await this.prisma.admin.findUnique({
+    let staff = await this.prisma.staff.findUnique({
       where: { openid },
     });
 
-    if (!admin) {
-      admin = await this.prisma.admin.create({
+    if (!staff) {
+      staff = await this.prisma.staff.create({
         data: {
           role: 'PENDING',
           openid,
@@ -164,27 +164,27 @@ export class AuthController {
       });
     } else {
       if (nickname || avatar_url) {
-        admin = await this.prisma.admin.update({
+        staff = await this.prisma.staff.update({
           where: { openid },
           data: {
-            nickname: nickname || admin.nickname,
-            avatar_url: avatar_url || admin.avatar_url,
+            nickname: nickname || staff.nickname,
+            avatar_url: avatar_url || staff.avatar_url,
           },
         });
       }
     }
 
     const accessToken = this.authJwtService.generateAccessToken({
-      id: admin.id,
-      openid: admin.openid ?? '',
-      role: admin.role,
+      id: staff.id,
+      openid: staff.openid ?? '',
+      role: staff.role,
     });
 
     const refreshToken = this.authJwtService.generateRefreshToken({
-      id: admin.id,
-      openid: admin.openid ?? '',
-      role: admin.role,
-      tokenVersion: admin.token_version,
+      id: staff.id,
+      openid: staff.openid ?? '',
+      role: staff.role,
+      tokenVersion: staff.token_version,
     });
 
     const isProduction = process.env.NODE_ENV === 'production';
@@ -205,12 +205,12 @@ export class AuthController {
 
     return ResponseHelper.success(
       {
-        id: admin.id,
-        openid: admin.openid,
-        role: admin.role,
-        nickname: admin.nickname,
-        username: admin.username,
-        avatar_url: admin.avatar_url,
+        id: staff.id,
+        openid: staff.openid,
+        role: staff.role,
+        nickname: staff.nickname,
+        username: staff.username,
+        avatar_url: staff.avatar_url,
         token: accessToken,
         refreshToken,
       },

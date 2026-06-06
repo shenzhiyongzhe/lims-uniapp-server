@@ -36,6 +36,7 @@ export class StatisticsController {
   @Get('admin')
   @UseGuards(RolesGuard)
   @Roles(
+    ManagementRoles.SUPER_ADMIN,
     ManagementRoles.ADMIN,
     ManagementRoles.RISK_CONTROLLER,
     ManagementRoles.COLLECTOR,

@@ -41,7 +41,7 @@ export class AssetManagementController {
 
   @Get('asset-history')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   async getAssetHistory(@Query() query: QueryAssetHistoryDto) {
     const data = await this.assetManagementService.findAssetHistory(query);
     return ResponseHelper.success(data, '获取资产变更历史成功');
@@ -65,7 +65,7 @@ export class AssetManagementController {
 
   @Put('collector/:userId')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   async updateCollectorAsset(
     @Param('userId') userId: string,
     @Body() dto: UpdateCollectorAssetDto,
@@ -81,7 +81,7 @@ export class AssetManagementController {
 
   @Put('collector/:userId/deposit')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   async adjustCollectorDeposit(
     @Param('userId') userId: string,
     @Body() dto: AdjustCollectorDepositDto,
@@ -98,7 +98,7 @@ export class AssetManagementController {
 
   @Put('risk-controller/:userId')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   async updateRiskControllerAsset(
     @Param('userId') userId: string,
     @Body() dto: UpdateRiskControllerAssetDto,

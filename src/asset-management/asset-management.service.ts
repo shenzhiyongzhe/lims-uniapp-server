@@ -33,7 +33,7 @@ export class AssetManagementService implements OnModuleInit {
   }
 
   async findCollectorAsset(userId: number) {
-    const admin = await this.prisma.admin.findUnique({
+    const staff = await this.prisma.staff.findUnique({
       where: { id: userId },
       select: { id: true, username: true, nickname: true },
     });
@@ -59,7 +59,7 @@ export class AssetManagementService implements OnModuleInit {
     return {
       id: asset?.id || 0,
       admin_id: userId,
-      admin,
+      admin: staff,
       remaining_handling_fee: total_handling_fee - reduced_handling_fee,
       remaining_fines: total_fines - reduced_fines,
       reduced_handling_fee,
@@ -69,7 +69,7 @@ export class AssetManagementService implements OnModuleInit {
   }
 
   async findAllCollectorAssets() {
-    const collectors = await this.prisma.admin.findMany({
+    const collectors = await this.prisma.staff.findMany({
       where: { role: 'COLLECTOR' },
       select: { id: true },
     });
@@ -77,7 +77,7 @@ export class AssetManagementService implements OnModuleInit {
   }
 
   async findRiskControllerAsset(userId: number) {
-    const admin = await this.prisma.admin.findUnique({
+    const staff = await this.prisma.staff.findUnique({
       where: { id: userId },
       select: { id: true, username: true, nickname: true },
     });
@@ -118,14 +118,14 @@ export class AssetManagementService implements OnModuleInit {
     return {
       id: asset?.id || 0,
       admin_id: userId,
-      admin,
+      admin: staff,
       remaining_amount: total_amount - reduced_amount,
       reduced_amount,
     };
   }
 
   async findAllRiskControllerAssets() {
-    const riskControllers = await this.prisma.admin.findMany({
+    const riskControllers = await this.prisma.staff.findMany({
       where: { role: 'RISK_CONTROLLER' },
       select: { id: true },
     });
@@ -400,7 +400,7 @@ export class AssetManagementService implements OnModuleInit {
   ) {
     let operatorUsername: string | null = null;
     if (params.operator?.id) {
-      const op = await tx.admin.findUnique({
+      const op = await tx.staff.findUnique({
         where: { id: params.operator.id },
         select: { username: true },
       });

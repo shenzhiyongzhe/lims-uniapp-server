@@ -1,7 +1,7 @@
 import { ManagementRoles } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 
-export class UpdateAdminDto {
+export class UpdateStaffDto {
   @IsOptional()
   @IsString()
   @MaxLength(10)

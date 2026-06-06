@@ -19,16 +19,17 @@ export class AccessScopeService {
     collectorId?: number,
     riskControllerId?: number,
   ): Promise<ResolvedDataScope> {
-    const requester = await this.prisma.admin.findUnique({
+    const requester = await this.prisma.staff.findUnique({
       where: { id: requestUserId },
       select: { id: true, role: true },
     });
 
     if (!requester) {
-      throw new Error('管理员不存在');
+      throw new Error('业务人员不存在');
     }
 
     const isRequesterPlatformAdminRole =
+      requester.role === ManagementRoles.SUPER_ADMIN ||
       requester.role === ManagementRoles.ADMIN;
     const canViewAll =
       isRequesterPlatformAdminRole && !collectorId && !riskControllerId;
@@ -77,17 +78,17 @@ export class AccessScopeService {
   }
 
   async getAssociatedAdmins(userId: number): Promise<any[]> {
-    const admin = await this.prisma.admin.findUnique({
+    const staff = await this.prisma.staff.findUnique({
       where: { id: userId },
       select: { id: true, role: true },
     });
 
-    if (!admin) {
-      throw new Error('管理员不存在');
+    if (!staff) {
+      throw new Error('业务人员不存在');
     }
 
-    if (admin.role === ManagementRoles.ADMIN) {
-      const admins = await this.prisma.admin.findMany({
+    if (staff.role === ManagementRoles.SUPER_ADMIN || staff.role === ManagementRoles.ADMIN) {
+      const staffs = await this.prisma.staff.findMany({
         where: {
           role: {
             in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER],
@@ -100,7 +101,7 @@ export class AccessScopeService {
           role: true,
         },
       });
-      return this.sortAdminsCollectorFirst(admins);
+      return this.sortStaffCollectorFirst(staffs);
     }
 
     const myLoans = await this.prisma.loanAccount.findMany({
@@ -116,21 +117,21 @@ export class AccessScopeService {
       },
     });
 
-    const otherAdminIds = new Set<number>();
+    const otherStaffIds = new Set<number>();
     for (const loan of myLoans) {
       if (loan.collector_id && loan.collector_id !== userId) {
-        otherAdminIds.add(loan.collector_id);
+        otherStaffIds.add(loan.collector_id);
       }
       if (loan.risk_controller_id && loan.risk_controller_id !== userId) {
-        otherAdminIds.add(loan.risk_controller_id);
+        otherStaffIds.add(loan.risk_controller_id);
       }
     }
 
-    if (otherAdminIds.size === 0) return [];
+    if (otherStaffIds.size === 0) return [];
 
-    const otherAdmins = await this.prisma.admin.findMany({
+    const otherStaffs = await this.prisma.staff.findMany({
       where: {
-        id: { in: Array.from(otherAdminIds) },
+        id: { in: Array.from(otherStaffIds) },
       },
       select: {
         id: true,
@@ -140,20 +141,21 @@ export class AccessScopeService {
       },
     });
 
-    return this.sortAdminsCollectorFirst(otherAdmins);
+    return this.sortStaffCollectorFirst(otherStaffs);
   }
 
   /** COLLECTOR 在前，RISK_CONTROLLER 在后 */
-  private sortAdminsCollectorFirst<T extends { role: ManagementRoles }>(
-    admins: T[],
+  private sortStaffCollectorFirst<T extends { role: ManagementRoles }>(
+    staffs: T[],
   ): T[] {
     const roleOrder: Record<ManagementRoles, number> = {
+      [ManagementRoles.SUPER_ADMIN]: 99,
       [ManagementRoles.ADMIN]: 99,
       [ManagementRoles.RISK_CONTROLLER]: 1,
       [ManagementRoles.COLLECTOR]: 0,
       [ManagementRoles.PENDING]: 99,
     };
-    return [...admins].sort((a, b) => roleOrder[a.role] - roleOrder[b.role]);
+    return [...staffs].sort((a, b) => roleOrder[a.role] - roleOrder[b.role]);
   }
 
   async getLoanAccountIdsByUserId(userId: number): Promise<number[]> {

@@ -296,14 +296,14 @@ export class StatisticsService {
   }
 
   async getAdminStatistics(): Promise<any[]> {
-    const collectors = await this.prisma.admin.findMany({
+    const collectors = await this.prisma.staff.findMany({
       where: {
         loanAccountsAsCollector: { some: {} },
       },
       select: { id: true, nickname: true },
     });
 
-    const riskControllers = await this.prisma.admin.findMany({
+    const riskControllers = await this.prisma.staff.findMany({
       where: {
         loanAccountsAsRiskController: { some: {} },
       },

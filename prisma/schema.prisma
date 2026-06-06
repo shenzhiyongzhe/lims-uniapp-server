@@ -20,7 +20,7 @@ model User {
   @@map("users")
 }
 
-model Admin {
+model Staff {
   id                            Int                            @id @default(autoincrement())
   username                      String?                        @db.VarChar(10)
   role                          ManagementRoles
@@ -45,7 +45,7 @@ model Admin {
   scheduleOperationLogs         RepaymentScheduleOperationLog[]
   loanAccountOperationLogs      LoanAccountOperationLog[]
 
-  @@map("admins")
+  @@map("staffs")
 }
 
 model LoanAccount {
@@ -82,8 +82,8 @@ model LoanAccount {
   overdue_count            Int                 @default(0)
   ownership                String?             @db.VarChar(5)
   payer_name               String?             @db.VarChar(100)
-  collector                Admin               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
-  risk_controller          Admin               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
+  collector                Staff               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
+  risk_controller          Staff               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
   user                     User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   repaymentRecords         RepaymentRecord[]
   repaymentSchedules       RepaymentSchedule[]
@@ -137,7 +137,7 @@ model RepaymentScheduleOperationLog {
   remark                String?                       @db.VarChar(10)
   created_at            DateTime                      @default(now())
   schedule              RepaymentSchedule             @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
-  operator              Admin?                        @relation(fields: [operator_admin_id], references: [id])
+  operator              Staff?                        @relation(fields: [operator_admin_id], references: [id])
 
   @@index([schedule_id])
   @@index([loan_id])
@@ -155,7 +155,7 @@ model LoanAccountOperationLog {
   created_at          DateTime          @default(now())
 
   loan_account        LoanAccount       @relation(fields: [loan_id], references: [id], onDelete: Cascade)
-  operator            Admin?            @relation(fields: [operator_admin_id], references: [id])
+  operator            Staff?            @relation(fields: [operator_admin_id], references: [id])
 
   @@index([loan_id])
   @@index([operator_admin_id])
@@ -174,7 +174,7 @@ model RepaymentRecord {
   repayment_schedule_id Int?
   actual_collector_id   Int?
   remark                String?            @db.VarChar(10)
-  actual_collector      Admin?             @relation(fields: [actual_collector_id], references: [id])
+  actual_collector      Staff?             @relation(fields: [actual_collector_id], references: [id])
   loan_account          LoanAccount        @relation(fields: [loan_id], references: [id])
   repayment_schedule    RepaymentSchedule? @relation(fields: [repayment_schedule_id], references: [id])
   user                  User               @relation(fields: [user_id], references: [id])
@@ -218,7 +218,7 @@ model DailyLoanBalance {
   today_repaid_items Json?
   created_at         DateTime @default(now())
   updated_at         DateTime @updatedAt
-  admin              Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  admin              Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@unique([admin_id, date])
   @@index([date])
@@ -238,7 +238,7 @@ model CollectorAssetManagement {
   reduced_fines        Decimal  @default(0.00) @db.Decimal(10, 2)
   reduced_handling_fee Decimal  @default(0.00) @db.Decimal(10, 2)
   deposit              Decimal  @default(0.00) @db.Decimal(10, 2)
-  admin                Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  admin                Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("collector_asset_management")
 }
@@ -250,7 +250,7 @@ model RiskControllerAssetManagement {
   reduced_amount Decimal  @default(0.00) @db.Decimal(10, 2)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
-  admin          Admin    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  admin          Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("risk_controller_asset_management")
 }
@@ -284,7 +284,7 @@ model AssetReductionHistory {
   remark                    String?  @db.VarChar(200)
   created_at                DateTime @default(now())
   updated_at                DateTime @updatedAt
-  admin                     Admin    @relation("AssetReductionHistory", fields: [admin_id], references: [id], onDelete: Cascade)
+  admin                     Staff    @relation("AssetReductionHistory", fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@index([admin_id])
   @@map("asset_reduction_history")
@@ -301,6 +301,7 @@ model Changelog {
 }
 
 enum ManagementRoles {
+  SUPER_ADMIN
   ADMIN
   RISK_CONTROLLER
   COLLECTOR

@@ -178,10 +178,9 @@ export class RepaymentSchedulesService {
           ? Number(updatePayload.fines)
           : toNumber(currentSchedule.fines);
 
-      // 获取操作人名称（用于手动收款写入）
       let operatorName: string | null = null;
       if (operatorAdminId) {
-        const op = await tx.admin.findUnique({
+        const op = await tx.staff.findUnique({
           where: { id: operatorAdminId },
           select: { nickname: true },
         });

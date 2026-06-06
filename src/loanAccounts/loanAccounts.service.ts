@@ -36,13 +36,13 @@ export class LoanAccountsService {
   ) {
     let operatorAdminName: string | null = null;
     if (operatorAdminId) {
-      const admin = await tx.admin.findUnique({
+      const staff = await tx.staff.findUnique({
         where: { id: operatorAdminId },
         select: { nickname: true, username: true },
       });
-      if (admin) {
+      if (staff) {
         operatorAdminName =
-          admin.nickname || admin.username || `ID:${operatorAdminId}`;
+          staff.nickname || staff.username || `ID:${operatorAdminId}`;
       }
     }
 
@@ -65,8 +65,8 @@ export class LoanAccountsService {
   }
 
   /** 创建/编辑方案时下拉：全部负责人与风控，不按当前用户关联过滤 */
-  async findAssignableAdmins() {
-    return this.prisma.admin.findMany({
+  async findAssignableStaffs() {
+    return this.prisma.staff.findMany({
       where: {
         role: {
           in: [ManagementRoles.COLLECTOR, ManagementRoles.RISK_CONTROLLER],
@@ -525,11 +525,11 @@ export class LoanAccountsService {
 
 
       // Log changes
-      const admins = await tx.admin.findMany({
+      const staffs = await tx.staff.findMany({
         select: { id: true, nickname: true, username: true },
       });
-      const adminMap = new Map<number, string>(
-        admins.map((a) => [a.id, a.nickname || a.username || `ID:${a.id}`]),
+      const staffMap = new Map<number, string>(
+        staffs.map((s) => [s.id, s.nickname || s.username || `ID:${s.id}`]),
       );
 
       const changes: string[] = [];
@@ -591,9 +591,9 @@ export class LoanAccountsService {
         oldLoan.collector_id !== data.collector_id
       ) {
         const oldName =
-          adminMap.get(oldLoan.collector_id) || `ID:${oldLoan.collector_id}`;
+          staffMap.get(oldLoan.collector_id) || `ID:${oldLoan.collector_id}`;
         const newName =
-          adminMap.get(data.collector_id) || `ID:${data.collector_id}`;
+          staffMap.get(data.collector_id) || `ID:${data.collector_id}`;
         changes.push(`负责人 从 "${oldName}" 修改为 "${newName}"`);
       }
 
@@ -602,10 +602,10 @@ export class LoanAccountsService {
         oldLoan.risk_controller_id !== data.risk_controller_id
       ) {
         const oldName =
-          adminMap.get(oldLoan.risk_controller_id) ||
+          staffMap.get(oldLoan.risk_controller_id) ||
           `ID:${oldLoan.risk_controller_id}`;
         const newName =
-          adminMap.get(data.risk_controller_id) ||
+          staffMap.get(data.risk_controller_id) ||
           `ID:${data.risk_controller_id}`;
         changes.push(`风控 从 "${oldName}" 修改为 "${newName}"`);
       }

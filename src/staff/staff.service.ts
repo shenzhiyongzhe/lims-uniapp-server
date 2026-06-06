@@ -5,14 +5,14 @@ import {
 } from '@nestjs/common';
 import { ManagementRoles } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { UpdateAdminDto } from './dto/update-admin.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 
 @Injectable()
-export class AdminsService {
+export class StaffService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.admin.findMany({
+    return this.prisma.staff.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -27,10 +27,10 @@ export class AdminsService {
   }
 
   async updateRole(id: number, role: ManagementRoles) {
-    return this.updateAdmin(id, { role });
+    return this.updateStaff(id, { role });
   }
 
-  async updateAdmin(id: number, dto: UpdateAdminDto) {
+  async updateStaff(id: number, dto: UpdateStaffDto) {
     const roleProvided = dto.role !== undefined;
     const usernameProvided = dto.username !== undefined;
 
@@ -48,9 +48,9 @@ export class AdminsService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.admin.findUnique({ where: { id } });
+      const existing = await tx.staff.findUnique({ where: { id } });
       if (!existing) {
-        throw new NotFoundException(`管理员不存在: ${id}`);
+        throw new NotFoundException(`业务人员不存在: ${id}`);
       }
 
       const data: { username?: string | null; role?: ManagementRoles } = {};
@@ -61,7 +61,7 @@ export class AdminsService {
         data.role = dto.role;
       }
 
-      const admin = await tx.admin.update({
+      const staff = await tx.staff.update({
         where: { id },
         data,
       });
@@ -82,12 +82,12 @@ export class AdminsService {
         });
       }
 
-      return admin;
+      return staff;
     });
   }
 
   async remove(id: number) {
-    return this.prisma.admin.delete({
+    return this.prisma.staff.delete({
       where: { id },
     });
   }

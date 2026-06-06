@@ -13,7 +13,7 @@ import { AssetManagementModule } from './asset-management/asset-management.modul
 import { CollectorStatisticsModule } from './collector-statistics/collector-statistics.module';
 import { UsersModule } from './users/users.module';
 import { LoanPredictionModule } from './loan-prediction/loan-prediction.module';
-import { AdminsModule } from './admins/admins.module';
+import { StaffModule } from './staff/staff.module';
 import { RepaymentSchedulesModule } from './repayment-schedules/repayment-schedules.module';
 import { ScheduleTasksModule } from './schedule/schedule-tasks.module';
 import { ChangelogsModule } from './changelogs/changelogs.module';
@@ -40,7 +40,7 @@ import { buildPinoParams } from './logger/pino-params.factory';
     CollectorStatisticsModule,
     UsersModule,
     LoanPredictionModule,
-    AdminsModule,
+    StaffModule,
     RepaymentSchedulesModule,
     ScheduleTasksModule,
     ChangelogsModule,

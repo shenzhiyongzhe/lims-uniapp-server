@@ -30,12 +30,12 @@ export class RolesGuard implements CanActivate {
     }
 
     // 获取用户角色
-    const admin = (await this.prisma.admin.findUnique({
+    const staff = (await this.prisma.staff.findUnique({
       where: { id: user.id },
       select: { role: true },
     })) as { role: string } | null;
 
-    if (!admin) {
+    if (!staff) {
       throw new ForbiddenException('用户不存在');
     }
 
@@ -45,7 +45,7 @@ export class RolesGuard implements CanActivate {
     >(ROLES_KEY, [context.getHandler(), context.getClass()]);
 
     if (requiredRoles && requiredRoles.length > 0) {
-      if (!requiredRoles.includes(admin.role as ManagementRoles)) {
+      if (!requiredRoles.includes(staff.role as ManagementRoles)) {
         throw new ForbiddenException('权限不足');
       }
     }

@@ -48,16 +48,16 @@ export class AuthGuard implements CanActivate {
         }
 
         // 从数据库验证用户和token版本
-        const admin = await this.prisma.admin.findUnique({
+        const staff = await this.prisma.staff.findUnique({
           where: { id: payload.id },
           select: { id: true, openid: true, role: true, token_version: true },
         });
 
-        if (!admin) {
+        if (!staff) {
           throw new UnauthorizedException('用户不存在');
         }
 
-        request.user = { id: admin.id, role: admin.role };
+        request.user = { id: staff.id, role: staff.role };
         return true;
       } else if (refreshToken) {
         // Access Token无效，尝试使用Refresh Token刷新
@@ -69,13 +69,13 @@ export class AuthGuard implements CanActivate {
           const refreshPayload =
             this.authJwtService.verifyRefreshToken(refreshToken);
           if (refreshPayload) {
-            const admin = await this.prisma.admin.findUnique({
+            const staff = await this.prisma.staff.findUnique({
               where: { id: refreshPayload.id },
               select: { id: true, openid: true, role: true },
             });
 
-            if (admin) {
-              request.user = { id: admin.id, role: admin.role };
+            if (staff) {
+              request.user = { id: staff.id, role: staff.role };
               return true;
             }
           }
@@ -100,28 +100,28 @@ export class AuthGuard implements CanActivate {
       return false;
     }
 
-    // 从数据库验证token版本
-    const admin = await this.prisma.admin.findUnique({
+    // 从数据库验证token version
+    const staff = await this.prisma.staff.findUnique({
       where: { id: payload.id },
       select: { id: true, openid: true, role: true, token_version: true },
     });
 
-    if (!admin || admin.token_version !== payload.tokenVersion) {
+    if (!staff || staff.token_version !== payload.tokenVersion) {
       return false;
     }
 
     // 生成新的tokens
     const newAccessToken = this.authJwtService.generateAccessToken({
-      id: admin.id,
-      openid: admin.openid ?? '',
-      role: admin.role,
+      id: staff.id,
+      openid: staff.openid ?? '',
+      role: staff.role,
     });
 
     const newRefreshToken = this.authJwtService.generateRefreshToken({
-      id: admin.id,
-      openid: admin.openid ?? '',
-      role: admin.role,
-      tokenVersion: admin.token_version,
+      id: staff.id,
+      openid: staff.openid ?? '',
+      role: staff.role,
+      tokenVersion: staff.token_version,
     });
 
     // 更新cookies（滑动过期）

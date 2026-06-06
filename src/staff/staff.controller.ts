@@ -8,37 +8,37 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { AdminsService } from './admins.service';
+import { StaffService } from './staff.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { ManagementRoles } from '@prisma/client';
 import { ResponseHelper } from '../common/response-helper';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
-import { UpdateAdminDto } from './dto/update-admin.dto';
+import { UpdateStaffDto } from './dto/update-staff.dto';
 
-@Controller('admins')
+@Controller('staffs')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(ManagementRoles.ADMIN)
-export class AdminsController {
-  constructor(private readonly adminsService: AdminsService) {}
+@Roles(ManagementRoles.SUPER_ADMIN)
+export class StaffController {
+  constructor(private readonly staffService: StaffService) {}
 
   @Get()
   async findAll(): Promise<ApiResponseDto> {
-    const admins = await this.adminsService.findAll();
-    return ResponseHelper.success(admins, '获取管理员列表成功');
+    const staffList = await this.staffService.findAll();
+    return ResponseHelper.success(staffList, '获取业务人员列表成功');
   }
 
   @Patch(':id')
-  async updateAdmin(
+  async updateStaff(
     @Param('id') id: string,
-    @Body() body: UpdateAdminDto,
+    @Body() body: UpdateStaffDto,
   ): Promise<ApiResponseDto> {
-    const updated = await this.adminsService.updateAdmin(
+    const updated = await this.staffService.updateStaff(
       parseInt(id, 10),
       body,
     );
-    return ResponseHelper.success(updated, '更新管理员成功');
+    return ResponseHelper.success(updated, '更新业务人员成功');
   }
 
   @Put(':id/role')
@@ -46,13 +46,13 @@ export class AdminsController {
     @Param('id') id: string,
     @Body('role') role: ManagementRoles,
   ): Promise<ApiResponseDto> {
-    const updated = await this.adminsService.updateRole(parseInt(id, 10), role);
+    const updated = await this.staffService.updateRole(parseInt(id, 10), role);
     return ResponseHelper.success(updated, '更新角色成功');
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string): Promise<ApiResponseDto> {
-    await this.adminsService.remove(parseInt(id, 10));
-    return ResponseHelper.success(null, '删除管理员成功');
+    await this.staffService.remove(parseInt(id, 10));
+    return ResponseHelper.success(null, '删除业务人员成功');
   }
 }

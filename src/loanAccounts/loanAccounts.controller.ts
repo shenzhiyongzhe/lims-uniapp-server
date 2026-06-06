@@ -32,7 +32,7 @@ export class LoanAccountsController {
   ) {}
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   @Get()
   async findAll(): Promise<ApiResponseDto> {
     const loans = await this.loanAccountsService.findAll();
@@ -40,19 +40,19 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard)
-  @Get('related-admins')
-  async findRelatedAdmins(
+  @Get('related-staffs')
+  async findRelatedStaffs(
     @CurrentUser() user: { id: number },
   ): Promise<ApiResponseDto> {
-    const admins = await this.accessScopeService.getAssociatedAdmins(user.id);
-    return ResponseHelper.success(admins, '获取相关管理员成功');
+    const staffs = await this.accessScopeService.getAssociatedAdmins(user.id);
+    return ResponseHelper.success(staffs, '获取相关业务人员成功');
   }
 
   @UseGuards(AuthGuard)
-  @Get('assignable-admins')
-  async findAssignableAdmins(): Promise<ApiResponseDto> {
-    const admins = await this.loanAccountsService.findAssignableAdmins();
-    return ResponseHelper.success(admins, '获取可分配管理员成功');
+  @Get('assignable-staffs')
+  async findAssignableStaffs(): Promise<ApiResponseDto> {
+    const staffs = await this.loanAccountsService.findAssignableStaffs();
+    return ResponseHelper.success(staffs, '获取可分配业务人员成功');
   }
 
   @UseGuards(AuthGuard)
@@ -123,7 +123,7 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   @Get('deleted')
   async findDeletedLoans(): Promise<ApiResponseDto> {
     try {
@@ -138,7 +138,7 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   @Post('deleted/:id/restore')
   async restoreDeletedLoan(
     @Param('id', ParseIntPipe) id: number,
@@ -177,7 +177,7 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN, ManagementRoles.RISK_CONTROLLER)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.RISK_CONTROLLER)
   @Post()
   async create(
     @Body() body: CreateLoanAccountDto,
@@ -193,6 +193,7 @@ export class LoanAccountsController {
 
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(
+    ManagementRoles.SUPER_ADMIN,
     ManagementRoles.ADMIN,
     ManagementRoles.COLLECTOR,
     ManagementRoles.RISK_CONTROLLER,
@@ -214,6 +215,7 @@ export class LoanAccountsController {
 
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(
+    ManagementRoles.SUPER_ADMIN,
     ManagementRoles.ADMIN,
     ManagementRoles.COLLECTOR,
     ManagementRoles.RISK_CONTROLLER,
@@ -233,7 +235,7 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   @Delete(':id')
   async remove(@Param('id', ParseIntPipe) id: number): Promise<ApiResponseDto> {
     try {

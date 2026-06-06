@@ -167,7 +167,7 @@ export class RepaymentRecordsService {
         collectorId,
         riskControllerId,
       ),
-      this.prisma.admin.findUnique({
+      this.prisma.staff.findUnique({
         where: { id: requestUserId },
         select: { role: true },
       }),

@@ -69,7 +69,7 @@ export class CollectorStatisticsService {
   }
 
   async getCollectorPayeeList() {
-    const collectors = await this.prisma.admin.findMany({
+    const collectors = await this.prisma.staff.findMany({
       where: { role: 'COLLECTOR' },
       select: { id: true, nickname: true },
     });

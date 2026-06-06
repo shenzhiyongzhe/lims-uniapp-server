@@ -49,6 +49,7 @@ export class RepaymentSchedulesController {
 
   @Post()
   @Roles(
+    ManagementRoles.SUPER_ADMIN,
     ManagementRoles.ADMIN,
     ManagementRoles.COLLECTOR,
     ManagementRoles.RISK_CONTROLLER,

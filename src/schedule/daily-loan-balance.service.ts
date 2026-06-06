@@ -33,33 +33,33 @@ export class DailyLoanBalanceService implements OnApplicationBootstrap {
     // At 05:59:59 the business day is still "yesterday" (boundary is 06:00)
     const today = getShanghaiBusinessDate();
 
-    const admins = await this.prisma.admin.findMany({
+    const staffs = await this.prisma.staff.findMany({
       select: { id: true },
       orderBy: { id: 'asc' },
     });
 
-    if (admins.length === 0) {
-      this.logger.log('Daily loan balance snapshot skipped: no admins found');
+    if (staffs.length === 0) {
+      this.logger.log('Daily loan balance snapshot skipped: no staffs found');
       return;
     }
 
-    for (const admin of admins) {
+    for (const staff of staffs) {
       try {
         await this.repaymentRecordsService.upsertDailyLoanBalanceForDate(
-          admin.id,
+          staff.id,
           today,
         );
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'unknown snapshot error';
         this.logger.error(
-          `Daily loan balance snapshot failed for admin ${admin.id}: ${message}`,
+          `Daily loan balance snapshot failed for staff ${staff.id}: ${message}`,
         );
       }
     }
 
     this.logger.log(
-      `Daily loan balance snapshot completed for ${admins.length} admin(s) on ${today.toISOString().slice(0, 10)}`,
+      `Daily loan balance snapshot completed for ${staffs.length} staff(s) on ${today.toISOString().slice(0, 10)}`,
     );
   }
 
