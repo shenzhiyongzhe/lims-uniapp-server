@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Patch,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
@@ -54,5 +55,14 @@ export class StaffController {
   async remove(@Param('id') id: string): Promise<ApiResponseDto> {
     await this.staffService.remove(parseInt(id, 10));
     return ResponseHelper.success(null, '删除业务人员成功');
+  }
+
+  @Post('migrate')
+  async migrateData(
+    @Body('fromStaffId') fromStaffId: number,
+    @Body('toStaffId') toStaffId: number,
+  ): Promise<ApiResponseDto> {
+    const result = await this.staffService.migrateStaffData(fromStaffId, toStaffId);
+    return ResponseHelper.success(result, '数据迁移成功');
   }
 }

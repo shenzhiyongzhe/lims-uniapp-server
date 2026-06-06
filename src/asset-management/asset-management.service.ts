@@ -56,6 +56,27 @@ export class AssetManagementService implements OnModuleInit {
     const reduced_fines = asset ? Number(asset.reduced_fines || 0) : 0;
     const deposit = asset ? Number(asset.deposit || 0) : 0;
 
+    const loansAggregate = await this.prisma.loanAccount.aggregate({
+      where: { collector_id: userId },
+      _sum: {
+        company_cost: true,
+        handling_fee: true,
+      },
+    });
+    const totalLent =
+      Number(loansAggregate._sum.handling_fee || 0) -
+      Number(loansAggregate._sum.company_cost || 0);
+
+    const repaymentsAggregate = await this.prisma.repaymentRecord.aggregate({
+      where: {
+        loan_account: { collector_id: userId },
+      },
+      _sum: { paid_amount: true },
+    });
+    const totalRepaid = Number(repaymentsAggregate._sum.paid_amount || 0);
+
+    const total_amount = totalLent + totalRepaid;
+
     return {
       id: asset?.id || 0,
       admin_id: userId,
@@ -65,6 +86,7 @@ export class AssetManagementService implements OnModuleInit {
       reduced_handling_fee,
       reduced_fines,
       deposit,
+      total_amount,
     };
   }
 

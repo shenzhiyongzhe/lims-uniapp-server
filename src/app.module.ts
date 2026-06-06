@@ -18,6 +18,7 @@ import { RepaymentSchedulesModule } from './repayment-schedules/repayment-schedu
 import { ScheduleTasksModule } from './schedule/schedule-tasks.module';
 import { ChangelogsModule } from './changelogs/changelogs.module';
 import { buildPinoParams } from './logger/pino-params.factory';
+import { BackupModule } from './backup/backup.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { buildPinoParams } from './logger/pino-params.factory';
     RepaymentSchedulesModule,
     ScheduleTasksModule,
     ChangelogsModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [AppService],
