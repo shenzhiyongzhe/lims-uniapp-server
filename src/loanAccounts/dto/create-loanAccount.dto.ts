@@ -29,11 +29,11 @@ export class CreateLoanAccountDto {
 
   @IsNumber()
   @Min(0)
-  capital: number;
+  period_capital: number;
 
   @IsNumber()
   @Min(0)
-  interest: number;
+  period_interest: number;
 
   @IsDateString()
   due_start_date: string;

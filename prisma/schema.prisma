@@ -54,8 +54,8 @@ model LoanAccount {
   loan_amount              Decimal             @db.Decimal(10, 2)
   receiving_amount         Decimal?            @db.Decimal(10, 2)
   to_hand_ratio            Decimal?            @db.Decimal(10, 2)
-  capital                  Decimal             @db.Decimal(10, 2)
-  interest                 Decimal             @db.Decimal(10, 2)
+  period_capital           Decimal             @db.Decimal(10, 2)
+  period_interest          Decimal             @db.Decimal(10, 2)
   due_start_date           DateTime            @db.Date
   due_end_date             DateTime            @db.Date
   status                   LoanAccountStatus   @default(pending)
@@ -340,8 +340,8 @@ model DeletedLoan {
   user_id         Int
   username        String   @db.VarChar(50)
   loan_amount     Decimal  @db.Decimal(10, 2)
-  capital         Decimal  @db.Decimal(10, 2)
-  interest        Decimal  @db.Decimal(10, 2)
+  period_capital  Decimal  @db.Decimal(10, 2)
+  period_interest Decimal  @db.Decimal(10, 2)
   status          String   @db.VarChar(20)
   total_periods   Int
   repaid_periods  Int

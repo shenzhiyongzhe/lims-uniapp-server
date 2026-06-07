@@ -28,12 +28,12 @@ export class UpdateLoanAccountDto {
   @IsNumber()
   @IsPositive()
   @IsOptional()
-  capital?: number;
+  period_capital?: number;
 
   @IsNumber()
   @IsPositive()
   @IsOptional()
-  interest?: number;
+  period_interest?: number;
 
   @IsDateString()
   @IsOptional()

@@ -12,4 +12,7 @@ export class RepaymentRecordResponseDto {
   repaid_periods?: number;
   total_periods?: number;
   remark?: string;
+  paid_capital?: number;
+  paid_interest?: number;
+  paid_fines?: number;
 }

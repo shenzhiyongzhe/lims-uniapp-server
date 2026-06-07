@@ -12,8 +12,8 @@ export class LoanAccountInfo {
   id: number;
   user_id: number;
   loan_amount: number;
-  capital: number;
-  interest: number;
+  period_capital: number;
+  period_interest: number;
   due_start_date: Date;
   due_end_date: Date;
   status: LoanAccountStatus;

@@ -708,6 +708,9 @@ export class RepaymentRecordsService {
       repaid_periods: record.loan_account?.repaid_periods || 0,
       total_periods: record.loan_account?.total_periods || undefined,
       remark: record.remark || undefined,
+      paid_capital: record.paid_capital != null ? Number(record.paid_capital) : undefined,
+      paid_interest: record.paid_interest != null ? Number(record.paid_interest) : undefined,
+      paid_fines: record.paid_fines != null ? Number(record.paid_fines) : undefined,
     };
   }
 }

@@ -201,8 +201,8 @@ export class LoanAccountsService {
       due_start_date,
       total_periods,
       daily_repayment,
-      capital,
-      interest,
+      period_capital,
+      period_interest,
     } = data;
 
     const parseDate = (dateStr: string): Date => {
@@ -249,10 +249,10 @@ export class LoanAccountsService {
           total_periods: Number(total_periods),
           daily_repayment: Number(daily_repayment),
           apply_times: applyTimes,
-          capital: Number(capital),
-          interest: Number(interest),
-          last_edit_pay_capital: Number(capital),
-          last_edit_pay_interest: Number(interest),
+          period_capital: Number(period_capital),
+          period_interest: Number(period_interest),
+          last_edit_pay_capital: Number(period_capital),
+          last_edit_pay_interest: Number(period_interest),
           status: (data.status as LoanAccountStatus) || 'pending',
           repaid_periods: 0,
           created_by: createdBy,
@@ -266,8 +266,8 @@ export class LoanAccountsService {
       await this.loanPredictionService.updatePredictions(created);
 
       const periods = Number(total_periods) || 0;
-      const perCapital = Number(capital) || 0;
-      const perInterest = Number(interest) || 0;
+      const perCapital = Number(period_capital) || 0;
+      const perInterest = Number(period_interest) || 0;
       let remainingPrincipal = Number(data.loan_amount) || 0;
 
       const rows = Array.from({ length: periods }).map((_, idx) => {
@@ -372,8 +372,8 @@ export class LoanAccountsService {
           loan_amount: true,
           receiving_amount: true,
           to_hand_ratio: true,
-          capital: true,
-          interest: true,
+          period_capital: true,
+          period_interest: true,
           handling_fee: true,
           total_periods: true,
           repaid_periods: true,
@@ -423,8 +423,8 @@ export class LoanAccountsService {
         }
       }
 
-      let finalCapital = data.capital !== undefined ? Number(data.capital) : Number(oldLoan.capital || 0);
-      let finalInterest = data.interest !== undefined ? Number(data.interest) : Number(oldLoan.interest || 0);
+      let finalCapital = data.period_capital !== undefined ? Number(data.period_capital) : Number(oldLoan.period_capital || 0);
+      let finalInterest = data.period_interest !== undefined ? Number(data.period_interest) : Number(oldLoan.period_interest || 0);
       let finalLoanAmount = data.loan_amount !== undefined ? Number(data.loan_amount) : Number(oldLoan.loan_amount || 0);
 
       if (data.loan_amount !== undefined)
@@ -433,8 +433,8 @@ export class LoanAccountsService {
         updateData.receiving_amount = data.receiving_amount;
       if (data.to_hand_ratio !== undefined)
         updateData.to_hand_ratio = data.to_hand_ratio;
-      if (data.capital !== undefined) updateData.capital = data.capital;
-      if (data.interest !== undefined) updateData.interest = data.interest;
+      if (data.period_capital !== undefined) updateData.period_capital = data.period_capital;
+      if (data.period_interest !== undefined) updateData.period_interest = data.period_interest;
       if (data.handling_fee !== undefined)
         updateData.handling_fee = data.handling_fee;
 
@@ -442,8 +442,8 @@ export class LoanAccountsService {
       if (data.total_periods !== undefined) {
         updateData.total_periods = data.total_periods;
       } else if (
-        data.capital !== undefined ||
-        data.interest !== undefined ||
+        data.period_capital !== undefined ||
+        data.period_interest !== undefined ||
         data.loan_amount !== undefined
       ) {
         if (finalCapital > 0) {
@@ -461,7 +461,7 @@ export class LoanAccountsService {
       // Calculate daily_repayment automatically if capital/interest are updated
       if (data.daily_repayment !== undefined) {
         updateData.daily_repayment = data.daily_repayment;
-      } else if (data.capital !== undefined || data.interest !== undefined) {
+      } else if (data.period_capital !== undefined || data.period_interest !== undefined) {
         updateData.daily_repayment = Math.round(finalCapital + finalInterest);
       }
 
@@ -516,8 +516,8 @@ export class LoanAccountsService {
       });
 
       const isScheduleUpdateNeeded =
-        data.capital !== undefined ||
-        data.interest !== undefined ||
+        data.period_capital !== undefined ||
+        data.period_interest !== undefined ||
         data.loan_amount !== undefined ||
         data.total_periods !== undefined ||
         data.due_start_date !== undefined ||
@@ -526,8 +526,8 @@ export class LoanAccountsService {
       if (isScheduleUpdateNeeded) {
         const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
         const finalPeriods = updateData.total_periods !== undefined ? updateData.total_periods : oldLoan.total_periods;
-        const finalCapital = updateData.capital !== undefined ? Number(updateData.capital) : Number(oldLoan.capital || 0);
-        const finalInterest = updateData.interest !== undefined ? Number(updateData.interest) : Number(oldLoan.interest || 0);
+        const finalCapital = updateData.period_capital !== undefined ? Number(updateData.period_capital) : Number(oldLoan.period_capital || 0);
+        const finalInterest = updateData.period_interest !== undefined ? Number(updateData.period_interest) : Number(oldLoan.period_interest || 0);
         const finalLoanAmount = updateData.loan_amount !== undefined ? Number(updateData.loan_amount) : Number(oldLoan.loan_amount || 0);
 
         if (finalStartDate && finalPeriods > 0) {
@@ -654,8 +654,8 @@ export class LoanAccountsService {
       compareField('贷款金额', 'loan_amount');
       compareField('应收金额', 'receiving_amount');
       compareField('到手比例', 'to_hand_ratio');
-      compareField('每期本金', 'capital');
-      compareField('每期利息', 'interest');
+      compareField('每期本金', 'period_capital');
+      compareField('每期利息', 'period_interest');
       compareField('手续费', 'handling_fee');
       compareField('总期数', 'total_periods');
       compareField('已还期数', 'repaid_periods');
@@ -786,8 +786,8 @@ export class LoanAccountsService {
           loan_amount: fullLoan.loan_amount,
           receiving_amount: fullLoan.receiving_amount,
           to_hand_ratio: fullLoan.to_hand_ratio,
-          capital: fullLoan.capital,
-          interest: fullLoan.interest,
+          period_capital: fullLoan.period_capital,
+          period_interest: fullLoan.period_interest,
           due_start_date: fullLoan.due_start_date,
           due_end_date: fullLoan.due_end_date,
           status: fullLoan.status,
@@ -848,8 +848,8 @@ export class LoanAccountsService {
           user_id: fullLoan.user_id,
           username: fullLoan.user?.username || '',
           loan_amount: fullLoan.loan_amount,
-          capital: fullLoan.capital,
-          interest: fullLoan.interest,
+          period_capital: fullLoan.period_capital,
+          period_interest: fullLoan.period_interest,
           status: fullLoan.status,
           total_periods: fullLoan.total_periods,
           repaid_periods: fullLoan.repaid_periods,
@@ -1776,10 +1776,10 @@ export class LoanAccountsService {
           repaid_periods: loanData.repaid_periods,
           daily_repayment: loanData.daily_repayment,
           apply_times: loanData.apply_times,
-          capital: loanData.capital,
-          interest: loanData.interest,
-          last_edit_pay_capital: loanData.capital,
-          last_edit_pay_interest: loanData.interest,
+          period_capital: loanData.period_capital !== undefined ? loanData.period_capital : loanData.capital,
+          period_interest: loanData.period_interest !== undefined ? loanData.period_interest : loanData.interest,
+          last_edit_pay_capital: loanData.period_capital !== undefined ? loanData.period_capital : loanData.capital,
+          last_edit_pay_interest: loanData.period_interest !== undefined ? loanData.period_interest : loanData.interest,
           status: loanData.status,
           total_fines: loanData.total_fines,
           paid_capital: loanData.paid_capital,

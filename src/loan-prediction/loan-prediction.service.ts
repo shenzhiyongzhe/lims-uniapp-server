@@ -156,8 +156,8 @@ export class LoanPredictionService {
     const fieldsToUpdate = [
       { name: 'loan_amount', value: loanAccount.loan_amount },
       { name: 'to_hand_ratio', value: loanAccount.to_hand_ratio },
-      { name: 'capital', value: loanAccount.capital },
-      { name: 'interest', value: loanAccount.interest },
+      { name: 'period_capital', value: loanAccount.period_capital },
+      { name: 'period_interest', value: loanAccount.period_interest },
       { name: 'company_cost', value: loanAccount.company_cost },
       { name: 'handling_fee', value: loanAccount.handling_fee },
     ];
