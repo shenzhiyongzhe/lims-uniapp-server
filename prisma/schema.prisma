@@ -229,16 +229,17 @@ model DailyLoanBalance {
 
 
 model CollectorAssetManagement {
-  id                   Int      @id @default(autoincrement())
-  admin_id             Int      @unique
-  total_handling_fee   Decimal  @default(0.00) @db.Decimal(10, 2)
-  total_fines          Decimal  @default(0.00) @db.Decimal(10, 2)
-  created_at           DateTime @default(now())
-  updated_at           DateTime @updatedAt
-  reduced_fines        Decimal  @default(0.00) @db.Decimal(10, 2)
-  reduced_handling_fee Decimal  @default(0.00) @db.Decimal(10, 2)
-  deposit              Decimal  @default(0.00) @db.Decimal(10, 2)
-  admin                Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  id                         Int      @id @default(autoincrement())
+  admin_id                   Int      @unique
+  total_handling_fee         Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_fines                Decimal  @default(0.00) @db.Decimal(10, 2)
+  created_at                 DateTime @default(now())
+  updated_at                 DateTime @updatedAt
+  reduced_fines              Decimal  @default(0.00) @db.Decimal(10, 2)
+  reduced_handling_fee       Decimal  @default(0.00) @db.Decimal(10, 2)
+  deposit                    Decimal  @default(0.00) @db.Decimal(10, 2)
+  reduced_by_risk_controller Decimal  @default(0.00) @db.Decimal(10, 2)
+  admin                      Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("collector_asset_management")
 }

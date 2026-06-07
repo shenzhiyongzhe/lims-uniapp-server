@@ -55,6 +55,9 @@ export class AssetManagementService implements OnModuleInit {
       : 0;
     const reduced_fines = asset ? Number(asset.reduced_fines || 0) : 0;
     const deposit = asset ? Number(asset.deposit || 0) : 0;
+    const reduced_by_risk_controller = asset
+      ? Number(asset.reduced_by_risk_controller || 0)
+      : 0;
 
     const loansAggregate = await this.prisma.loanAccount.aggregate({
       where: { collector_id: userId },
@@ -86,6 +89,7 @@ export class AssetManagementService implements OnModuleInit {
       reduced_handling_fee,
       reduced_fines,
       deposit,
+      reduced_by_risk_controller,
       total_amount,
     };
   }
@@ -274,21 +278,15 @@ export class AssetManagementService implements OnModuleInit {
       });
 
       const oldReducedAmount = Number(existing.reduced_amount || 0);
-      const newReducedAmount =
-        dto.reduced_amount !== undefined
-          ? dto.reduced_amount
-          : oldReducedAmount;
+      const deltaReducedAmount = dto.reduced_amount !== undefined ? dto.reduced_amount : 0;
+      const newReducedAmount = oldReducedAmount + deltaReducedAmount;
 
       const updated = await tx.riskControllerAssetManagement.update({
         where: { admin_id: userId },
         data: { reduced_amount: newReducedAmount },
       });
 
-      if (
-        dto.reduced_amount !== undefined &&
-        newReducedAmount !== oldReducedAmount
-      ) {
-        const deltaReducedAmount = newReducedAmount - oldReducedAmount;
+      if (deltaReducedAmount !== 0) {
         await this.recordAssetHistory(tx, {
           adminId: userId,
           assetType: 'risk_controller',
@@ -298,6 +296,33 @@ export class AssetManagementService implements OnModuleInit {
           newValue: newReducedAmount,
           operator,
         });
+
+        if (dto.collector_id) {
+          const collectorAsset = await tx.collectorAssetManagement.upsert({
+            where: { admin_id: dto.collector_id },
+            update: {},
+            create: { admin_id: dto.collector_id },
+          });
+
+          const oldCollectorReduced = Number(collectorAsset.reduced_by_risk_controller || 0);
+          const newCollectorReduced = oldCollectorReduced + deltaReducedAmount;
+
+          await tx.collectorAssetManagement.update({
+            where: { admin_id: dto.collector_id },
+            data: { reduced_by_risk_controller: newCollectorReduced },
+          });
+
+          await this.recordAssetHistory(tx, {
+            adminId: dto.collector_id,
+            assetType: 'collector',
+            fieldName: 'reduced_by_risk_controller',
+            oldValue: oldCollectorReduced,
+            inputValue: deltaReducedAmount,
+            newValue: newCollectorReduced,
+            operator,
+            remark: `关联风控减免变动，风控人ID: ${userId}`,
+          });
+        }
       }
 
       return updated;

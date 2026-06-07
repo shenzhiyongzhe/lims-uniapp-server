@@ -43,8 +43,10 @@ export class LoanAccountsController {
   @Get('related-staffs')
   async findRelatedStaffs(
     @CurrentUser() user: { id: number },
+    @Query('userId') queryUserId?: string,
   ): Promise<ApiResponseDto> {
-    const staffs = await this.accessScopeService.getAssociatedAdmins(user.id);
+    const targetUserId = queryUserId ? parseInt(queryUserId, 10) : user.id;
+    const staffs = await this.accessScopeService.getAssociatedAdmins(targetUserId);
     return ResponseHelper.success(staffs, '获取相关业务人员成功');
   }
 

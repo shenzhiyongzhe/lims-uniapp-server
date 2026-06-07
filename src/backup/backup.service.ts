@@ -402,6 +402,7 @@ export class BackupService {
       { header: '已减后扣', key: 'reduced_handling_fee', width: 15 },
       { header: '已减罚金', key: 'reduced_fines', width: 15 },
       { header: '存款余额', key: 'deposit', width: 15 },
+      { header: '风控减免', key: 'reduced_by_risk_controller', width: 15 },
       { header: '创建时间', key: 'created_at', width: 20 },
       { header: '更新时间', key: 'updated_at', width: 20 },
     ];
@@ -415,6 +416,7 @@ export class BackupService {
         reduced_handling_fee: this.toNum(ca.reduced_handling_fee),
         reduced_fines: this.toNum(ca.reduced_fines),
         deposit: this.toNum(ca.deposit),
+        reduced_by_risk_controller: this.toNum(ca.reduced_by_risk_controller),
         created_at: this.formatDate(ca.created_at, true),
         updated_at: this.formatDate(ca.updated_at, true),
       });
