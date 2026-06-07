@@ -303,6 +303,7 @@ model Changelog {
 enum ManagementRoles {
   SUPER_ADMIN
   ADMIN
+  ADMIN_LIMITED
   RISK_CONTROLLER
   COLLECTOR
   PENDING

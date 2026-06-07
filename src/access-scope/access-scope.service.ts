@@ -30,7 +30,8 @@ export class AccessScopeService {
 
     const isRequesterPlatformAdminRole =
       requester.role === ManagementRoles.SUPER_ADMIN ||
-      requester.role === ManagementRoles.ADMIN;
+      requester.role === ManagementRoles.ADMIN ||
+      requester.role === ManagementRoles.ADMIN_LIMITED;
     const canViewAll =
       isRequesterPlatformAdminRole && !collectorId && !riskControllerId;
 
@@ -87,7 +88,11 @@ export class AccessScopeService {
       throw new Error('业务人员不存在');
     }
 
-    if (staff.role === ManagementRoles.SUPER_ADMIN || staff.role === ManagementRoles.ADMIN) {
+    if (
+      staff.role === ManagementRoles.SUPER_ADMIN ||
+      staff.role === ManagementRoles.ADMIN ||
+      staff.role === ManagementRoles.ADMIN_LIMITED
+    ) {
       const staffs = await this.prisma.staff.findMany({
         where: {
           role: {
@@ -151,6 +156,7 @@ export class AccessScopeService {
     const roleOrder: Record<ManagementRoles, number> = {
       [ManagementRoles.SUPER_ADMIN]: 99,
       [ManagementRoles.ADMIN]: 99,
+      [ManagementRoles.ADMIN_LIMITED]: 99,
       [ManagementRoles.RISK_CONTROLLER]: 1,
       [ManagementRoles.COLLECTOR]: 0,
       [ManagementRoles.PENDING]: 99,

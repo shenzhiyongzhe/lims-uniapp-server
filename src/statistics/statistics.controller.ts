@@ -38,6 +38,7 @@ export class StatisticsController {
   @Roles(
     ManagementRoles.SUPER_ADMIN,
     ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
     ManagementRoles.RISK_CONTROLLER,
     ManagementRoles.COLLECTOR,
   )

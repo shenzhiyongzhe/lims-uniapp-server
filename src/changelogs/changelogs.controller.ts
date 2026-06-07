@@ -9,7 +9,7 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 
 @Controller('changelogs')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+@Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
 export class ChangelogsController {
   constructor(private readonly changelogsService: ChangelogsService) {}
 

@@ -11,7 +11,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('collector-statistics')
 @UseGuards(AuthGuard, RolesGuard)
-@Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+@Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
 export class CollectorStatisticsController {
   constructor(
     private readonly collectorStatisticsService: CollectorStatisticsService,

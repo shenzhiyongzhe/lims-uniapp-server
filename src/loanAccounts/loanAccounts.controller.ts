@@ -32,7 +32,7 @@ export class LoanAccountsController {
   ) {}
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
   @Get()
   async findAll(): Promise<ApiResponseDto> {
     const loans = await this.loanAccountsService.findAll();
@@ -123,7 +123,7 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
   @Get('deleted')
   async findDeletedLoans(): Promise<ApiResponseDto> {
     try {

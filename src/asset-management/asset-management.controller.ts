@@ -41,7 +41,7 @@ export class AssetManagementController {
 
   @Get('asset-history')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
   async getAssetHistory(@Query() query: QueryAssetHistoryDto) {
     const data = await this.assetManagementService.findAssetHistory(query);
     return ResponseHelper.success(data, '获取资产变更历史成功');
