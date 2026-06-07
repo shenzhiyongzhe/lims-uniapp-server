@@ -423,6 +423,10 @@ export class LoanAccountsService {
         }
       }
 
+      let finalCapital = data.capital !== undefined ? Number(data.capital) : Number(oldLoan.capital || 0);
+      let finalInterest = data.interest !== undefined ? Number(data.interest) : Number(oldLoan.interest || 0);
+      let finalLoanAmount = data.loan_amount !== undefined ? Number(data.loan_amount) : Number(oldLoan.loan_amount || 0);
+
       if (data.loan_amount !== undefined)
         updateData.loan_amount = data.loan_amount;
       if (data.receiving_amount !== undefined)
@@ -433,12 +437,57 @@ export class LoanAccountsService {
       if (data.interest !== undefined) updateData.interest = data.interest;
       if (data.handling_fee !== undefined)
         updateData.handling_fee = data.handling_fee;
-      if (data.total_periods !== undefined)
+
+      // Calculate total_periods automatically if capital/interest/loan_amount are updated
+      if (data.total_periods !== undefined) {
         updateData.total_periods = data.total_periods;
+      } else if (
+        data.capital !== undefined ||
+        data.interest !== undefined ||
+        data.loan_amount !== undefined
+      ) {
+        if (finalCapital > 0) {
+          updateData.total_periods = Math.ceil(finalLoanAmount / finalCapital);
+        } else if (finalInterest > 0) {
+          updateData.total_periods = Math.ceil(finalLoanAmount / finalInterest);
+        } else {
+          updateData.total_periods = 0;
+        }
+      }
+
       if (data.repaid_periods !== undefined)
         updateData.repaid_periods = data.repaid_periods;
-      if (data.daily_repayment !== undefined)
+
+      // Calculate daily_repayment automatically if capital/interest are updated
+      if (data.daily_repayment !== undefined) {
         updateData.daily_repayment = data.daily_repayment;
+      } else if (data.capital !== undefined || data.interest !== undefined) {
+        updateData.daily_repayment = Math.round(finalCapital + finalInterest);
+      }
+
+      // Calculate due_end_date automatically if total_periods or due_start_date changes, and due_end_date is not provided
+      if (data.due_end_date === undefined) {
+        const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
+        const finalPeriods = updateData.total_periods !== undefined ? updateData.total_periods : oldLoan.total_periods;
+        if (finalStartDate && finalPeriods > 0) {
+          const endDate = new Date(finalStartDate);
+          endDate.setUTCDate(finalStartDate.getUTCDate() + finalPeriods - 1);
+          updateData.due_end_date = endDate;
+        }
+      }
+
+      // If due_end_date was updated but total_periods wasn't, calculate total_periods based on dates
+      if (data.due_end_date !== undefined && data.total_periods === undefined) {
+        const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
+        const finalEndDate = updateData.due_end_date || (oldLoan.due_end_date ? new Date(oldLoan.due_end_date) : null);
+        if (finalStartDate && finalEndDate) {
+          const diffTime = finalEndDate.getTime() - finalStartDate.getTime();
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
+          if (diffDays > 0) {
+            updateData.total_periods = diffDays;
+          }
+        }
+      }
       if (data.status !== undefined) updateData.status = data.status;
       if (data.company_cost !== undefined)
         updateData.company_cost = data.company_cost;
@@ -466,49 +515,103 @@ export class LoanAccountsService {
         },
       });
 
-      if (newDueStartDate && oldLoan.due_start_date) {
-        const oldStartDate = new Date(oldLoan.due_start_date);
-        const formatUTCDate = (date: Date): string => {
-          const year = date.getUTCFullYear();
-          const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-          const day = String(date.getUTCDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-        if (formatUTCDate(oldStartDate) !== formatUTCDate(newDueStartDate)) {
+      const isScheduleUpdateNeeded =
+        data.capital !== undefined ||
+        data.interest !== undefined ||
+        data.loan_amount !== undefined ||
+        data.total_periods !== undefined ||
+        data.due_start_date !== undefined ||
+        data.due_end_date !== undefined;
+
+      if (isScheduleUpdateNeeded) {
+        const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
+        const finalPeriods = updateData.total_periods !== undefined ? updateData.total_periods : oldLoan.total_periods;
+        const finalCapital = updateData.capital !== undefined ? Number(updateData.capital) : Number(oldLoan.capital || 0);
+        const finalInterest = updateData.interest !== undefined ? Number(updateData.interest) : Number(oldLoan.interest || 0);
+        const finalLoanAmount = updateData.loan_amount !== undefined ? Number(updateData.loan_amount) : Number(oldLoan.loan_amount || 0);
+
+        if (finalStartDate && finalPeriods > 0) {
+          // Fetch existing schedules
           const schedules = await tx.repaymentSchedule.findMany({
             where: { loan_id: id },
             orderBy: { period: 'asc' },
-            select: { id: true, period: true },
           });
 
-          for (const schedule of schedules) {
-            const baseDate = new Date(newDueStartDate);
-            const newStartDate = new Date(
-              Date.UTC(
-                baseDate.getUTCFullYear(),
-                baseDate.getUTCMonth(),
-                baseDate.getUTCDate() + (schedule.period - 1),
-              ),
-            );
+          // Compute new expected schedules
+          let remainingPrincipal = finalLoanAmount;
+          const calculatedSchedules = Array.from({ length: finalPeriods }).map((_, idx) => {
+            let curCapital = 0;
+            if (idx < finalPeriods - 1) {
+              curCapital = Math.min(finalCapital, Math.max(0, remainingPrincipal));
+            } else {
+              curCapital = Math.max(0, remainingPrincipal);
+            }
+            curCapital = Number(curCapital.toFixed(2));
+            remainingPrincipal = Number(Math.max(0, remainingPrincipal - curCapital).toFixed(2));
 
-            const currentSchedule = await tx.repaymentSchedule.findUnique({
-              where: { id: schedule.id },
-              select: { status: true },
-            });
+            const curInterest = Number(finalInterest.toFixed(2));
+            const dueAmount = Number((curCapital + curInterest).toFixed(2));
 
-            const newStatus = this.determineScheduleStatus(
-              newStartDate,
-              currentSchedule?.status || 'pending',
-            );
+            const d = new Date(finalStartDate);
+            d.setUTCDate(finalStartDate.getUTCDate() + idx);
 
-            await tx.repaymentSchedule.update({
-              where: { id: schedule.id },
-              data: {
-                due_start_date: newStartDate,
-                status: newStatus,
+            return {
+              period: idx + 1,
+              due_start_date: d,
+              capital: curCapital,
+              interest: finalInterest || null,
+              due_amount: dueAmount,
+            };
+          });
+
+          // Update existing schedules, create new ones, or delete excess ones
+          for (let idx = 0; idx < finalPeriods; idx++) {
+            const calc = calculatedSchedules[idx];
+            if (idx < schedules.length) {
+              // Update existing
+              const targetSched = schedules[idx];
+              const newStatus = this.determineScheduleStatus(calc.due_start_date, targetSched.status);
+              await tx.repaymentSchedule.update({
+                where: { id: targetSched.id },
+                data: {
+                  period: calc.period,
+                  due_start_date: calc.due_start_date,
+                  capital: calc.capital,
+                  interest: calc.interest,
+                  due_amount: calc.due_amount,
+                  status: newStatus,
+                },
+              });
+            } else {
+              // Create new
+              const newStatus = this.determineScheduleStatus(calc.due_start_date, 'pending');
+              await tx.repaymentSchedule.create({
+                data: {
+                  loan_id: id,
+                  period: calc.period,
+                  due_start_date: calc.due_start_date,
+                  capital: calc.capital,
+                  interest: calc.interest,
+                  due_amount: calc.due_amount,
+                  status: newStatus,
+                  paid_capital: 0,
+                  paid_interest: 0,
+                },
+              });
+            }
+          }
+
+          // Delete any extra schedules
+          if (schedules.length > finalPeriods) {
+            await tx.repaymentSchedule.deleteMany({
+              where: {
+                loan_id: id,
+                period: { gt: finalPeriods },
               },
             });
           }
+
+          // Update overdue count on the loan account
           const overdueSchedules = await tx.repaymentSchedule.findMany({
             where: {
               loan_id: id,

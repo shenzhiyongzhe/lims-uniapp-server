@@ -91,6 +91,7 @@ export class AssetManagementService implements OnModuleInit {
       deposit,
       reduced_by_risk_controller,
       total_amount,
+      total_received: totalRepaid,
     };
   }
 
