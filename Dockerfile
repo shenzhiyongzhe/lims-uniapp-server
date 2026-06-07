@@ -8,11 +8,10 @@ WORKDIR /app
 ENV DATABASE_URL="postgresql://build:build@127.0.0.1:5432/lims?schema=public"
 
 COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
+
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-
-RUN npm ci --ignore-scripts
-
 RUN npx prisma generate
 
 COPY . .
