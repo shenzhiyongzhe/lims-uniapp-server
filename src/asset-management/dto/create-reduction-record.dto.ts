@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, NotEquals } from 'class-validator';
 import { ReductionType } from '@prisma/client';
 
 export class CreateReductionRecordDto {
@@ -10,9 +10,9 @@ export class CreateReductionRecordDto {
   @IsEnum(ReductionType)
   reduction_type: ReductionType;
 
-  /** 本次减资金额（正整数） */
+  /** 本次减资金额（非零整数），正数表示减少，负数表示增加 */
   @IsInt()
-  @Min(1)
+  @NotEquals(0)
   amount: number;
 
   /** 备注 */

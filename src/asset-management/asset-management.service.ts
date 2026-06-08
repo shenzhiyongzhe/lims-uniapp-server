@@ -6,6 +6,11 @@ import { AccessScopeService } from '../access-scope/access-scope.service';
 import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
 import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
 import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
+import { QueryReductionDailySummaryDto } from './dto/query-reduction-daily-summary.dto';
+import {
+  getBusinessDayTimestampRange,
+  utcMidnightFromYmd,
+} from '../common/business-date';
 
 type AssetOperator = { id: number; role?: string };
 
@@ -231,12 +236,12 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
-  /** 查询减资明细（支持 risk_controller_id、collector_id、type 过滤 + 分页） */
-  async findReductionRecords(query: QueryReductionRecordsDto) {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 50;
-    const skip = (page - 1) * pageSize;
-
+  private buildReductionRecordWhere(
+    query: Pick<
+      QueryReductionRecordsDto,
+      'riskControllerId' | 'collectorId' | 'reductionType' | 'date'
+    >,
+  ): Prisma.RiskControllerReductionRecordWhereInput {
     const where: Prisma.RiskControllerReductionRecordWhereInput = {};
     if (query.riskControllerId) {
       where.risk_controller_id = query.riskControllerId;
@@ -247,6 +252,88 @@ export class AssetManagementService implements OnModuleInit {
     if (query.reductionType) {
       where.reduction_type = query.reductionType as ReductionType;
     }
+    if (query.date) {
+      const [yearStr, monthStr, dayStr] = query.date.split('-');
+      const businessDate = utcMidnightFromYmd(
+        Number(yearStr),
+        Number(monthStr),
+        Number(dayStr),
+      );
+      const { start, end } = getBusinessDayTimestampRange(businessDate);
+      where.created_at = { gte: start, lt: end };
+    }
+    return where;
+  }
+
+  /** 按业务日汇总减资金额（日历展示） */
+  async findReductionDailySummary(query: QueryReductionDailySummaryDto) {
+    const { month, riskControllerId, collectorId } = query;
+    const [yearStr, monthStr] = month.split('-');
+    const year = Number(yearStr);
+    const monthIndex = Number(monthStr) - 1;
+
+    const monthStartBusinessDate = new Date(Date.UTC(year, monthIndex, 1));
+    const monthStartTs = new Date(
+      monthStartBusinessDate.getTime() - 2 * 3600 * 1000,
+    );
+    const nextMonthStartBusinessDate = new Date(
+      Date.UTC(year, monthIndex + 1, 1),
+    );
+    const nextMonthStartTs = new Date(
+      nextMonthStartBusinessDate.getTime() - 2 * 3600 * 1000,
+    );
+
+    const where: Prisma.RiskControllerReductionRecordWhereInput = {
+      created_at: { gte: monthStartTs, lt: nextMonthStartTs },
+    };
+    if (riskControllerId) {
+      where.risk_controller_id = riskControllerId;
+    }
+    if (collectorId) {
+      where.collector_id = collectorId;
+    }
+
+    const rows = await this.prisma.riskControllerReductionRecord.findMany({
+      where,
+      select: {
+        amount: true,
+        created_at: true,
+      },
+      orderBy: { created_at: 'asc' },
+    });
+
+    const dayMap = new Map<
+      string,
+      { totalPaidAmount: number; count: number }
+    >();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    rows.forEach((row) => {
+      const businessTs = new Date(
+        row.created_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000,
+      );
+      const date = businessTs.toISOString().slice(0, 10);
+      const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
+      old.totalPaidAmount += Number(row.amount ?? 0);
+      old.count += 1;
+      dayMap.set(date, old);
+    });
+
+    return Array.from(dayMap.entries())
+      .map(([date, value]) => ({
+        date,
+        totalPaidAmount: value.totalPaidAmount,
+        count: value.count,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  /** 查询减资明细（支持 risk_controller_id、collector_id、type、date 过滤 + 分页） */
+  async findReductionRecords(query: QueryReductionRecordsDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 50;
+    const skip = (page - 1) * pageSize;
+
+    const where = this.buildReductionRecordWhere(query);
 
     const [data, total] = await Promise.all([
       this.prisma.riskControllerReductionRecord.findMany({

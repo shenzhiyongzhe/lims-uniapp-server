@@ -1740,11 +1740,26 @@ export class LoanAccountsService {
     });
   }
 
-  async findHistoryCreatedLoans(query: { page: number; pageSize: number }) {
+  async findHistoryCreatedLoans(
+    query: { page: number; pageSize: number },
+    currentUser?: { id: number; role: string },
+  ) {
     const { page, pageSize } = query;
     const skip = (page - 1) * pageSize;
+    let where: Record<string, unknown> = {};
+    if (currentUser?.id) {
+      const scope = await this.accessScopeService.resolveLoanAccountScope(
+        currentUser.id,
+        undefined,
+        undefined,
+      );
+      if (!scope.isAllAccessible) {
+        where = scope.whereClause || {};
+      }
+    }
     const [loans, total] = await Promise.all([
       this.prisma.loanAccount.findMany({
+        where,
         orderBy: { created_at: 'desc' },
         include: {
           user: true,
@@ -1752,7 +1767,7 @@ export class LoanAccountsService {
         skip,
         take: pageSize,
       }),
-      this.prisma.loanAccount.count(),
+      this.prisma.loanAccount.count({ where }),
     ]);
 
     const totalPages = Math.ceil(total / pageSize);

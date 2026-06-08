@@ -19,6 +19,7 @@ import { AdjustCollectorDepositDto } from './dto/adjust-collector-deposit.dto';
 import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
 import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
 import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
+import { QueryReductionDailySummaryDto } from './dto/query-reduction-daily-summary.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('asset-management')
@@ -49,7 +50,17 @@ export class AssetManagementController {
     return ResponseHelper.success(data, '获取资产变更历史成功');
   }
 
-  /** 查询减资明细：支持 riskControllerId、collectorId、reductionType 过滤 */
+  /** 减资按日汇总（日历金额） */
+  @Get('reduction-records/daily-summary')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  async getReductionDailySummary(@Query() query: QueryReductionDailySummaryDto) {
+    const data =
+      await this.assetManagementService.findReductionDailySummary(query);
+    return ResponseHelper.success(data, '获取减资按日汇总成功');
+  }
+
+  /** 查询减资明细：支持 riskControllerId、collectorId、reductionType、date 过滤 */
   @Get('reduction-records')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)

@@ -139,18 +139,21 @@ export class LoanAccountsController {
     }
   }
 
-  @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @UseGuards(AuthGuard)
   @Get('created-history')
   async findHistoryCreatedLoans(
     @Query('page') page: string,
     @Query('pageSize') pageSize: string,
+    @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     try {
-      const result = await this.loanAccountsService.findHistoryCreatedLoans({
-        page: parseInt(page, 10) || 1,
-        pageSize: parseInt(pageSize, 10) || 20,
-      });
+      const result = await this.loanAccountsService.findHistoryCreatedLoans(
+        {
+          page: parseInt(page, 10) || 1,
+          pageSize: parseInt(pageSize, 10) || 20,
+        },
+        currentUser,
+      );
       return ResponseHelper.success(result, '获取历史新增贷款记录成功');
     } catch (error: any) {
       return ResponseHelper.error(
