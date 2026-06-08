@@ -16,6 +16,7 @@ on:
     paths:
       - "src/**"
       - "prisma/**"
+      - "prisma.config.ts"
       - "package.json"
       - "package-lock.json"
       - "Dockerfile"
