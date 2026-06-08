@@ -6,21 +6,17 @@ export type LoanPredictionItem =
   | { value: number; frequency: number }
   | { value: string; frequency: number };
 
-/** 非 payer_name 字段：入库用的规范化数字串；与原先 Decimal(10,2) 语义接近 */
+/** 非 payer_name 字段：入库用的规范化数字串；因为现在字段全为整型，所以存整数字符串 */
 function storageValueForNumericField(
   fieldName: string,
   raw: string,
 ): string | null {
-  const numValue = Number(raw);
+  const numValue = Math.round(Number(raw));
   if (Number.isNaN(numValue) || numValue <= 0) return null;
   if (fieldName === 'to_hand_ratio') {
-    if (numValue > 1) return null;
-    return numValue
-      .toFixed(8)
-      .replace(/(\.\d*?)0+$/, '$1')
-      .replace(/\.$/, '');
+    if (numValue > 100) return null;
   }
-  return numValue.toFixed(2);
+  return String(numValue);
 }
 
 @Injectable()
@@ -34,24 +30,6 @@ export class LoanPredictionService {
     const pref = (prefix ?? '').trim();
 
     if (pref) {
-      if (fieldName === 'to_hand_ratio') {
-        const allPredictions = await this.prisma.loanFieldPrediction.findMany({
-          where: { field_name: fieldName },
-          orderBy: [{ frequency: 'desc' }, { last_used_at: 'desc' }],
-        });
-
-        const filtered = allPredictions
-          .filter((p) => {
-            const percentValue = String(Number(p.value) * 100);
-            return percentValue.startsWith(pref);
-          })
-          .slice(0, 3);
-
-        return filtered.map((p) => ({
-          value: Number(p.value),
-          frequency: p.frequency,
-        }));
-      }
 
       if (fieldName === 'payer_name') {
         const allPredictions = await this.prisma.loanFieldPrediction.findMany({

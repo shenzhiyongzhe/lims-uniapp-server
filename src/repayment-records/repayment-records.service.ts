@@ -550,13 +550,13 @@ export class RepaymentRecordsService {
     return this.formatNumber(value);
   }
 
-  /** 今日借出：5000 = -2600 + 100 -2600 + 100 */
+  /** 今日借出： -2600 + 100 -2600 + 100=5000 */
   private formatTodayLoansExpression(
     loans: { company_cost: unknown; handling_fee: unknown }[],
     total: number,
   ): string {
     if (!loans.length) {
-      return `0=0`;
+      return `0`;
     }
     const terms: string[] = [];
     for (const loan of loans) {
@@ -565,7 +565,7 @@ export class RepaymentRecordsService {
       terms.push(`-${this.formatNumber(cost)}`);
       terms.push(`+${this.formatNumber(fee)}`);
     }
-    return `${this.formatNumber(total)}=${terms.join(' ')}`;
+    return `${terms.join('')}=${this.formatNumber(total)}`;
   }
 
   private formatExpression(
@@ -573,13 +573,13 @@ export class RepaymentRecordsService {
     total: number,
   ): string {
     if (!items.length) {
-      return `0=${this.formatNumber(total)}`;
+      return `0`;
     }
-    const parts = items.map((item, idx) => {
+    const parts = items.map((item) => {
       const base = this.formatNumber(item.amount);
-      if (idx === 0) return item.isEarlySettlement ? `${base}(清)` : base;
       const signed = item.amount >= 0 ? `+${base}` : base;
-      return item.isEarlySettlement ? `${signed}(清)` : signed;
+      const suffix = item.label || '';
+      return `${signed}${suffix}`;
     });
     return `${parts.join('')}=${this.formatNumber(total)}`;
   }

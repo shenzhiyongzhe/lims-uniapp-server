@@ -187,7 +187,7 @@ export class RepaymentSchedulesService {
         operatorName = op?.nickname ?? null;
       }
       const paidAmount = inputCapital + inputInterest + finesValue;
-      const nextPaid = Number(paidAmount.toFixed(2));
+      const nextPaid = paidAmount;
       updatePayload.paid_amount = nextPaid;
 
       if (operatorAdminId) {

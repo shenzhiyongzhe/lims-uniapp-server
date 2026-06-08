@@ -286,14 +286,11 @@ export class LoanAccountsService {
         } else {
           curCapital = Math.max(0, remainingPrincipal);
         }
-        curCapital = Number(curCapital.toFixed(2));
 
-        const curInterest = Number(perInterest.toFixed(2));
-        const dueAmount = Number((curCapital + curInterest).toFixed(2));
+        const curInterest = perInterest;
+        const dueAmount = curCapital + curInterest;
 
-        remainingPrincipal = Number(
-          Math.max(0, remainingPrincipal - curCapital).toFixed(2),
-        );
+        remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
 
         const scheduleStatus = this.determineScheduleStatus(d, 'pending');
 
@@ -546,11 +543,10 @@ export class LoanAccountsService {
             } else {
               curCapital = Math.max(0, remainingPrincipal);
             }
-            curCapital = Number(curCapital.toFixed(2));
-            remainingPrincipal = Number(Math.max(0, remainingPrincipal - curCapital).toFixed(2));
+            remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
 
-            const curInterest = Number(finalInterest.toFixed(2));
-            const dueAmount = Number((curCapital + curInterest).toFixed(2));
+            const curInterest = finalInterest;
+            const dueAmount = curCapital + curInterest;
 
             const d = new Date(finalStartDate);
             d.setUTCDate(finalStartDate.getUTCDate() + idx);
@@ -1742,6 +1738,49 @@ export class LoanAccountsService {
     return this.prisma.deletedLoan.findMany({
       orderBy: { deleted_at: 'desc' },
     });
+  }
+
+  async findHistoryCreatedLoans(query: { page: number; pageSize: number }) {
+    const { page, pageSize } = query;
+    const skip = (page - 1) * pageSize;
+    const [loans, total] = await Promise.all([
+      this.prisma.loanAccount.findMany({
+        orderBy: { created_at: 'desc' },
+        include: {
+          user: true,
+        },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.loanAccount.count(),
+    ]);
+
+    const totalPages = Math.ceil(total / pageSize);
+    return {
+      data: loans.map((loan) => ({
+        id: loan.id,
+        loan_id: loan.id,
+        user_id: loan.user_id,
+        username: loan.user?.username || '',
+        loan_amount: loan.loan_amount,
+        period_capital: loan.period_capital,
+        period_interest: loan.period_interest,
+        status: loan.status,
+        total_periods: loan.total_periods,
+        repaid_periods: loan.repaid_periods,
+        due_start_date: loan.due_start_date,
+        due_end_date: loan.due_end_date,
+        created_at: loan.created_at,
+      })),
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      },
+    };
   }
 
   async restoreDeletedLoan(loanId: number, restoredBy: number): Promise<any> {

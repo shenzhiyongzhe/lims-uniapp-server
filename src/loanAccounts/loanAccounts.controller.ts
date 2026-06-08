@@ -140,6 +140,27 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @Get('created-history')
+  async findHistoryCreatedLoans(
+    @Query('page') page: string,
+    @Query('pageSize') pageSize: string,
+  ): Promise<ApiResponseDto> {
+    try {
+      const result = await this.loanAccountsService.findHistoryCreatedLoans({
+        page: parseInt(page, 10) || 1,
+        pageSize: parseInt(pageSize, 10) || 20,
+      });
+      return ResponseHelper.success(result, '获取历史新增贷款记录成功');
+    } catch (error: any) {
+      return ResponseHelper.error(
+        `获取历史新增贷款记录失败: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
   @Post('deleted/:id/restore')
   async restoreDeletedLoan(

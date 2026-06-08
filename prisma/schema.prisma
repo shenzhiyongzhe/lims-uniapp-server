@@ -51,15 +51,15 @@ model Staff {
 model LoanAccount {
   id                       Int                 @id @default(autoincrement())
   user_id                  Int
-  loan_amount              Decimal             @db.Decimal(10, 2)
-  receiving_amount         Decimal?            @db.Decimal(10, 2)
-  to_hand_ratio            Decimal?            @db.Decimal(10, 2)
-  period_capital           Decimal             @db.Decimal(10, 2)
-  period_interest          Decimal             @db.Decimal(10, 2)
+  loan_amount              Int
+  receiving_amount         Int?
+  to_hand_ratio            Int?
+  period_capital           Int
+  period_interest          Int
   due_start_date           DateTime            @db.Date
   due_end_date             DateTime            @db.Date
   status                   LoanAccountStatus   @default(pending)
-  handling_fee             Decimal             @db.Decimal(10, 2)
+  handling_fee             Int
   total_periods            Int
   repaid_periods           Int                 @default(0)
   daily_repayment          Int                 @default(0)
@@ -70,14 +70,14 @@ model LoanAccount {
   collector_id             Int
   risk_controller_id       Int
   apply_times              Int                 @default(0)
-  paid_capital             Decimal             @default(0.00) @db.Decimal(10, 2)
+  paid_capital             Int                 @default(0)
   status_changed_at        DateTime?
-  total_fines              Decimal             @default(0.00) @db.Decimal(10, 2)
-  paid_interest            Decimal             @default(0.00) @db.Decimal(10, 2)
-  early_settlement_capital Decimal?            @db.Decimal(10, 2)
-  last_edit_fines          Decimal?            @db.Decimal(10, 2)
-  last_edit_pay_capital    Decimal?            @db.Decimal(10, 2)
-  last_edit_pay_interest   Decimal?            @db.Decimal(10, 2)
+  total_fines              Int                 @default(0)
+  paid_interest            Int                 @default(0)
+  early_settlement_capital Int?
+  last_edit_fines          Int?
+  last_edit_pay_capital    Int?
+  last_edit_pay_interest   Int?
   note                     String?             @db.VarChar(300)
   overdue_count            Int                 @default(0)
   ownership                String?             @db.VarChar(5)
@@ -101,17 +101,17 @@ model RepaymentSchedule {
   loan_id             Int
   period              Int
   due_start_date      DateTime                @db.Date
-  due_amount          Decimal                 @db.Decimal(10, 2)
-  capital             Decimal?                @db.Decimal(10, 2)
-  interest            Decimal?                @db.Decimal(10, 2)
+  due_amount          Int
+  capital             Int?
+  interest            Int?
   status              RepaymentScheduleStatus @default(pending)
-  paid_amount         Decimal?                @db.Decimal(10, 2)
+  paid_amount         Int?
   paid_at             DateTime?
-  fines               Decimal?                @default(0.00) @db.Decimal(10, 2)
+  fines               Int?                    @default(0)
   operator_admin_id   Int?
   operator_admin_name String?                 @db.VarChar(50)
-  paid_capital        Decimal?                @default(0.00) @db.Decimal(10, 2)
-  paid_interest       Decimal?                @default(0.00) @db.Decimal(10, 2)
+  paid_capital        Int?                    @default(0)
+  paid_interest       Int?                    @default(0)
   overdueRecords      OverdueRecord?
   repaymentRecords    RepaymentRecord[]
   operationLogs       RepaymentScheduleOperationLog[]
@@ -128,12 +128,12 @@ model RepaymentScheduleOperationLog {
   action_type           RepaymentScheduleOperationType
   operator_admin_id     Int?
   operator_admin_name   String?                       @db.VarChar(50)
-  paid_capital_before   Decimal?                      @db.Decimal(10, 2)
-  paid_interest_before  Decimal?                      @db.Decimal(10, 2)
-  fines_before          Decimal?                      @db.Decimal(10, 2)
-  paid_capital_after    Decimal?                      @db.Decimal(10, 2)
-  paid_interest_after   Decimal?                      @db.Decimal(10, 2)
-  fines_after           Decimal?                      @db.Decimal(10, 2)
+  paid_capital_before   Int?
+  paid_interest_before  Int?
+  fines_before          Int?
+  paid_capital_after    Int?
+  paid_interest_after   Int?
+  fines_after           Int?
   remark                String?                       @db.VarChar(10)
   created_at            DateTime                      @default(now())
   schedule              RepaymentSchedule             @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
@@ -166,11 +166,11 @@ model RepaymentRecord {
   id                    Int                @id @default(autoincrement())
   loan_id               Int
   user_id               Int
-  paid_amount           Decimal?           @db.Decimal(10, 2)
+  paid_amount           Int?
   paid_at               DateTime           @default(now())
-  paid_capital          Decimal?           @db.Decimal(10, 2)
-  paid_fines            Decimal?           @db.Decimal(10, 2)
-  paid_interest         Decimal?           @db.Decimal(10, 2)
+  paid_capital          Int?
+  paid_fines            Int?
+  paid_interest         Int?
   repayment_schedule_id Int?
   actual_collector_id   Int?
   remark                String?            @db.VarChar(10)
@@ -210,10 +210,10 @@ model DailyLoanBalance {
   id                 Int      @id @default(autoincrement())
   admin_id           Int
   date               DateTime @db.Date
-  previous_total     Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_loan_total   Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_repaid_total Decimal  @default(0.00) @db.Decimal(12, 2)
-  today_total        Decimal  @default(0.00) @db.Decimal(12, 2)
+  previous_total     Int      @default(0)
+  today_loan_total   Int      @default(0)
+  today_repaid_total Int      @default(0)
+  today_total        Int      @default(0)
   today_loan_items   Json?
   today_repaid_items Json?
   created_at         DateTime @default(now())
@@ -231,14 +231,14 @@ model DailyLoanBalance {
 model CollectorAssetManagement {
   id                         Int      @id @default(autoincrement())
   admin_id                   Int      @unique
-  total_handling_fee         Decimal  @default(0.00) @db.Decimal(10, 2)
-  total_fines                Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_handling_fee         Int      @default(0)
+  total_fines                Int      @default(0)
   created_at                 DateTime @default(now())
   updated_at                 DateTime @updatedAt
-  reduced_fines              Decimal  @default(0.00) @db.Decimal(10, 2)
-  reduced_handling_fee       Decimal  @default(0.00) @db.Decimal(10, 2)
-  deposit                    Decimal  @default(0.00) @db.Decimal(10, 2)
-  reduced_by_risk_controller Decimal  @default(0.00) @db.Decimal(10, 2)
+  reduced_fines              Int      @default(0)
+  reduced_handling_fee       Int      @default(0)
+  deposit                    Int      @default(0)
+  reduced_by_risk_controller Int      @default(0)
   admin                      Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("collector_asset_management")
@@ -247,8 +247,8 @@ model CollectorAssetManagement {
 model RiskControllerAssetManagement {
   id             Int      @id @default(autoincrement())
   admin_id       Int      @unique
-  total_amount   Decimal  @default(0.00) @db.Decimal(10, 2)
-  reduced_amount Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_amount   Int      @default(0)
+  reduced_amount Int      @default(0)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
   admin          Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
@@ -277,9 +277,9 @@ model AssetReductionHistory {
   admin_id                  Int
   asset_type                String   @db.VarChar(50)
   field_name                String   @db.VarChar(50)
-  old_value                 Decimal  @db.Decimal(10, 2)
-  input_value               Decimal  @db.Decimal(10, 2)
-  new_value                 Decimal  @db.Decimal(10, 2)
+  old_value                 Int
+  input_value               Int
+  new_value                 Int
   updated_by_admin_id       Int?
   updated_by_admin_username String?  @db.VarChar(50)
   remark                    String?  @db.VarChar(200)
@@ -339,9 +339,9 @@ model DeletedLoan {
   loan_id         Int      @unique
   user_id         Int
   username        String   @db.VarChar(50)
-  loan_amount     Decimal  @db.Decimal(10, 2)
-  period_capital  Decimal  @db.Decimal(10, 2)
-  period_interest Decimal  @db.Decimal(10, 2)
+  loan_amount     Int
+  period_capital  Int
+  period_interest Int
   status          String   @db.VarChar(20)
   total_periods   Int
   repaid_periods  Int
