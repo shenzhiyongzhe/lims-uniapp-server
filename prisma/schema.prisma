@@ -34,16 +34,19 @@ model Staff {
   last_login_at                 DateTime?
   last_login_ip                 String?                        @db.VarChar(45)
   token_version                 Int                            @default(1)
-  assetReductionHistory         AssetReductionHistory[]        @relation("AssetReductionHistory")
-  collectorAssetManagement      CollectorAssetManagement?
+  assetReductionHistory             AssetReductionHistory[]              @relation("AssetReductionHistory")
+  collectorAssetManagement          CollectorAssetManagement?
 
-  loanAccountsAsCollector       LoanAccount[]                  @relation("CollectorLoanAccounts")
-  loanAccountsAsRiskController  LoanAccount[]                  @relation("RiskControllerLoanAccounts")
-  dailyLoanBalances             DailyLoanBalance[]
-  repaymentRecords              RepaymentRecord[]
-  riskControllerAssetManagement RiskControllerAssetManagement?
-  scheduleOperationLogs         RepaymentScheduleOperationLog[]
-  loanAccountOperationLogs      LoanAccountOperationLog[]
+  loanAccountsAsCollector           LoanAccount[]                        @relation("CollectorLoanAccounts")
+  loanAccountsAsRiskController      LoanAccount[]                        @relation("RiskControllerLoanAccounts")
+  dailyLoanBalances                 DailyLoanBalance[]
+  repaymentRecords                  RepaymentRecord[]
+  riskControllerAssetManagement     RiskControllerAssetManagement?
+  scheduleOperationLogs             RepaymentScheduleOperationLog[]
+  loanAccountOperationLogs          LoanAccountOperationLog[]
+  reductionsAsRiskController        RiskControllerReductionRecord[]      @relation("RCReductionByRiskController")
+  reductionsAsCollector             RiskControllerReductionRecord[]      @relation("RCReductionToCollector")
+  reductionOperationLogs            RiskControllerReductionRecord[]      @relation("RCReductionOperator")
 
   @@map("staffs")
 }
@@ -229,29 +232,25 @@ model DailyLoanBalance {
 
 
 model CollectorAssetManagement {
-  id                         Int      @id @default(autoincrement())
-  admin_id                   Int      @unique
-  total_handling_fee         Int      @default(0)
-  total_fines                Int      @default(0)
-  created_at                 DateTime @default(now())
-  updated_at                 DateTime @updatedAt
-  reduced_fines              Int      @default(0)
-  reduced_handling_fee       Int      @default(0)
-  deposit                    Int      @default(0)
-  reduced_by_risk_controller Int      @default(0)
-  admin                      Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  id                 Int      @id @default(autoincrement())
+  admin_id           Int      @unique
+  total_handling_fee Int      @default(0)
+  total_fines        Int      @default(0)
+  created_at         DateTime @default(now())
+  updated_at         DateTime @updatedAt
+  deposit            Int      @default(0)
+  admin              Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("collector_asset_management")
 }
 
 model RiskControllerAssetManagement {
-  id             Int      @id @default(autoincrement())
-  admin_id       Int      @unique
-  total_amount   Int      @default(0)
-  reduced_amount Int      @default(0)
-  created_at     DateTime @default(now())
-  updated_at     DateTime @updatedAt
-  admin          Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
+  id           Int      @id @default(autoincrement())
+  admin_id     Int      @unique
+  total_amount Int      @default(0)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  admin        Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
 
   @@map("risk_controller_asset_management")
 }
@@ -354,3 +353,29 @@ model DeletedLoan {
   @@map("deleted_loans")
 }
 
+enum ReductionType {
+  fines
+  handling_fee
+  amount
+}
+
+model RiskControllerReductionRecord {
+  id                 Int           @id @default(autoincrement())
+  risk_controller_id Int
+  collector_id       Int
+  reduction_type     ReductionType
+  amount             Int           // 本次减资金额（正整数）
+  remark             String?       @db.VarChar(200)
+  created_by         Int?          // 操作人 admin id
+  created_at         DateTime      @default(now())
+
+  risk_controller    Staff         @relation("RCReductionByRiskController", fields: [risk_controller_id], references: [id])
+  collector          Staff         @relation("RCReductionToCollector",       fields: [collector_id],       references: [id])
+  operator           Staff?        @relation("RCReductionOperator",           fields: [created_by],          references: [id])
+
+  @@index([risk_controller_id])
+  @@index([collector_id])
+  @@index([risk_controller_id, collector_id])
+  @@index([created_at])
+  @@map("risk_controller_reduction_records")
+}

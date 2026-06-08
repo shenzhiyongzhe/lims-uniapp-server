@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Post,
   Put,
   Query,
   UseGuards,
@@ -14,9 +15,10 @@ import { Roles } from '../auth/roles.decorator';
 import { ManagementRoles } from '@prisma/client';
 import { ResponseHelper } from '../common/response-helper';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
-import { UpdateRiskControllerAssetDto } from './dto/update-risk-controller-asset.dto';
 import { AdjustCollectorDepositDto } from './dto/adjust-collector-deposit.dto';
 import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
+import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
+import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('asset-management')
@@ -45,6 +47,15 @@ export class AssetManagementController {
   async getAssetHistory(@Query() query: QueryAssetHistoryDto) {
     const data = await this.assetManagementService.findAssetHistory(query);
     return ResponseHelper.success(data, '获取资产变更历史成功');
+  }
+
+  /** 查询减资明细：支持 riskControllerId、collectorId、reductionType 过滤 */
+  @Get('reduction-records')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  async getReductionRecords(@Query() query: QueryReductionRecordsDto) {
+    const data = await this.assetManagementService.findReductionRecords(query);
+    return ResponseHelper.success(data, '获取减资明细成功');
   }
 
   @Get('collector/:userId')
@@ -96,19 +107,23 @@ export class AssetManagementController {
     return ResponseHelper.success(data, '调整存款成功');
   }
 
-  @Put('risk-controller/:userId')
+  /**
+   * 风控人创建一条对 collector 的减资明细记录
+   * POST /asset-management/risk-controller/:userId/reduction
+   */
+  @Post('risk-controller/:userId/reduction')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
-  async updateRiskControllerAsset(
+  async createReductionRecord(
     @Param('userId') userId: string,
-    @Body() dto: UpdateRiskControllerAssetDto,
+    @Body() dto: CreateReductionRecordDto,
     @CurrentUser() operator: { id: number; role: string },
   ) {
-    const data = await this.assetManagementService.updateRiskControllerAsset(
+    const data = await this.assetManagementService.createReductionRecord(
       parseInt(userId, 10),
       dto,
       operator,
     );
-    return ResponseHelper.success(data, '更新风控人资产成功');
+    return ResponseHelper.success(data, '创建减资记录成功');
   }
 }

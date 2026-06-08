@@ -1,10 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { LoanAccount, Prisma } from '@prisma/client';
+import { LoanAccount, Prisma, ReductionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
-import { UpdateRiskControllerAssetDto } from './dto/update-risk-controller-asset.dto';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
+import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
+import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
 
 type AssetOperator = { id: number; role?: string };
 
@@ -32,6 +33,38 @@ export class AssetManagementService implements OnModuleInit {
     this.logger.log('Asset Management Module Initialized');
   }
 
+  // ─── 聚合查询减资明细的辅助方法 ────────────────────────────────────────
+
+  /** 查询指定 collector 被减资的各类型汇总 */
+  private async getCollectorReductions(collectorId: number) {
+    const rows = await this.prisma.riskControllerReductionRecord.groupBy({
+      by: ['reduction_type'],
+      where: { collector_id: collectorId },
+      _sum: { amount: true },
+    });
+    const map: Record<string, number> = {};
+    for (const row of rows) {
+      map[row.reduction_type] = Number(row._sum.amount ?? 0);
+    }
+    return {
+      reduced_fines: map['fines'] ?? 0,
+      reduced_handling_fee: map['handling_fee'] ?? 0,
+      reduced_by_risk_controller:
+        (map['fines'] ?? 0) + (map['handling_fee'] ?? 0) + (map['amount'] ?? 0),
+    };
+  }
+
+  /** 查询指定 risk_controller 减资的总金额 */
+  private async getRiskControllerReductions(riskControllerId: number) {
+    const result = await this.prisma.riskControllerReductionRecord.aggregate({
+      where: { risk_controller_id: riskControllerId },
+      _sum: { amount: true },
+    });
+    return Number(result._sum.amount ?? 0);
+  }
+
+  // ─── Collector 资产 ────────────────────────────────────────────────────
+
   async findCollectorAsset(userId: number) {
     const staff = await this.prisma.staff.findUnique({
       where: { id: userId },
@@ -50,14 +83,11 @@ export class AssetManagementService implements OnModuleInit {
     const { total_handling_fee, total_fines } =
       await this.calculateTotalAmounts(loanAccountIds);
 
-    const reduced_handling_fee = asset
-      ? Number(asset.reduced_handling_fee || 0)
-      : 0;
-    const reduced_fines = asset ? Number(asset.reduced_fines || 0) : 0;
     const deposit = asset ? Number(asset.deposit || 0) : 0;
-    const reduced_by_risk_controller = asset
-      ? Number(asset.reduced_by_risk_controller || 0)
-      : 0;
+
+    // 从明细表聚合
+    const { reduced_fines, reduced_handling_fee, reduced_by_risk_controller } =
+      await this.getCollectorReductions(userId);
 
     const loansAggregate = await this.prisma.loanAccount.aggregate({
       where: { collector_id: userId },
@@ -103,6 +133,8 @@ export class AssetManagementService implements OnModuleInit {
     return Promise.all(collectors.map((c) => this.findCollectorAsset(c.id)));
   }
 
+  // ─── Risk Controller 资产 ──────────────────────────────────────────────
+
   async findRiskControllerAsset(userId: number) {
     const staff = await this.prisma.staff.findUnique({
       where: { id: userId },
@@ -140,7 +172,15 @@ export class AssetManagementService implements OnModuleInit {
       );
     }
 
-    const reduced_amount = asset ? Number(asset.reduced_amount || 0) : 0;
+    // 从明细表聚合
+    const reduced_amount = await this.getRiskControllerReductions(userId);
+
+    // 查询该风控人对各 collector 的减资汇总（二维透视）
+    const reductionByCollector = await this.prisma.riskControllerReductionRecord.groupBy({
+      by: ['collector_id', 'reduction_type'],
+      where: { risk_controller_id: userId },
+      _sum: { amount: true },
+    });
 
     return {
       id: asset?.id || 0,
@@ -148,6 +188,11 @@ export class AssetManagementService implements OnModuleInit {
       admin: staff,
       remaining_amount: total_amount - reduced_amount,
       reduced_amount,
+      reduction_by_collector: reductionByCollector.map((r) => ({
+        collector_id: r.collector_id,
+        reduction_type: r.reduction_type,
+        amount: Number(r._sum.amount ?? 0),
+      })),
     };
   }
 
@@ -160,6 +205,85 @@ export class AssetManagementService implements OnModuleInit {
       riskControllers.map((rc) => this.findRiskControllerAsset(rc.id)),
     );
   }
+
+  // ─── 减资明细操作 ──────────────────────────────────────────────────────
+
+  /** 创建一条减资明细记录（risk_controller → collector） */
+  async createReductionRecord(
+    riskControllerId: number,
+    dto: CreateReductionRecordDto,
+    operator?: AssetOperator,
+  ) {
+    return this.prisma.riskControllerReductionRecord.create({
+      data: {
+        risk_controller_id: riskControllerId,
+        collector_id: dto.collector_id,
+        reduction_type: dto.reduction_type as ReductionType,
+        amount: dto.amount,
+        remark: dto.remark ?? null,
+        created_by: operator?.id ?? null,
+      },
+      include: {
+        risk_controller: { select: { id: true, username: true } },
+        collector: { select: { id: true, username: true } },
+        operator: { select: { id: true, username: true } },
+      },
+    });
+  }
+
+  /** 查询减资明细（支持 risk_controller_id、collector_id、type 过滤 + 分页） */
+  async findReductionRecords(query: QueryReductionRecordsDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 50;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.RiskControllerReductionRecordWhereInput = {};
+    if (query.riskControllerId) {
+      where.risk_controller_id = query.riskControllerId;
+    }
+    if (query.collectorId) {
+      where.collector_id = query.collectorId;
+    }
+    if (query.reductionType) {
+      where.reduction_type = query.reductionType as ReductionType;
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.riskControllerReductionRecord.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: pageSize,
+        include: {
+          risk_controller: { select: { id: true, username: true, nickname: true } },
+          collector: { select: { id: true, username: true, nickname: true } },
+          operator: { select: { id: true, username: true } },
+        },
+      }),
+      this.prisma.riskControllerReductionRecord.count({ where }),
+    ]);
+
+    return {
+      data: data.map((r) => ({
+        id: r.id,
+        risk_controller_id: r.risk_controller_id,
+        risk_controller: r.risk_controller,
+        collector_id: r.collector_id,
+        collector: r.collector,
+        reduction_type: r.reduction_type,
+        amount: Number(r.amount),
+        remark: r.remark,
+        created_by: r.created_by,
+        operator: r.operator,
+        created_at: r.created_at,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  // ─── Collector deposit 调整 ─────────────────────────────────────────────
 
   async adjustCollectorDeposit(
     userId: number,
@@ -200,135 +324,21 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
+  /** 保留接口签名兼容性，实际只允许调整 deposit */
   async updateCollectorAsset(
     userId: number,
     dto: UpdateCollectorAssetDto,
     operator?: AssetOperator,
   ) {
-    return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.collectorAssetManagement.upsert({
-        where: { admin_id: userId },
-        update: {},
-        create: { admin_id: userId },
-      });
-
-      const oldReducedHandling = Number(existing.reduced_handling_fee || 0);
-      const oldReducedFines = Number(existing.reduced_fines || 0);
-
-      const newReducedHandling =
-        dto.reduced_handling_fee !== undefined
-          ? dto.reduced_handling_fee
-          : oldReducedHandling;
-      const newReducedFines =
-        dto.reduced_fines !== undefined ? dto.reduced_fines : oldReducedFines;
-
-      const updated = await tx.collectorAssetManagement.update({
-        where: { admin_id: userId },
-        data: {
-          reduced_handling_fee: newReducedHandling,
-          reduced_fines: newReducedFines,
-        },
-      });
-
-      if (
-        dto.reduced_handling_fee !== undefined &&
-        newReducedHandling !== oldReducedHandling
-      ) {
-        const deltaReducedHandling = newReducedHandling - oldReducedHandling;
-        await this.recordAssetHistory(tx, {
-          adminId: userId,
-          assetType: 'collector',
-          fieldName: 'reduced_handling_fee',
-          oldValue: oldReducedHandling,
-          inputValue: deltaReducedHandling,
-          newValue: newReducedHandling,
-          operator,
-        });
-      }
-
-      if (
-        dto.reduced_fines !== undefined &&
-        newReducedFines !== oldReducedFines
-      ) {
-        const deltaReducedFines = newReducedFines - oldReducedFines;
-        await this.recordAssetHistory(tx, {
-          adminId: userId,
-          assetType: 'collector',
-          fieldName: 'reduced_fines',
-          oldValue: oldReducedFines,
-          inputValue: deltaReducedFines,
-          newValue: newReducedFines,
-          operator,
-        });
-      }
-
-      return updated;
+    if (dto.deposit !== undefined) {
+      return this.adjustCollectorDeposit(userId, dto.deposit, operator);
+    }
+    return this.prisma.collectorAssetManagement.findUnique({
+      where: { admin_id: userId },
     });
   }
 
-  async updateRiskControllerAsset(
-    userId: number,
-    dto: UpdateRiskControllerAssetDto,
-    operator?: AssetOperator,
-  ) {
-    return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.riskControllerAssetManagement.upsert({
-        where: { admin_id: userId },
-        update: {},
-        create: { admin_id: userId },
-      });
-
-      const oldReducedAmount = Number(existing.reduced_amount || 0);
-      const deltaReducedAmount = dto.reduced_amount !== undefined ? dto.reduced_amount : 0;
-      const newReducedAmount = oldReducedAmount + deltaReducedAmount;
-
-      const updated = await tx.riskControllerAssetManagement.update({
-        where: { admin_id: userId },
-        data: { reduced_amount: newReducedAmount },
-      });
-
-      if (deltaReducedAmount !== 0) {
-        await this.recordAssetHistory(tx, {
-          adminId: userId,
-          assetType: 'risk_controller',
-          fieldName: 'reduced_amount',
-          oldValue: oldReducedAmount,
-          inputValue: deltaReducedAmount,
-          newValue: newReducedAmount,
-          operator,
-        });
-
-        if (dto.collector_id) {
-          const collectorAsset = await tx.collectorAssetManagement.upsert({
-            where: { admin_id: dto.collector_id },
-            update: {},
-            create: { admin_id: dto.collector_id },
-          });
-
-          const oldCollectorReduced = Number(collectorAsset.reduced_by_risk_controller || 0);
-          const newCollectorReduced = oldCollectorReduced + deltaReducedAmount;
-
-          await tx.collectorAssetManagement.update({
-            where: { admin_id: dto.collector_id },
-            data: { reduced_by_risk_controller: newCollectorReduced },
-          });
-
-          await this.recordAssetHistory(tx, {
-            adminId: dto.collector_id,
-            assetType: 'collector',
-            fieldName: 'reduced_by_risk_controller',
-            oldValue: oldCollectorReduced,
-            inputValue: deltaReducedAmount,
-            newValue: newCollectorReduced,
-            operator,
-            remark: `关联风控减免变动，风控人ID: ${userId}`,
-          });
-        }
-      }
-
-      return updated;
-    });
-  }
+  // ─── 历史记录查询 ───────────────────────────────────────────────────────
 
   async findAssetHistory(query: QueryAssetHistoryDto) {
     const page = query.page ?? 1;
@@ -372,6 +382,8 @@ export class AssetManagementService implements OnModuleInit {
       pageSize,
     };
   }
+
+  // ─── 内部触发：贷款账户变更时同步资产表汇总 ─────────────────────────────
 
   async updateCollectorAssetFromLoanAccount(
     userId: number,
@@ -441,6 +453,8 @@ export class AssetManagementService implements OnModuleInit {
       },
     });
   }
+
+  // ─── 私有工具 ───────────────────────────────────────────────────────────
 
   private async recordAssetHistory(
     tx: Prisma.TransactionClient,

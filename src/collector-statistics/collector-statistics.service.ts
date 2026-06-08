@@ -33,37 +33,17 @@ export class CollectorStatisticsService {
 
     const riskControllerTotalAmount = calcLoanAccountNetTotal(allLoanAccounts);
 
-    const allCollectorAssets =
-      await this.prisma.collectorAssetManagement.findMany({
-        select: { reduced_handling_fee: true, reduced_fines: true },
-      });
+    // 从明细表聚合所有减资总额
+    const reductionAgg = await this.prisma.riskControllerReductionRecord.aggregate({
+      _sum: { amount: true },
+    });
+    const totalReduction = this.toNumber(reductionAgg._sum.amount);
 
-    const collectorTotalReduction = allCollectorAssets.reduce(
-      (sum, asset) =>
-        sum +
-        this.toNumber(asset.reduced_handling_fee) +
-        this.toNumber(asset.reduced_fines),
-      0,
-    );
-
-    const allRiskControllerAssets =
-      await this.prisma.riskControllerAssetManagement.findMany({
-        select: { reduced_amount: true },
-      });
-
-    const riskControllerTotalReduction = allRiskControllerAssets.reduce(
-      (sum, asset) => sum + this.toNumber(asset.reduced_amount),
-      0,
-    );
-
-    const remainingFunds =
-      riskControllerTotalAmount -
-      collectorTotalReduction -
-      riskControllerTotalReduction;
+    const remainingFunds = riskControllerTotalAmount - totalReduction;
 
     return {
       risk_controller_total_amount: riskControllerTotalAmount,
-      collector_total_reduction: collectorTotalReduction,
+      collector_total_reduction: totalReduction,
       remaining_funds: remainingFunds,
     };
   }

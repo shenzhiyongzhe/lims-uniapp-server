@@ -145,8 +145,6 @@ export class StaffService {
             data: {
               total_handling_fee: Number(toAsset.total_handling_fee) + Number(fromAsset.total_handling_fee),
               total_fines: Number(toAsset.total_fines) + Number(fromAsset.total_fines),
-              reduced_handling_fee: Number(toAsset.reduced_handling_fee) + Number(fromAsset.reduced_handling_fee),
-              reduced_fines: Number(toAsset.reduced_fines) + Number(fromAsset.reduced_fines),
               deposit: Number(toAsset.deposit) + Number(fromAsset.deposit),
             },
           });
@@ -165,6 +163,12 @@ export class StaffService {
         await tx.assetReductionHistory.updateMany({
           where: { updated_by_admin_id: fromId },
           data: { updated_by_admin_id: toId },
+        });
+
+        // 5. 迁移 RiskControllerReductionRecord (collector_id)
+        await tx.riskControllerReductionRecord.updateMany({
+          where: { collector_id: fromId },
+          data: { collector_id: toId },
         });
 
       } else if (role === ManagementRoles.RISK_CONTROLLER) {
@@ -189,7 +193,6 @@ export class StaffService {
             where: { admin_id: toId },
             data: {
               total_amount: Number(toAsset.total_amount) + Number(fromAsset.total_amount),
-              reduced_amount: Number(toAsset.reduced_amount) + Number(fromAsset.reduced_amount),
             },
           });
 
@@ -198,6 +201,12 @@ export class StaffService {
             where: { admin_id: fromId },
           });
         }
+
+        // 3. 迁移 RiskControllerReductionRecord (risk_controller_id)
+        await tx.riskControllerReductionRecord.updateMany({
+          where: { risk_controller_id: fromId },
+          data: { risk_controller_id: toId },
+        });
       }
 
       // 5. 迁移公共日志记录: RepaymentScheduleOperationLog & LoanAccountOperationLog

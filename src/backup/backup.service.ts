@@ -399,10 +399,7 @@ export class BackupService {
       { header: '负责人ID', key: 'admin_id', width: 12 },
       { header: '总后扣费用', key: 'total_handling_fee', width: 15 },
       { header: '总罚金', key: 'total_fines', width: 15 },
-      { header: '已减后扣', key: 'reduced_handling_fee', width: 15 },
-      { header: '已减罚金', key: 'reduced_fines', width: 15 },
       { header: '存款余额', key: 'deposit', width: 15 },
-      { header: '风控减免', key: 'reduced_by_risk_controller', width: 15 },
       { header: '创建时间', key: 'created_at', width: 20 },
       { header: '更新时间', key: 'updated_at', width: 20 },
     ];
@@ -413,10 +410,7 @@ export class BackupService {
         admin_id: ca.admin_id,
         total_handling_fee: this.toNum(ca.total_handling_fee),
         total_fines: this.toNum(ca.total_fines),
-        reduced_handling_fee: this.toNum(ca.reduced_handling_fee),
-        reduced_fines: this.toNum(ca.reduced_fines),
         deposit: this.toNum(ca.deposit),
-        reduced_by_risk_controller: this.toNum(ca.reduced_by_risk_controller),
         created_at: this.formatDate(ca.created_at, true),
         updated_at: this.formatDate(ca.updated_at, true),
       });
@@ -428,7 +422,6 @@ export class BackupService {
       { header: '资产ID', key: 'id', width: 10 },
       { header: '风控人ID', key: 'admin_id', width: 12 },
       { header: '总金额', key: 'total_amount', width: 15 },
-      { header: '已减免金额', key: 'reduced_amount', width: 15 },
       { header: '创建时间', key: 'created_at', width: 20 },
       { header: '更新时间', key: 'updated_at', width: 20 },
     ];
@@ -438,9 +431,49 @@ export class BackupService {
         id: ra.id,
         admin_id: ra.admin_id,
         total_amount: this.toNum(ra.total_amount),
-        reduced_amount: this.toNum(ra.reduced_amount),
         created_at: this.formatDate(ra.created_at, true),
         updated_at: this.formatDate(ra.updated_at, true),
+      });
+    }
+
+    // 8.5 减资明细 Sheet
+    const sheetReductions = workbook.addWorksheet('风控减资明细');
+    sheetReductions.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: '风控人ID', key: 'risk_controller_id', width: 12 },
+      { header: '风控人名', key: 'risk_controller_name', width: 15 },
+      { header: '负责人ID', key: 'collector_id', width: 12 },
+      { header: '负责人名', key: 'collector_name', width: 15 },
+      { header: '减资类型', key: 'reduction_type', width: 15 },
+      { header: '减资金额', key: 'amount', width: 15 },
+      { header: '备注', key: 'remark', width: 25 },
+      { header: '操作人ID', key: 'created_by', width: 12 },
+      { header: '创建时间', key: 'created_at', width: 20 },
+    ];
+    const reductionTypeMap: Record<string, string> = {
+      fines: '罚金',
+      handling_fee: '手续费',
+      amount: '本金',
+    };
+    const reductions = await this.prisma.riskControllerReductionRecord.findMany({
+      orderBy: { id: 'desc' },
+      include: {
+        risk_controller: { select: { username: true } },
+        collector: { select: { username: true } },
+      },
+    });
+    for (const r of reductions) {
+      sheetReductions.addRow({
+        id: r.id,
+        risk_controller_id: r.risk_controller_id,
+        risk_controller_name: r.risk_controller?.username || '',
+        collector_id: r.collector_id,
+        collector_name: r.collector?.username || '',
+        reduction_type: reductionTypeMap[r.reduction_type] || r.reduction_type,
+        amount: this.toNum(r.amount),
+        remark: r.remark || '',
+        created_by: r.created_by || '',
+        created_at: this.formatDate(r.created_at, true),
       });
     }
 
