@@ -15,6 +15,12 @@ import {
   calcLoanDisbursementDeltaTotal,
   calcPaidAmountTotal,
 } from '../common/loan-account-math';
+import {
+  buildReductionWhereFromLoanScope,
+  findReductionItems,
+  ReductionBalanceItem,
+  sumReductionAmount,
+} from '../common/reduction-balance';
 
 type DailyLoanBalanceItemType =
   | 'TODAY_LOAN'
@@ -44,12 +50,15 @@ type DailyLoanBalanceResult = {
   previousTotal: number;
   todayLoanTotal: number;
   todayRepaidTotal: number;
+  todayReductionTotal: number;
   todayTotal: number;
   todayLoanItems: DailyLoanBalanceItem[];
   todayRepaidItems: DailyLoanBalanceItem[];
+  todayReductionItems: ReductionBalanceItem[];
   expression: {
     todayLoans: string;
     todayRepayments: string;
+    todayReductions: string;
     summary: string;
   };
   date: string;
@@ -297,41 +306,44 @@ export class RepaymentRecordsService {
       loan_account: scope.whereClause,
       paid_at: { gte: dayStart, lte: dayEnd },
     };
+    const reductionWhere = buildReductionWhereFromLoanScope(scope.whereClause);
 
     let previousTotal = 0;
     let previousRow: any = null;
 
     if (collectorId || riskControllerId || scope.isAllAccessible) {
       // 交集模式或 admin 全量模式下，动态算出之前的累计余额（避免读取陈旧归档）
-      const loansBefore = await this.prisma.loanAccount.aggregate({
-        where: {
-          ...scope.whereClause,
-          created_at: { lt: dayStart },
-        },
-        _sum: {
-          company_cost: true,
-          handling_fee: true,
-        },
-      });
+      const [loansBefore, repaymentsBefore, reductionsBefore] = await Promise.all([
+        this.prisma.loanAccount.aggregate({
+          where: {
+            ...scope.whereClause,
+            created_at: { lt: dayStart },
+          },
+          _sum: {
+            company_cost: true,
+            handling_fee: true,
+          },
+        }),
+        this.prisma.repaymentRecord.aggregate({
+          where: {
+            loan_account: scope.whereClause,
+            paid_at: { lt: dayStart },
+          },
+          _sum: {
+            paid_amount: true,
+          },
+        }),
+        sumReductionAmount(this.prisma, reductionWhere, { lt: dayStart }),
+      ]);
       const totalLentBefore = calcLoanDisbursementDelta({
         company_cost: loansBefore._sum.company_cost,
         handling_fee: loansBefore._sum.handling_fee,
-      });
-
-      const repaymentsBefore = await this.prisma.repaymentRecord.aggregate({
-        where: {
-          loan_account: scope.whereClause,
-          paid_at: { lt: dayStart },
-        },
-        _sum: {
-          paid_amount: true,
-        },
       });
       const totalRepaidBefore = calcPaidAmountTotal([
         { paid_amount: repaymentsBefore._sum.paid_amount },
       ]);
 
-      previousTotal = totalLentBefore + totalRepaidBefore;
+      previousTotal = totalLentBefore + totalRepaidBefore - reductionsBefore;
     } else {
       // 单用户模式下，从数据库归档表获取前一日的今日合计
       previousRow = await this.prisma.dailyLoanBalance.findFirst({
@@ -344,7 +356,7 @@ export class RepaymentRecordsService {
       previousTotal = Number(previousRow?.today_total ?? 0);
     }
 
-    const [todayLoans, todayRepayments] = await Promise.all([
+    const [todayLoans, todayRepayments, todayReductionItems] = await Promise.all([
       this.prisma.loanAccount.findMany({
         where: loansWhere,
         select: {
@@ -365,6 +377,7 @@ export class RepaymentRecordsService {
         },
         orderBy: { paid_at: 'asc' },
       }),
+      findReductionItems(this.prisma, reductionWhere, dayStart, dayEnd),
     ]);
 
     const todayLoanItems: DailyLoanBalanceItem[] = todayLoans.map((loan) => {
@@ -401,22 +414,36 @@ export class RepaymentRecordsService {
     const todayRepaidTotal = calcPaidAmountTotal(
       todayRepaidItems.map((item) => ({ paid_amount: item.amount })),
     );
-    const todayTotal = previousTotal + todayLoanTotal + todayRepaidTotal;
+    const todayReductionTotal = todayReductionItems.reduce(
+      (sum, item) => sum + item.amount,
+      0,
+    );
+    const todayTotal =
+      previousTotal +
+      todayLoanTotal +
+      todayRepaidTotal -
+      todayReductionTotal;
 
     const result: DailyLoanBalanceResult = {
       previousTotal,
       todayLoanTotal,
       todayRepaidTotal,
+      todayReductionTotal,
       todayTotal,
       todayLoanItems,
       todayRepaidItems,
+      todayReductionItems,
       expression: {
         todayLoans: this.formatTodayLoansExpression(todayLoans, todayLoanTotal),
         todayRepayments: this.formatExpression(
           todayRepaidItems,
           todayRepaidTotal,
         ),
-        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayRepaidTotal)} = ${this.formatNumber(todayTotal)}`,
+        todayReductions: this.formatReductionExpression(
+          todayReductionItems,
+          todayReductionTotal,
+        ),
+        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayRepaidTotal)} ${this.formatSignedReduction(todayReductionTotal)} = ${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
       userId: scopedBalanceUserId,
@@ -582,6 +609,35 @@ export class RepaymentRecordsService {
       return `${signed}${suffix}`;
     });
     return `${parts.join('')}=${this.formatNumber(total)}`;
+  }
+
+  private formatSignedReduction(value: number): string {
+    if (value === 0) return '+0';
+    if (value > 0) return `-${this.formatNumber(value)}`;
+    return `+${this.formatNumber(Math.abs(value))}`;
+  }
+
+  private formatReductionExpression(
+    items: ReductionBalanceItem[],
+    total: number,
+  ): string {
+    if (!items.length) {
+      return `0`;
+    }
+    const parts = items.map((item) => {
+      const base = this.formatNumber(Math.abs(item.amount));
+      if (item.amount >= 0) {
+        return `-${base}${item.label}`;
+      }
+      return `+${base}${item.label}`;
+    });
+    const signedTotal =
+      total > 0
+        ? `-${this.formatNumber(total)}`
+        : total < 0
+          ? `+${this.formatNumber(Math.abs(total))}`
+          : '0';
+    return `${parts.join('')}=${signedTotal}`;
   }
 
   private async buildDepositProcess(

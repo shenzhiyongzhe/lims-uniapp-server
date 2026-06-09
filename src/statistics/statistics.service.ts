@@ -12,6 +12,10 @@ import {
   calcLoanDisbursementDeltaTotal,
   calcPaidAmountTotal,
 } from '../common/loan-account-math';
+import {
+  buildReductionWhereFromLoanScope,
+  sumReductionAmount,
+} from '../common/reduction-balance';
 
 @Injectable()
 export class StatisticsService {
@@ -80,6 +84,7 @@ export class StatisticsService {
     const repaymentLoanFilter = {
       loan_account: loanAccountWhere,
     };
+    const reductionWhere = buildReductionWhereFromLoanScope(loanAccountWhere);
 
     const allLoanAccounts = await this.prisma.loanAccount.findMany({
       where: loanFilter,
@@ -129,19 +134,29 @@ export class StatisticsService {
     });
     const todayLoanTotal = calcLoanDisbursementDeltaTotal(todayLoanRows);
 
-    const todayRepaymentAgg = await this.prisma.repaymentRecord.aggregate({
-      where: {
-        ...repaymentLoanFilter,
-        paid_at: { gte: todayStart, lt: todayEnd },
-      },
-      _sum: { paid_amount: true },
-    });
+    const [todayRepaymentAgg, reductionsBefore, todayReductionTotal] =
+      await Promise.all([
+        this.prisma.repaymentRecord.aggregate({
+          where: {
+            ...repaymentLoanFilter,
+            paid_at: { gte: todayStart, lt: todayEnd },
+          },
+          _sum: { paid_amount: true },
+        }),
+        sumReductionAmount(this.prisma, reductionWhere, { lt: todayStart }),
+        sumReductionAmount(this.prisma, reductionWhere, {
+          gte: todayStart,
+          lt: todayEnd,
+        }),
+      ]);
     const todayRepaidTotal = calcPaidAmountTotal([
       { paid_amount: todayRepaymentAgg._sum.paid_amount },
     ]);
 
-    const previousTotal = totalLentBefore + totalRepaidBefore;
-    const rollingTodayTotal = previousTotal + todayLoanTotal + todayRepaidTotal;
+    const previousTotal =
+      totalLentBefore + totalRepaidBefore - reductionsBefore;
+    const rollingTodayTotal =
+      previousTotal + todayLoanTotal + todayRepaidTotal - todayReductionTotal;
 
     const todayNewAmount = (
       await this.prisma.loanAccount.findMany({
