@@ -10,9 +10,9 @@ export type ReductionBalanceItem = {
 };
 
 const REDUCTION_TYPE_LABELS: Record<ReductionType, string> = {
-  fines: '减罚金',
-  handling_fee: '减后扣',
-  amount: '减本金',
+  fines: '罚金',
+  handling_fee: '后扣',
+  amount: '本金',
 };
 
 export const formatReductionTypeLabel = (type: ReductionType): string =>

@@ -58,7 +58,6 @@ type DailyLoanBalanceResult = {
   expression: {
     todayLoans: string;
     todayRepayments: string;
-    todayReductions: string;
     summary: string;
   };
   date: string;
@@ -418,11 +417,9 @@ export class RepaymentRecordsService {
       (sum, item) => sum + item.amount,
       0,
     );
+    const todayNetRepaidTotal = todayRepaidTotal - todayReductionTotal;
     const todayTotal =
-      previousTotal +
-      todayLoanTotal +
-      todayRepaidTotal -
-      todayReductionTotal;
+      previousTotal + todayLoanTotal + todayNetRepaidTotal;
 
     const result: DailyLoanBalanceResult = {
       previousTotal,
@@ -435,15 +432,13 @@ export class RepaymentRecordsService {
       todayReductionItems,
       expression: {
         todayLoans: this.formatTodayLoansExpression(todayLoans, todayLoanTotal),
-        todayRepayments: this.formatExpression(
+        todayRepayments: this.formatRepaymentsWithReductionsExpression(
           todayRepaidItems,
           todayRepaidTotal,
-        ),
-        todayReductions: this.formatReductionExpression(
           todayReductionItems,
           todayReductionTotal,
         ),
-        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayRepaidTotal)} ${this.formatSignedReduction(todayReductionTotal)} = ${this.formatNumber(todayTotal)}`,
+        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayNetRepaidTotal)} = ${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
       userId: scopedBalanceUserId,
@@ -595,49 +590,34 @@ export class RepaymentRecordsService {
     return `${terms.join('')}=${this.formatNumber(total)}`;
   }
 
-  private formatExpression(
-    items: DailyLoanBalanceItem[],
-    total: number,
+  private formatRepaymentsWithReductionsExpression(
+    repaidItems: DailyLoanBalanceItem[],
+    repaidTotal: number,
+    reductionItems: ReductionBalanceItem[],
+    reductionTotal: number,
   ): string {
-    if (!items.length) {
-      return `0`;
-    }
-    const parts = items.map((item) => {
+    const netTotal = repaidTotal - reductionTotal;
+    const parts: string[] = [];
+
+    for (const item of repaidItems) {
       const base = this.formatNumber(item.amount);
       const signed = item.amount >= 0 ? `+${base}` : base;
-      const suffix = item.label || '';
-      return `${signed}${suffix}`;
-    });
-    return `${parts.join('')}=${this.formatNumber(total)}`;
-  }
-
-  private formatSignedReduction(value: number): string {
-    if (value === 0) return '+0';
-    if (value > 0) return `-${this.formatNumber(value)}`;
-    return `+${this.formatNumber(Math.abs(value))}`;
-  }
-
-  private formatReductionExpression(
-    items: ReductionBalanceItem[],
-    total: number,
-  ): string {
-    if (!items.length) {
-      return `0`;
+      parts.push(`${signed}${item.label || ''}`);
     }
-    const parts = items.map((item) => {
+
+    for (const item of reductionItems) {
       const base = this.formatNumber(Math.abs(item.amount));
       if (item.amount >= 0) {
-        return `-${base}${item.label}`;
+        parts.push(`-${base}${item.label}`);
+      } else {
+        parts.push(`+${base}${item.label}`);
       }
-      return `+${base}${item.label}`;
-    });
-    const signedTotal =
-      total > 0
-        ? `-${this.formatNumber(total)}`
-        : total < 0
-          ? `+${this.formatNumber(Math.abs(total))}`
-          : '0';
-    return `${parts.join('')}=${signedTotal}`;
+    }
+
+    if (!parts.length) {
+      return `0`;
+    }
+    return `${parts.join('')}=${this.formatNumber(netTotal)}`;
   }
 
   private async buildDepositProcess(
