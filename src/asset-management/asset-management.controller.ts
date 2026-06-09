@@ -20,6 +20,9 @@ import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
 import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
 import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
 import { QueryReductionDailySummaryDto } from './dto/query-reduction-daily-summary.dto';
+import { QueryReductionCounterpartySummaryDto } from './dto/query-reduction-counterparty-summary.dto';
+import { QueryDepositDailySummaryDto } from './dto/query-deposit-daily-summary.dto';
+import { QueryDepositRecordsDto } from './dto/query-deposit-records.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('asset-management')
@@ -58,6 +61,18 @@ export class AssetManagementController {
     const data =
       await this.assetManagementService.findReductionDailySummary(query);
     return ResponseHelper.success(data, '获取减资按日汇总成功');
+  }
+
+  /** 减资关联人员汇总（下拉列表） */
+  @Get('reduction-records/counterparty-summary')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  async getReductionCounterpartySummary(
+    @Query() query: QueryReductionCounterpartySummaryDto,
+  ) {
+    const data =
+      await this.assetManagementService.findReductionCounterpartySummary(query);
+    return ResponseHelper.success(data, '获取减资关联人员汇总成功');
   }
 
   /** 查询减资明细：支持 riskControllerId、collectorId、reductionType、date 过滤 */
@@ -99,6 +114,36 @@ export class AssetManagementController {
       operator,
     );
     return ResponseHelper.success(data, '更新负责人资产成功');
+  }
+
+  /** 存出款按日汇总（日历金额） */
+  @Get('collector/:userId/deposit/daily-summary')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  async getDepositDailySummary(
+    @Param('userId') userId: string,
+    @Query() query: QueryDepositDailySummaryDto,
+  ) {
+    const data = await this.assetManagementService.findDepositDailySummary(
+      parseInt(userId, 10),
+      query,
+    );
+    return ResponseHelper.success(data, '获取存出款按日汇总成功');
+  }
+
+  /** 存出款明细 */
+  @Get('collector/:userId/deposit/records')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  async getDepositRecords(
+    @Param('userId') userId: string,
+    @Query() query: QueryDepositRecordsDto,
+  ) {
+    const data = await this.assetManagementService.findDepositRecords(
+      parseInt(userId, 10),
+      query,
+    );
+    return ResponseHelper.success(data, '获取存出款明细成功');
   }
 
   @Put('collector/:userId/deposit')

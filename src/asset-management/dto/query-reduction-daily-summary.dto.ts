@@ -1,5 +1,6 @@
-import { IsNumber, IsOptional, IsString, Matches } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
+import { ReductionType } from '@prisma/client';
 
 /** 查询减资按日汇总 */
 export class QueryReductionDailySummaryDto {
@@ -16,4 +17,8 @@ export class QueryReductionDailySummaryDto {
   @Type(() => Number)
   @IsNumber()
   collectorId?: number;
+
+  @IsOptional()
+  @IsEnum(ReductionType)
+  reductionType?: ReductionType;
 }

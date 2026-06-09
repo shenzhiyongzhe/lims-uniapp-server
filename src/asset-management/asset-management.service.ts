@@ -8,6 +8,12 @@ import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
 import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
 import { QueryReductionDailySummaryDto } from './dto/query-reduction-daily-summary.dto';
 import {
+  QueryReductionCounterpartySummaryDto,
+  ReductionPerspective,
+} from './dto/query-reduction-counterparty-summary.dto';
+import { QueryDepositDailySummaryDto } from './dto/query-deposit-daily-summary.dto';
+import { QueryDepositRecordsDto } from './dto/query-deposit-records.dto';
+import {
   getBusinessDayTimestampRange,
   utcMidnightFromYmd,
 } from '../common/business-date';
@@ -236,6 +242,51 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
+  private getMonthTimestampRange(month: string) {
+    const [yearStr, monthStr] = month.split('-');
+    const year = Number(yearStr);
+    const monthIndex = Number(monthStr) - 1;
+    const monthStartBusinessDate = new Date(Date.UTC(year, monthIndex, 1));
+    const monthStartTs = new Date(
+      monthStartBusinessDate.getTime() - 2 * 3600 * 1000,
+    );
+    const nextMonthStartBusinessDate = new Date(
+      Date.UTC(year, monthIndex + 1, 1),
+    );
+    const nextMonthStartTs = new Date(
+      nextMonthStartBusinessDate.getTime() - 2 * 3600 * 1000,
+    );
+    return { monthStartTs, nextMonthStartTs };
+  }
+
+  private aggregateRowsToDailySummary(
+    rows: Array<{ amount: number; created_at: Date }>,
+  ) {
+    const dayMap = new Map<
+      string,
+      { totalPaidAmount: number; count: number }
+    >();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    rows.forEach((row) => {
+      const businessTs = new Date(
+        row.created_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000,
+      );
+      const date = businessTs.toISOString().slice(0, 10);
+      const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
+      old.totalPaidAmount += row.amount;
+      old.count += 1;
+      dayMap.set(date, old);
+    });
+
+    return Array.from(dayMap.entries())
+      .map(([date, value]) => ({
+        date,
+        totalPaidAmount: value.totalPaidAmount,
+        count: value.count,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   private buildReductionRecordWhere(
     query: Pick<
       QueryReductionRecordsDto,
@@ -265,23 +316,81 @@ export class AssetManagementService implements OnModuleInit {
     return where;
   }
 
+  /** 关联人员汇总（下拉列表：负责人↔风控人） */
+  async findReductionCounterpartySummary(
+    query: QueryReductionCounterpartySummaryDto,
+  ) {
+    const { perspective, adminId, reductionType } = query;
+    const where: Prisma.RiskControllerReductionRecordWhereInput =
+      perspective === ReductionPerspective.collector
+        ? { collector_id: adminId }
+        : { risk_controller_id: adminId };
+
+    const rows = await this.prisma.riskControllerReductionRecord.groupBy({
+      by:
+        perspective === ReductionPerspective.collector
+          ? ['risk_controller_id', 'reduction_type']
+          : ['collector_id', 'reduction_type'],
+      where,
+      _sum: { amount: true },
+    });
+
+    const counterpartyMap = new Map<
+      number,
+      { amountByType: Record<string, number> }
+    >();
+
+    for (const row of rows) {
+      const counterpartyId =
+        perspective === ReductionPerspective.collector
+          ? row.risk_controller_id
+          : row.collector_id;
+      const entry = counterpartyMap.get(counterpartyId) || {
+        amountByType: {},
+      };
+      const typeKey = row.reduction_type;
+      entry.amountByType[typeKey] =
+        (entry.amountByType[typeKey] ?? 0) + Number(row._sum.amount ?? 0);
+      counterpartyMap.set(counterpartyId, entry);
+    }
+
+    const counterpartyIds = Array.from(counterpartyMap.keys());
+    if (counterpartyIds.length === 0) {
+      return [];
+    }
+
+    const staffs = await this.prisma.staff.findMany({
+      where: { id: { in: counterpartyIds } },
+      select: { id: true, username: true, nickname: true, role: true },
+    });
+    const staffMap = new Map(staffs.map((s) => [s.id, s]));
+
+    const result = counterpartyIds
+      .map((id) => {
+        const staff = staffMap.get(id);
+        const amountByType = counterpartyMap.get(id)?.amountByType ?? {};
+        const totalAmount = reductionType
+          ? Number(amountByType[reductionType] ?? 0)
+          : Object.values(amountByType).reduce((sum, v) => sum + v, 0);
+        return {
+          id,
+          username: staff?.username || staff?.nickname || `ID ${id}`,
+          role: staff?.role || null,
+          totalAmount,
+          amountByType,
+        };
+      })
+      .filter((item) => item.totalAmount > 0 || !reductionType)
+      .sort((a, b) => b.totalAmount - a.totalAmount);
+
+    return result;
+  }
+
   /** 按业务日汇总减资金额（日历展示） */
   async findReductionDailySummary(query: QueryReductionDailySummaryDto) {
-    const { month, riskControllerId, collectorId } = query;
-    const [yearStr, monthStr] = month.split('-');
-    const year = Number(yearStr);
-    const monthIndex = Number(monthStr) - 1;
-
-    const monthStartBusinessDate = new Date(Date.UTC(year, monthIndex, 1));
-    const monthStartTs = new Date(
-      monthStartBusinessDate.getTime() - 2 * 3600 * 1000,
-    );
-    const nextMonthStartBusinessDate = new Date(
-      Date.UTC(year, monthIndex + 1, 1),
-    );
-    const nextMonthStartTs = new Date(
-      nextMonthStartBusinessDate.getTime() - 2 * 3600 * 1000,
-    );
+    const { month, riskControllerId, collectorId, reductionType } = query;
+    const { monthStartTs, nextMonthStartTs } =
+      this.getMonthTimestampRange(month);
 
     const where: Prisma.RiskControllerReductionRecordWhereInput = {
       created_at: { gte: monthStartTs, lt: nextMonthStartTs },
@@ -291,6 +400,9 @@ export class AssetManagementService implements OnModuleInit {
     }
     if (collectorId) {
       where.collector_id = collectorId;
+    }
+    if (reductionType) {
+      where.reduction_type = reductionType;
     }
 
     const rows = await this.prisma.riskControllerReductionRecord.findMany({
@@ -302,29 +414,12 @@ export class AssetManagementService implements OnModuleInit {
       orderBy: { created_at: 'asc' },
     });
 
-    const dayMap = new Map<
-      string,
-      { totalPaidAmount: number; count: number }
-    >();
-    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-    rows.forEach((row) => {
-      const businessTs = new Date(
-        row.created_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000,
-      );
-      const date = businessTs.toISOString().slice(0, 10);
-      const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
-      old.totalPaidAmount += Number(row.amount ?? 0);
-      old.count += 1;
-      dayMap.set(date, old);
-    });
-
-    return Array.from(dayMap.entries())
-      .map(([date, value]) => ({
-        date,
-        totalPaidAmount: value.totalPaidAmount,
-        count: value.count,
-      }))
-      .sort((a, b) => a.date.localeCompare(b.date));
+    return this.aggregateRowsToDailySummary(
+      rows.map((row) => ({
+        amount: Number(row.amount ?? 0),
+        created_at: row.created_at,
+      })),
+    );
   }
 
   /** 查询减资明细（支持 risk_controller_id、collector_id、type、date 过滤 + 分页） */
@@ -363,6 +458,88 @@ export class AssetManagementService implements OnModuleInit {
         created_by: r.created_by,
         operator: r.operator,
         created_at: r.created_at,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  /** 存出款按日汇总（日历展示） */
+  async findDepositDailySummary(
+    userId: number,
+    query: QueryDepositDailySummaryDto,
+  ) {
+    const { monthStartTs, nextMonthStartTs } = this.getMonthTimestampRange(
+      query.month,
+    );
+
+    const rows = await this.prisma.assetReductionHistory.findMany({
+      where: {
+        admin_id: userId,
+        asset_type: 'collector',
+        field_name: 'deposit',
+        created_at: { gte: monthStartTs, lt: nextMonthStartTs },
+      },
+      select: {
+        input_value: true,
+        created_at: true,
+      },
+      orderBy: { created_at: 'asc' },
+    });
+
+    return this.aggregateRowsToDailySummary(
+      rows.map((row) => ({
+        amount: Math.abs(Number(row.input_value ?? 0)),
+        created_at: row.created_at,
+      })),
+    );
+  }
+
+  /** 存出款明细 */
+  async findDepositRecords(userId: number, query: QueryDepositRecordsDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 50;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.AssetReductionHistoryWhereInput = {
+      admin_id: userId,
+      asset_type: 'collector',
+      field_name: 'deposit',
+    };
+
+    if (query.date) {
+      const [yearStr, monthStr, dayStr] = query.date.split('-');
+      const businessDate = utcMidnightFromYmd(
+        Number(yearStr),
+        Number(monthStr),
+        Number(dayStr),
+      );
+      const { start, end } = getBusinessDayTimestampRange(businessDate);
+      where.created_at = { gte: start, lt: end };
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.assetReductionHistory.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.assetReductionHistory.count({ where }),
+    ]);
+
+    return {
+      data: data.map((row) => ({
+        id: row.id,
+        admin_id: row.admin_id,
+        input_value: Number(row.input_value),
+        old_value: Number(row.old_value),
+        new_value: Number(row.new_value),
+        updated_by_admin_id: row.updated_by_admin_id,
+        updated_by_admin_username: row.updated_by_admin_username,
+        remark: row.remark,
+        created_at: row.created_at,
       })),
       total,
       page,
