@@ -121,6 +121,13 @@ export class AssetManagementService implements OnModuleInit {
 
     const total_amount = totalLent + totalRepaid;
 
+    const reduction_by_counterparty = (
+      await this.findReductionCounterpartySummary({
+        perspective: ReductionPerspective.collector,
+        adminId: userId,
+      })
+    ).filter((item) => item.totalAmount > 0);
+
     return {
       id: asset?.id || 0,
       admin_id: userId,
@@ -133,6 +140,7 @@ export class AssetManagementService implements OnModuleInit {
       reduced_by_risk_controller,
       total_amount,
       total_received: totalRepaid,
+      reduction_by_counterparty,
     };
   }
 
@@ -193,6 +201,13 @@ export class AssetManagementService implements OnModuleInit {
       _sum: { amount: true },
     });
 
+    const reduction_by_counterparty = (
+      await this.findReductionCounterpartySummary({
+        perspective: ReductionPerspective.risk_controller,
+        adminId: userId,
+      })
+    ).filter((item) => item.totalAmount > 0);
+
     return {
       id: asset?.id || 0,
       admin_id: userId,
@@ -204,6 +219,7 @@ export class AssetManagementService implements OnModuleInit {
         reduction_type: r.reduction_type,
         amount: Number(r._sum.amount ?? 0),
       })),
+      reduction_by_counterparty,
     };
   }
 
