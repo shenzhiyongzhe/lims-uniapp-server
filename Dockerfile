@@ -12,11 +12,14 @@ RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts
 
 COPY prisma ./prisma
 COPY prisma.config.ts ./
-RUN npx prisma generate
+RUN --mount=type=cache,target=/root/.cache/prisma \
+    npx prisma generate
 
-COPY . .
+COPY nest-cli.json tsconfig.json tsconfig.build.json ./
+COPY src ./src
 
-RUN npm run build && npm prune --omit=dev
+RUN --mount=type=cache,target=/app/node_modules/.cache \
+    npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim AS runner
 
@@ -24,9 +27,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
-  && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist

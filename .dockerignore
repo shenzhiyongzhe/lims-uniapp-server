@@ -10,8 +10,10 @@ coverage
 *.log
 .vscode
 .idea
-README.md
-deploy/*.md
+*.md
+deploy
+.github
+docker-compose*.yml
 test
 .eslintrc*
 eslint.config.*

@@ -19,7 +19,10 @@ on:
       - "prisma.config.ts"
       - "package.json"
       - "package-lock.json"
+      - "nest-cli.json"
+      - "tsconfig*.json"
       - "Dockerfile"
+      - ".dockerignore"
       - "docker-compose.prod.yml"
       - "docker-compose.prod.hostnetwork.yml"
       - "deploy/**"
@@ -30,7 +33,36 @@ env:
   CONTEXT_PATH: ${{ vars.DOCKER_CONTEXT || '.' }}
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'src/**'
+              - 'prisma/**'
+              - 'prisma.config.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'nest-cli.json'
+              - 'tsconfig*.json'
+              - 'Dockerfile'
+              - '.dockerignore'
+            deploy:
+              - 'deploy/**'
+              - 'docker-compose.prod.yml'
+              - 'docker-compose.prod.hostnetwork.yml'
+              - '.github/workflows/deploy-lims-server.yml'
+
   build-and-push:
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.app == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -66,19 +98,40 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha
+            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: |
+            type=gha,mode=max
+            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
   deploy:
-    needs: build-and-push
+    needs: [changes, build-and-push]
     runs-on: ubuntu-latest
     if: |
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-      vars.DEPLOY_HOST != ''
+      vars.DEPLOY_HOST != '' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.deploy == 'true' ||
+        (needs.changes.outputs.app == 'true' && needs.build-and-push.result == 'success')
+      ) &&
+      needs.build-and-push.result != 'failure'
     steps:
+      - name: Resolve deploy image
+        id: deploy_image
+        run: |
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE_REPO="ghcr.io/${OWNER_LC}/lims-uniapp-server"
+          if [ "${{ needs.build-and-push.result }}" = "success" ]; then
+            echo "image=${IMAGE_REPO}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${IMAGE_REPO}:latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: appleboy/ssh-action@v1.2.0
         env:
-          IMAGE_FULL_SHA: ${{ needs.build-and-push.outputs.image_full_sha }}
+          IMAGE_FULL_SHA: ${{ steps.deploy_image.outputs.image }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
         with:
           host: ${{ vars.DEPLOY_HOST }}
