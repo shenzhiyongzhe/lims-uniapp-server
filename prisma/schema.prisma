@@ -51,6 +51,16 @@ model Staff {
   @@map("staffs")
 }
 
+enum LoanAccountStatus {
+  pending
+  active
+  overdue
+  settled
+  unsettled
+  negotiated
+  to_be_processed
+  blacklist
+}
 model LoanAccount {
   id                       Int                 @id @default(autoincrement())
   user_id                  Int
@@ -309,16 +319,7 @@ enum ManagementRoles {
   PENDING
 }
 
-enum LoanAccountStatus {
-  pending
-  active
-  overdue
-  settled
-  unsettled
-  negotiated
-  to_be_processed
-  blacklist
-}
+
 
 enum RepaymentScheduleStatus {
   pending
