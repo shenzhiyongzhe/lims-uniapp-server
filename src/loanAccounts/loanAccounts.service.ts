@@ -1149,15 +1149,7 @@ export class LoanAccountsService {
   }
 
   private async computeListStatistics(baseAndParts: Record<string, unknown>[]) {
-    const { today: todayShanghai } = getShanghaiBusinessTodayAndYesterday();
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
-
-    // Use 6AM-boundary timestamp ranges for paid_at queries
-    const todayRange = getBusinessDayTimestampRange(todayShanghai);
-    const yesterdayShanghai = new Date(
-      todayShanghai.getTime() - 24 * 60 * 60 * 1000,
-    );
-    const yesterdayRange = getBusinessDayTimestampRange(yesterdayShanghai);
 
     const pendingNegotiatedStatus = {
       status: {
@@ -1169,13 +1161,17 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, pendingNegotiatedStatus] }
         : pendingNegotiatedStatus;
 
-    const recordScopeWhere = { loan_account: baseWhere };
+    const blacklistStatus = { status: 'blacklist' as LoanAccountStatus };
+    const blacklistWhere =
+      baseAndParts.length > 0
+        ? { AND: [...baseAndParts, blacklistStatus] }
+        : blacklistStatus;
 
     const [
       pendingNegotiatedAgg,
       allLoansFeeAgg,
-      todayRecordAgg,
-      yesterdayRecordAgg,
+      blacklistAgg,
+      overdueScheduleAgg,
     ] = await Promise.all([
       this.prisma.loanAccount.aggregate({
         where: pendingNegotiatedWhere,
@@ -1189,19 +1185,16 @@ export class LoanAccountsService {
         where: baseWhere,
         _sum: { handling_fee: true, total_fines: true },
       }),
-      this.prisma.repaymentRecord.aggregate({
-        where: {
-          ...recordScopeWhere,
-          paid_at: { gte: todayRange.start, lt: todayRange.end },
-        },
-        _sum: { paid_amount: true },
+      this.prisma.loanAccount.aggregate({
+        where: blacklistWhere,
+        _sum: { loan_amount: true },
       }),
-      this.prisma.repaymentRecord.aggregate({
+      this.prisma.repaymentSchedule.aggregate({
         where: {
-          ...recordScopeWhere,
-          paid_at: { gte: yesterdayRange.start, lt: yesterdayRange.end },
+          status: 'overdue',
+          loan_account: baseWhere,
         },
-        _sum: { paid_amount: true },
+        _sum: { capital: true, interest: true },
       }),
     ]);
 
@@ -1216,8 +1209,10 @@ export class LoanAccountsService {
         remainingDebt,
         handlingFee: this.toNumber(allLoansFeeAgg._sum.handling_fee),
         fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
-        todayReceived: this.toNumber(todayRecordAgg._sum.paid_amount),
-        yesterdayReceived: this.toNumber(yesterdayRecordAgg._sum.paid_amount),
+        inStockBlacklist: this.toNumber(blacklistAgg._sum.loan_amount),
+        inStockOverdue:
+          this.toNumber(overdueScheduleAgg._sum.capital) +
+          this.toNumber(overdueScheduleAgg._sum.interest),
       },
     };
   }
@@ -1244,8 +1239,8 @@ export class LoanAccountsService {
           remainingDebt: 0,
           handlingFee: 0,
           fines: 0,
-          todayReceived: 0,
-          yesterdayReceived: 0,
+          inStockBlacklist: 0,
+          inStockOverdue: 0,
         },
       };
     }
@@ -1382,34 +1377,6 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, { status: 'negotiated' as const }] }
         : { status: 'negotiated' as const };
 
-    const whereOverdueBySchedule = {
-      AND: [
-        loanAccountWhereForScheduleTabs,
-        { repaymentSchedules: { some: { status: 'overdue' as const } } },
-        {
-          NOT: {
-            repaymentSchedules: {
-              some: {
-                OR: [
-                  {
-                    due_start_date: todayShanghai,
-                    status: 'paid' as const,
-                  },
-                  {
-                    due_start_date: yesterdayShanghai,
-                    status: 'paid' as const,
-                  },
-                ],
-              },
-            },
-          },
-        },
-      ],
-    };
-
-    const whereOverdueLoans = {
-      OR: [whereOverdueNegotiated, whereOverdueBySchedule],
-    };
     const todayRange = getBusinessDayTimestampRange(todayShanghai);
 
     // 查询未来的方案今天已还的还款计划
@@ -1518,6 +1485,68 @@ export class LoanAccountsService {
     if (futureScheduleConditions.length > 0) {
       scheduleWhereTodayUnpaid.OR.push(...futureScheduleConditions);
     }
+
+    const scheduleMatchTodayPaid: Record<string, unknown> = {
+      OR: [
+        {
+          due_start_date: todayShanghai,
+          status: 'paid' as const,
+        },
+      ],
+    };
+    if (futurePaidScheduleIds.length > 0) {
+      (scheduleMatchTodayPaid.OR as Record<string, unknown>[]).push({
+        id: { in: futurePaidScheduleIds },
+      });
+    }
+
+    const scheduleMatchTodayUnpaid: Record<string, unknown> = {
+      OR: [
+        {
+          due_start_date: todayShanghai,
+          status: {
+            in: ['pending', 'active'] satisfies RepaymentScheduleStatus[],
+          },
+        },
+      ],
+    };
+    if (futureScheduleConditions.length > 0) {
+      (scheduleMatchTodayUnpaid.OR as Record<string, unknown>[]).push(
+        ...futureScheduleConditions,
+      );
+    }
+
+    const whereOverdueBySchedule = {
+      AND: [
+        loanAccountWhereForScheduleTabs,
+        { repaymentSchedules: { some: { status: 'overdue' as const } } },
+        {
+          NOT: {
+            OR: [
+              {
+                repaymentSchedules: {
+                  some: scheduleMatchTodayPaid,
+                },
+              },
+              {
+                AND: [
+                  { status: { not: 'negotiated' as const } },
+                  {
+                    repaymentSchedules: {
+                      some: scheduleMatchTodayUnpaid,
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const whereOverdueLoans = {
+      OR: [whereOverdueNegotiated, whereOverdueBySchedule],
+    };
 
     const scheduleSumWhere = {
       paid_amount: { gt: 0 },
