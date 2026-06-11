@@ -1167,27 +1167,17 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, blacklistStatus] }
         : blacklistStatus;
 
-    const overdueLoanWhere =
+    const negotiatedStatus = { status: 'negotiated' as LoanAccountStatus };
+    const negotiatedWhere =
       baseAndParts.length > 0
-        ? {
-            AND: [
-              ...baseAndParts,
-              { status: 'pending' as LoanAccountStatus },
-              { repaymentSchedules: { some: { status: 'overdue' as const } } },
-            ],
-          }
-        : {
-            AND: [
-              { status: 'pending' as LoanAccountStatus },
-              { repaymentSchedules: { some: { status: 'overdue' as const } } },
-            ],
-          };
+        ? { AND: [...baseAndParts, negotiatedStatus] }
+        : negotiatedStatus;
 
     const [
       pendingNegotiatedAgg,
       allLoansFeeAgg,
       blacklistAgg,
-      overdueLoanAgg,
+      negotiatedAgg,
     ] = await Promise.all([
       this.prisma.loanAccount.aggregate({
         where: pendingNegotiatedWhere,
@@ -1206,8 +1196,8 @@ export class LoanAccountsService {
         _sum: { loan_amount: true },
       }),
       this.prisma.loanAccount.aggregate({
-        where: overdueLoanWhere,
-        _sum: { loan_amount: true, paid_capital: true },
+        where: negotiatedWhere,
+        _sum: { loan_amount: true },
       }),
     ]);
 
@@ -1223,9 +1213,7 @@ export class LoanAccountsService {
         handlingFee: this.toNumber(allLoansFeeAgg._sum.handling_fee),
         fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
         inStockBlacklist: this.toNumber(blacklistAgg._sum.loan_amount),
-        inStockOverdue:
-          this.toNumber(overdueLoanAgg._sum.loan_amount) -
-          this.toNumber(overdueLoanAgg._sum.paid_capital),
+        inStockOverdue: this.toNumber(negotiatedAgg._sum.loan_amount),
       },
     };
   }
