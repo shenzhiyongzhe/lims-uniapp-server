@@ -285,7 +285,7 @@ export class AssetManagementService implements OnModuleInit {
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
     rows.forEach((row) => {
       const businessTs = new Date(
-        row.created_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000,
+        row.created_at.getTime() + TWO_HOURS_MS,
       );
       const date = businessTs.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };

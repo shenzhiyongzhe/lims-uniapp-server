@@ -536,7 +536,7 @@ export class RepaymentRecordsService {
       // Map paid_at to the business day it belongs to:
       // paid_at + 2h gives us the "business timestamp" starting from 00:00 of the business day
       const businessTs = new Date(
-        row.paid_at.getTime() + TWO_HOURS_MS - 6 * 3600 * 1000,
+        row.paid_at.getTime() + TWO_HOURS_MS,
       );
       const date = businessTs.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
