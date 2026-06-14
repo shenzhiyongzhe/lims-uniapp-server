@@ -1,0 +1,9 @@
+# 设置所有文本文件自动标准化，并强制检出为 LF (Unix风格)
+* text=auto eol=lf
+
+# 针对特定文件类型明确指定 LF
+*.js text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.sh text eol=lf
