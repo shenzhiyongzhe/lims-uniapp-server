@@ -25,7 +25,7 @@ export class LoanAccountsService {
     private readonly loanPredictionService: LoanPredictionService,
     private readonly assetManagementService: AssetManagementService,
     private readonly accessScopeService: AccessScopeService,
-  ) {}
+  ) { }
 
   private async logOperation(
     tx: any,
