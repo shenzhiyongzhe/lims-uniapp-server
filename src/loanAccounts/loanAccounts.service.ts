@@ -1378,6 +1378,36 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, { status: 'negotiated' as const }] }
         : { status: 'negotiated' as const };
 
+    const dayBeforeYesterdayShanghai = new Date(
+      yesterdayShanghai.getTime() - 24 * 60 * 60 * 1000,
+    );
+
+    const whereOverdueBySchedule = {
+      AND: [
+        loanAccountWhereForScheduleTabs,
+        {
+          repaymentSchedules: {
+            some: {
+              due_start_date: dayBeforeYesterdayShanghai,
+              status: 'overdue' as const,
+            },
+          },
+        },
+        {
+          repaymentSchedules: {
+            some: {
+              due_start_date: yesterdayShanghai,
+              status: 'overdue' as const,
+            },
+          },
+        },
+      ],
+    };
+
+    const whereOverdueLoans = {
+      OR: [whereOverdueNegotiated, whereOverdueBySchedule],
+    };
+
     const todayRange = getBusinessDayTimestampRange(todayShanghai);
 
     // 查询未来的方案今天已还的还款计划
@@ -1476,6 +1506,7 @@ export class LoanAccountsService {
               AND: [
                 loanAccountWhereForScheduleTabs,
                 { status: { not: 'negotiated' as const } },
+                { NOT: whereOverdueLoans },
               ],
             },
           },
@@ -1517,37 +1548,7 @@ export class LoanAccountsService {
       );
     }
 
-    const whereOverdueBySchedule = {
-      AND: [
-        loanAccountWhereForScheduleTabs,
-        { repaymentSchedules: { some: { status: 'overdue' as const } } },
-        {
-          NOT: {
-            OR: [
-              {
-                repaymentSchedules: {
-                  some: scheduleMatchTodayPaid,
-                },
-              },
-              {
-                AND: [
-                  { status: { not: 'negotiated' as const } },
-                  {
-                    repaymentSchedules: {
-                      some: scheduleMatchTodayUnpaid,
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      ],
-    };
-
-    const whereOverdueLoans = {
-      OR: [whereOverdueNegotiated, whereOverdueBySchedule],
-    };
+    // whereOverdueBySchedule and whereOverdueLoans are now defined earlier in the method.
 
     const scheduleSumWhere = {
       paid_amount: { gt: 0 },
