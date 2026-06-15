@@ -16,6 +16,7 @@ import {
   getShanghaiBusinessTodayAndYesterday,
   getBusinessDayTimestampRange,
 } from '../common/business-date';
+import { ensureOverdueRecordsForLoan, reconcileOverdueRecordsForLoan, removeOverdueRecordsForSchedules } from '../common/sync-overdue-records';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
@@ -89,19 +90,7 @@ export class LoanAccountsService {
   }
 
   private isOverdue(date: Date): boolean {
-    const now = new Date();
-    const todayStart = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate(),
-        0,
-        0,
-        0,
-        0,
-      ),
-    );
-
+    const { today } = getShanghaiBusinessTodayAndYesterday();
     const dateUTC = new Date(
       Date.UTC(
         date.getUTCFullYear(),
@@ -114,7 +103,7 @@ export class LoanAccountsService {
       ),
     );
 
-    return dateUTC < todayStart;
+    return dateUTC < today;
   }
 
   private determineScheduleStatus(
@@ -323,6 +312,8 @@ export class LoanAccountsService {
         data: { overdue_count: overdueSchedules.length },
       });
 
+      await ensureOverdueRecordsForLoan(tx, created.id);
+
       await this.logOperation(
         tx,
         created.id,
@@ -363,6 +354,7 @@ export class LoanAccountsService {
       const oldLoan = await tx.loanAccount.findUnique({
         where: { id },
         select: {
+          user_id: true,
           due_start_date: true,
           collector_id: true,
           risk_controller_id: true,
@@ -599,6 +591,16 @@ export class LoanAccountsService {
 
           // Delete any extra schedules
           if (schedules.length > finalPeriods) {
+            const scheduleIdsToDelete = schedules
+              .filter((s) => s.period > finalPeriods)
+              .map((s) => s.id);
+
+            await removeOverdueRecordsForSchedules(
+              tx,
+              oldLoan.user_id,
+              scheduleIdsToDelete,
+            );
+
             await tx.repaymentSchedule.deleteMany({
               where: {
                 loan_id: id,
@@ -606,6 +608,8 @@ export class LoanAccountsService {
               },
             });
           }
+
+          await reconcileOverdueRecordsForLoan(tx, id);
 
           // Update overdue count on the loan account
           const overdueSchedules = await tx.repaymentSchedule.findMany({
