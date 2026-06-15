@@ -1770,8 +1770,16 @@ export class LoanAccountsService {
   }
 
   async findDeletedLoans() {
-    return this.prisma.deletedLoan.findMany({
+    const list = await this.prisma.deletedLoan.findMany({
       orderBy: { deleted_at: 'desc' },
+    });
+    return list.map((item) => {
+      const backup = item.data as any;
+      return {
+        ...item,
+        receiving_amount: backup?.loan?.receiving_amount ?? null,
+        ownership: backup?.loan?.ownership ?? null,
+      };
     });
   }
 
@@ -1813,6 +1821,7 @@ export class LoanAccountsService {
         user_id: loan.user_id,
         username: loan.user?.username || '',
         loan_amount: loan.loan_amount,
+        receiving_amount: loan.receiving_amount,
         period_capital: loan.period_capital,
         period_interest: loan.period_interest,
         status: loan.status,
@@ -1821,6 +1830,7 @@ export class LoanAccountsService {
         due_start_date: loan.due_start_date,
         due_end_date: loan.due_end_date,
         created_at: loan.created_at,
+        ownership: loan.ownership,
       })),
       pagination: {
         page,
