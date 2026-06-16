@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -48,8 +49,21 @@ export class AssetManagementController {
 
   @Get('asset-history')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
-  async getAssetHistory(@Query() query: QueryAssetHistoryDto) {
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+    ManagementRoles.RISK_CONTROLLER,
+  )
+  async getAssetHistory(
+    @Query() query: QueryAssetHistoryDto,
+    @CurrentUser() operator: { id: number; role: string },
+  ) {
+    if (operator.role === 'COLLECTOR' || operator.role === 'RISK_CONTROLLER') {
+      query.adminId = operator.id;
+      query.assetType = operator.role === 'COLLECTOR' ? 'collector' : 'risk_controller';
+    }
     const data = await this.assetManagementService.findAssetHistory(query);
     return ResponseHelper.success(data, '获取资产变更历史成功');
   }
@@ -57,8 +71,22 @@ export class AssetManagementController {
   /** 减资按日汇总（日历金额） */
   @Get('reduction-records/daily-summary')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
-  async getReductionDailySummary(@Query() query: QueryReductionDailySummaryDto) {
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+    ManagementRoles.RISK_CONTROLLER,
+  )
+  async getReductionDailySummary(
+    @Query() query: QueryReductionDailySummaryDto,
+    @CurrentUser() operator: { id: number; role: string },
+  ) {
+    if (operator.role === 'COLLECTOR') {
+      query.collectorId = operator.id;
+    } else if (operator.role === 'RISK_CONTROLLER') {
+      query.riskControllerId = operator.id;
+    }
     const data =
       await this.assetManagementService.findReductionDailySummary(query);
     return ResponseHelper.success(data, '获取减资按日汇总成功');
@@ -67,10 +95,24 @@ export class AssetManagementController {
   /** 减资关联人员汇总（下拉列表） */
   @Get('reduction-records/counterparty-summary')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+    ManagementRoles.RISK_CONTROLLER,
+  )
   async getReductionCounterpartySummary(
     @Query() query: QueryReductionCounterpartySummaryDto,
+    @CurrentUser() operator: { id: number; role: string },
   ) {
+    if (operator.role === 'COLLECTOR') {
+      query.perspective = 'collector' as any;
+      query.adminId = operator.id;
+    } else if (operator.role === 'RISK_CONTROLLER') {
+      query.perspective = 'risk_controller' as any;
+      query.adminId = operator.id;
+    }
     const data =
       await this.assetManagementService.findReductionCounterpartySummary(query);
     return ResponseHelper.success(data, '获取减资关联人员汇总成功');
@@ -79,8 +121,22 @@ export class AssetManagementController {
   /** 查询减资明细：支持 riskControllerId、collectorId、reductionType、date 过滤 */
   @Get('reduction-records')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
-  async getReductionRecords(@Query() query: QueryReductionRecordsDto) {
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+    ManagementRoles.RISK_CONTROLLER,
+  )
+  async getReductionRecords(
+    @Query() query: QueryReductionRecordsDto,
+    @CurrentUser() operator: { id: number; role: string },
+  ) {
+    if (operator.role === 'COLLECTOR') {
+      query.collectorId = operator.id;
+    } else if (operator.role === 'RISK_CONTROLLER') {
+      query.riskControllerId = operator.id;
+    }
     const data = await this.assetManagementService.findReductionRecords(query);
     return ResponseHelper.success(data, '获取减资明细成功');
   }
@@ -120,11 +176,20 @@ export class AssetManagementController {
   /** 存出款按日汇总（日历金额） */
   @Get('collector/:userId/deposit/daily-summary')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+  )
   async getDepositDailySummary(
     @Param('userId') userId: string,
     @Query() query: QueryDepositDailySummaryDto,
+    @CurrentUser() operator: { id: number; role: string },
   ) {
+    if (operator.role === 'COLLECTOR' && parseInt(userId, 10) !== operator.id) {
+      throw new ForbiddenException('您无权查看其他人的存出款汇总');
+    }
     const data = await this.assetManagementService.findDepositDailySummary(
       parseInt(userId, 10),
       query,
@@ -135,11 +200,20 @@ export class AssetManagementController {
   /** 存出款明细 */
   @Get('collector/:userId/deposit/records')
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+  )
   async getDepositRecords(
     @Param('userId') userId: string,
     @Query() query: QueryDepositRecordsDto,
+    @CurrentUser() operator: { id: number; role: string },
   ) {
+    if (operator.role === 'COLLECTOR' && parseInt(userId, 10) !== operator.id) {
+      throw new ForbiddenException('您无权查看其他人的存出款明细');
+    }
     const data = await this.assetManagementService.findDepositRecords(
       parseInt(userId, 10),
       query,
