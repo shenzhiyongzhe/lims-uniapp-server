@@ -100,6 +100,18 @@ export class AssetManagementService implements OnModuleInit {
     const { reduced_fines, reduced_handling_fee, reduced_by_risk_controller } =
       await this.getCollectorReductions(userId);
 
+    const transferAggregate = await this.prisma.assetReductionHistory.aggregate({
+      where: {
+        admin_id: userId,
+        asset_type: 'collector',
+        field_name: 'transfer',
+      },
+      _sum: {
+        input_value: true,
+      },
+    });
+    const transfer_amount = Number(transferAggregate._sum.input_value || 0);
+
     const loansAggregate = await this.prisma.loanAccount.aggregate({
       where: { collector_id: userId },
       _sum: {
@@ -141,6 +153,7 @@ export class AssetManagementService implements OnModuleInit {
       total_amount,
       total_received: totalRepaid,
       reduction_by_counterparty,
+      transfer_amount,
     };
   }
 
@@ -491,7 +504,7 @@ export class AssetManagementService implements OnModuleInit {
       where: {
         admin_id: userId,
         asset_type: 'collector',
-        field_name: 'deposit',
+        field_name: { in: ['deposit', 'transfer'] },
         created_at: { gte: monthStartTs, lt: nextMonthStartTs },
       },
       select: {
@@ -518,7 +531,7 @@ export class AssetManagementService implements OnModuleInit {
     const where: Prisma.AssetReductionHistoryWhereInput = {
       admin_id: userId,
       asset_type: 'collector',
-      field_name: 'deposit',
+      field_name: { in: ['deposit', 'transfer'] },
     };
 
     if (query.date) {
@@ -546,6 +559,7 @@ export class AssetManagementService implements OnModuleInit {
       data: data.map((row) => ({
         id: row.id,
         admin_id: row.admin_id,
+        field_name: row.field_name,
         input_value: Number(row.input_value),
         old_value: Number(row.old_value),
         new_value: Number(row.new_value),
@@ -589,6 +603,45 @@ export class AssetManagementService implements OnModuleInit {
         fieldName: 'deposit',
         oldValue: oldDeposit,
         inputValue: delta,
+        newValue: newDeposit,
+        operator,
+        remark,
+      });
+
+      return {
+        admin_id: userId,
+        deposit: Number(updated.deposit),
+      };
+    });
+  }
+
+  async transferCollectorDeposit(
+    userId: number,
+    amount: number,
+    operator?: AssetOperator,
+    remark?: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.collectorAssetManagement.upsert({
+        where: { admin_id: userId },
+        update: {},
+        create: { admin_id: userId },
+      });
+
+      const oldDeposit = Number(existing.deposit || 0);
+      const newDeposit = oldDeposit - amount;
+
+      const updated = await tx.collectorAssetManagement.update({
+        where: { admin_id: userId },
+        data: { deposit: newDeposit },
+      });
+
+      await this.recordAssetHistory(tx, {
+        adminId: userId,
+        assetType: 'collector',
+        fieldName: 'transfer',
+        oldValue: oldDeposit,
+        inputValue: amount,
         newValue: newDeposit,
         operator,
         remark,

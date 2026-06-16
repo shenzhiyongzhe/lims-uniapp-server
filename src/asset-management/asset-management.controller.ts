@@ -16,6 +16,7 @@ import { ManagementRoles } from '@prisma/client';
 import { ResponseHelper } from '../common/response-helper';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
 import { AdjustCollectorDepositDto } from './dto/adjust-collector-deposit.dto';
+import { TransferCollectorDepositDto } from './dto/transfer-collector-deposit.dto';
 import { QueryAssetHistoryDto } from './dto/query-asset-history.dto';
 import { CreateReductionRecordDto } from './dto/create-reduction-record.dto';
 import { QueryReductionRecordsDto } from './dto/query-reduction-records.dto';
@@ -161,6 +162,23 @@ export class AssetManagementController {
       dto.remark,
     );
     return ResponseHelper.success(data, '调整存款成功');
+  }
+
+  @Put('collector/:userId/transfer')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  async transferCollectorDeposit(
+    @Param('userId') userId: string,
+    @Body() dto: TransferCollectorDepositDto,
+    @CurrentUser() operator: { id: number; role: string },
+  ) {
+    const data = await this.assetManagementService.transferCollectorDeposit(
+      parseInt(userId, 10),
+      dto.amount,
+      operator,
+      dto.remark,
+    );
+    return ResponseHelper.success(data, '划账成功');
   }
 
   /**
