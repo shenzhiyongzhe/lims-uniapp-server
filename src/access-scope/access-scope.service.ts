@@ -126,27 +126,36 @@ export class AccessScopeService {
           risk_controller_id: userId,
         },
         _sum: {
+          paid_capital: true,
+          paid_interest: true,
+          total_fines: true,
+          loan_amount: true,
           handling_fee: true,
-          company_cost: true,
         },
       });
 
-      const sumsMap = new Map<number, { handling_fee: number; company_cost: number }>();
+      const sumsMap = new Map<number, { remaining_amount_sum: number; handling_fee_sum: number }>();
       for (const sum of loanSums) {
         if (sum.collector_id) {
+          const paidCapital = sum._sum.paid_capital || 0;
+          const paidInterest = sum._sum.paid_interest || 0;
+          const totalFines = sum._sum.total_fines || 0;
+          const loanAmount = sum._sum.loan_amount || 0;
+          const handlingFee = sum._sum.handling_fee || 0;
+
           sumsMap.set(sum.collector_id, {
-            handling_fee: sum._sum.handling_fee || 0,
-            company_cost: sum._sum.company_cost || 0,
+            remaining_amount_sum: paidCapital + paidInterest + totalFines - loanAmount + handlingFee,
+            handling_fee_sum: handlingFee,
           });
         }
       }
 
       const result = collectors.map((s) => {
-        const sums = sumsMap.get(s.id) || { handling_fee: 0, company_cost: 0 };
+        const sums = sumsMap.get(s.id) || { remaining_amount_sum: 0, handling_fee_sum: 0 };
         return {
           ...s,
-          handling_fee_sum: sums.handling_fee,
-          company_cost_sum: sums.company_cost,
+          remaining_amount_sum: sums.remaining_amount_sum,
+          handling_fee_sum: sums.handling_fee_sum,
         };
       });
 
