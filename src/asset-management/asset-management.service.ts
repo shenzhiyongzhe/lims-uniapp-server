@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { LoanAccount, Prisma, ReductionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
@@ -629,6 +629,9 @@ export class AssetManagementService implements OnModuleInit {
       });
 
       const oldDeposit = Number(existing.deposit || 0);
+      if (amount > oldDeposit) {
+        throw new BadRequestException('划账金额不能大于当前存款');
+      }
       const newDeposit = oldDeposit - amount;
 
       const updated = await tx.collectorAssetManagement.update({

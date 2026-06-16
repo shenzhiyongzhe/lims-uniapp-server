@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   LoanAccount,
@@ -1973,5 +1973,88 @@ export class LoanAccountsService {
     }
 
     return restored;
+  }
+
+  async getOverdueRecords(loanId: number) {
+    return this.prisma.overdueRecord.findMany({
+      where: { loan_id: loanId },
+      orderBy: { overdue_date: 'desc' },
+      include: {
+        schedule: {
+          select: {
+            period: true,
+            due_amount: true,
+            status: true,
+          },
+        },
+      },
+    });
+  }
+
+  async deleteOverdueRecord(
+    loanId: number,
+    overdueRecordId: number,
+    operator: { id: number; role: string },
+  ) {
+    const loan = await this.prisma.loanAccount.findUnique({
+      where: { id: loanId },
+      select: { collector_id: true, user_id: true },
+    });
+    if (!loan) {
+      throw new NotFoundException('贷款记录不存在');
+    }
+
+    const record = await this.prisma.overdueRecord.findUnique({
+      where: { id: overdueRecordId },
+    });
+    if (!record || record.loan_id !== loanId) {
+      throw new NotFoundException('逾期记录不存在');
+    }
+
+    // Auth check: SUPER_ADMIN, ADMIN, or assigned COLLECTOR
+    const isSuperAdmin = operator.role === 'SUPER_ADMIN';
+    const isAdmin = operator.role === 'ADMIN';
+    const isAssignedCollector =
+      operator.role === 'COLLECTOR' && loan.collector_id === operator.id;
+
+    if (!isSuperAdmin && !isAdmin && !isAssignedCollector) {
+      throw new ForbiddenException('您没有权限删除该逾期记录');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.overdueRecord.delete({
+        where: { id: overdueRecordId },
+      });
+
+      const user = await tx.user.findUnique({
+        where: { id: loan.user_id },
+        select: { overdue_time: true },
+      });
+      const current = user?.overdue_time ?? 0;
+      const next = Math.max(0, current - 1);
+
+      await tx.user.update({
+        where: { id: loan.user_id },
+        data: { overdue_time: next },
+      });
+
+      // Fetch operator staff nickname/username
+      const staff = await tx.staff.findUnique({
+        where: { id: operator.id },
+        select: { nickname: true, username: true },
+      });
+      const staffName = staff ? staff.nickname || staff.username : operator.role;
+
+      // Log this manual deletion in LoanAccountOperationLog
+      await tx.loanAccountOperationLog.create({
+        data: {
+          loan_id: loanId,
+          operator_admin_id: operator.id,
+          operator_admin_name: staffName,
+          action_type: 'delete_overdue_record',
+          content: `手动删除逾期记录 ID:${overdueRecordId} (逾期日期: ${record.overdue_date.toISOString().split('T')[0]})`,
+        },
+      });
+    });
   }
 }

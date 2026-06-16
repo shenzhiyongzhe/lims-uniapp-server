@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -272,6 +273,56 @@ export class LoanAccountsController {
         return ResponseHelper.error(error.message, 404);
       }
       return ResponseHelper.error(`删除贷款记录失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+    ManagementRoles.COLLECTOR,
+    ManagementRoles.RISK_CONTROLLER,
+  )
+  @Get(':id/overdue-records')
+  async getOverdueRecords(
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<ApiResponseDto> {
+    try {
+      const records = await this.loanAccountsService.getOverdueRecords(id);
+      return ResponseHelper.success(records, '获取逾期记录成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`获取逾期记录失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.COLLECTOR,
+  )
+  @Delete(':id/overdue-records/:overdueRecordId')
+  async deleteOverdueRecord(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('overdueRecordId', ParseIntPipe) overdueRecordId: number,
+    @CurrentUser() operator: { id: number; role: string },
+  ): Promise<ApiResponseDto> {
+    try {
+      await this.loanAccountsService.deleteOverdueRecord(
+        id,
+        overdueRecordId,
+        operator,
+      );
+      return ResponseHelper.success(null, '删除逾期记录成功');
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return ResponseHelper.error(error.message, 404);
+      }
+      if (error instanceof ForbiddenException) {
+        return ResponseHelper.error(error.message, 403);
+      }
+      return ResponseHelper.error(`删除逾期记录失败: ${error.message}`, 500);
     }
   }
 }
