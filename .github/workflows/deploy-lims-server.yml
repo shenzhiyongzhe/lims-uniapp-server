@@ -54,6 +54,7 @@ jobs:
               - 'tsconfig*.json'
               - 'Dockerfile'
               - '.dockerignore'
+              - '.github/workflows/deploy-lims-server.yml'
             deploy:
               - 'deploy/**'
               - 'docker-compose.prod.yml'
