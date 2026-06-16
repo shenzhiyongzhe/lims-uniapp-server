@@ -109,6 +109,50 @@ export class AccessScopeService {
       return this.sortStaffCollectorFirst(staffs);
     }
 
+    if (staff.role === ManagementRoles.RISK_CONTROLLER) {
+      const collectors = await this.prisma.staff.findMany({
+        where: { role: ManagementRoles.COLLECTOR },
+        select: {
+          id: true,
+          username: true,
+          nickname: true,
+          role: true,
+        },
+      });
+
+      const loanSums = await this.prisma.loanAccount.groupBy({
+        by: ['collector_id'],
+        where: {
+          risk_controller_id: userId,
+        },
+        _sum: {
+          handling_fee: true,
+          company_cost: true,
+        },
+      });
+
+      const sumsMap = new Map<number, { handling_fee: number; company_cost: number }>();
+      for (const sum of loanSums) {
+        if (sum.collector_id) {
+          sumsMap.set(sum.collector_id, {
+            handling_fee: sum._sum.handling_fee || 0,
+            company_cost: sum._sum.company_cost || 0,
+          });
+        }
+      }
+
+      const result = collectors.map((s) => {
+        const sums = sumsMap.get(s.id) || { handling_fee: 0, company_cost: 0 };
+        return {
+          ...s,
+          handling_fee_sum: sums.handling_fee,
+          company_cost_sum: sums.company_cost,
+        };
+      });
+
+      return this.sortStaffCollectorFirst(result);
+    }
+
     const myLoans = await this.prisma.loanAccount.findMany({
       where: {
         OR: [

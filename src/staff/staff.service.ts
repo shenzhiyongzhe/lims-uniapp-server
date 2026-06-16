@@ -74,13 +74,6 @@ export class StaffService {
         });
       }
 
-      if (roleProvided && dto.role === ManagementRoles.RISK_CONTROLLER) {
-        await tx.riskControllerAssetManagement.upsert({
-          where: { admin_id: id },
-          update: {},
-          create: { admin_id: id },
-        });
-      }
 
       return staff;
     });
@@ -178,29 +171,6 @@ export class StaffService {
           data: { risk_controller_id: toId },
         });
 
-        // 2. 合并 RiskControllerAssetManagement
-        const fromAsset = await tx.riskControllerAssetManagement.findUnique({
-          where: { admin_id: fromId },
-        });
-        if (fromAsset) {
-          const toAsset = await tx.riskControllerAssetManagement.upsert({
-            where: { admin_id: toId },
-            update: {},
-            create: { admin_id: toId },
-          });
-
-          await tx.riskControllerAssetManagement.update({
-            where: { admin_id: toId },
-            data: {
-              total_amount: Number(toAsset.total_amount) + Number(fromAsset.total_amount),
-            },
-          });
-
-          // 删除源员工的资产记录
-          await tx.riskControllerAssetManagement.delete({
-            where: { admin_id: fromId },
-          });
-        }
 
         // 3. 迁移 RiskControllerReductionRecord (risk_controller_id)
         await tx.riskControllerReductionRecord.updateMany({

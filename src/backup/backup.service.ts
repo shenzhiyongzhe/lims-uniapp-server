@@ -416,25 +416,6 @@ export class BackupService {
       });
     }
 
-    // 8. Risk Controller Asset Management Sheet
-    const sheetRiskAssets = workbook.addWorksheet('风控人资产');
-    sheetRiskAssets.columns = [
-      { header: '资产ID', key: 'id', width: 10 },
-      { header: '风控人ID', key: 'admin_id', width: 12 },
-      { header: '总金额', key: 'total_amount', width: 15 },
-      { header: '创建时间', key: 'created_at', width: 20 },
-      { header: '更新时间', key: 'updated_at', width: 20 },
-    ];
-    const riskAssets = await this.prisma.riskControllerAssetManagement.findMany({ orderBy: { id: 'asc' } });
-    for (const ra of riskAssets) {
-      sheetRiskAssets.addRow({
-        id: ra.id,
-        admin_id: ra.admin_id,
-        total_amount: this.toNum(ra.total_amount),
-        created_at: this.formatDate(ra.created_at, true),
-        updated_at: this.formatDate(ra.updated_at, true),
-      });
-    }
 
     // 8.5 减资明细 Sheet
     const sheetReductions = workbook.addWorksheet('风控减资明细');

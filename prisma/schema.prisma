@@ -41,7 +41,6 @@ model Staff {
   loanAccountsAsRiskController      LoanAccount[]                        @relation("RiskControllerLoanAccounts")
   dailyLoanBalances                 DailyLoanBalance[]
   repaymentRecords                  RepaymentRecord[]
-  riskControllerAssetManagement     RiskControllerAssetManagement?
   scheduleOperationLogs             RepaymentScheduleOperationLog[]
   loanAccountOperationLogs          LoanAccountOperationLog[]
   reductionsAsRiskController        RiskControllerReductionRecord[]      @relation("RCReductionByRiskController")
@@ -254,16 +253,6 @@ model CollectorAssetManagement {
   @@map("collector_asset_management")
 }
 
-model RiskControllerAssetManagement {
-  id           Int      @id @default(autoincrement())
-  admin_id     Int      @unique
-  total_amount Int      @default(0)
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-  admin        Staff    @relation(fields: [admin_id], references: [id], onDelete: Cascade)
-
-  @@map("risk_controller_asset_management")
-}
 
 model LoanFieldPrediction {
   id           Int      @id @default(autoincrement())
@@ -363,7 +352,7 @@ enum ReductionType {
 model RiskControllerReductionRecord {
   id                 Int           @id @default(autoincrement())
   risk_controller_id Int
-  collector_id       Int
+  collector_id       Int?
   reduction_type     ReductionType
   amount             Int           // 本次减资金额（正整数）
   remark             String?       @db.VarChar(200)
@@ -371,7 +360,7 @@ model RiskControllerReductionRecord {
   created_at         DateTime      @default(now())
 
   risk_controller    Staff         @relation("RCReductionByRiskController", fields: [risk_controller_id], references: [id])
-  collector          Staff         @relation("RCReductionToCollector",       fields: [collector_id],       references: [id])
+  collector          Staff?        @relation("RCReductionToCollector",       fields: [collector_id],       references: [id])
   operator           Staff?        @relation("RCReductionOperator",           fields: [created_by],          references: [id])
 
   @@index([risk_controller_id])

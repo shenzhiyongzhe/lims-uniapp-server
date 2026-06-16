@@ -1777,6 +1777,7 @@ export class LoanAccountsService {
       const backup = item.data as any;
       return {
         ...item,
+        company_cost: backup?.loan?.company_cost ?? null,
         receiving_amount: backup?.loan?.receiving_amount ?? null,
         ownership: backup?.loan?.ownership ?? null,
       };
@@ -1821,6 +1822,7 @@ export class LoanAccountsService {
         user_id: loan.user_id,
         username: loan.user?.username || '',
         loan_amount: loan.loan_amount,
+        company_cost: loan.company_cost,
         receiving_amount: loan.receiving_amount,
         period_capital: loan.period_capital,
         period_interest: loan.period_interest,

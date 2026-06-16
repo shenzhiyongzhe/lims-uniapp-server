@@ -4,7 +4,8 @@ import { ReductionType } from '@prisma/client';
 export class CreateReductionRecordDto {
   /** 目标负责人 ID */
   @IsInt()
-  collector_id: number;
+  @IsOptional()
+  collector_id?: number;
 
   /** 减资类型：罚金 / 手续费 / 本金 */
   @IsEnum(ReductionType)

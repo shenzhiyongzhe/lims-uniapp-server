@@ -160,9 +160,6 @@ export class AssetManagementService implements OnModuleInit {
       select: { id: true, username: true, nickname: true },
     });
 
-    const asset = await this.prisma.riskControllerAssetManagement.findUnique({
-      where: { admin_id: userId },
-    });
 
     const loanAccountIds =
       await this.accessScopeService.getLoanAccountIdsByUserRole(
@@ -209,7 +206,7 @@ export class AssetManagementService implements OnModuleInit {
     ).filter((item) => item.totalAmount > 0);
 
     return {
-      id: asset?.id || 0,
+      id: 0,
       admin_id: userId,
       admin: staff,
       remaining_amount: total_amount - reduced_amount,
@@ -352,7 +349,7 @@ export class AssetManagementService implements OnModuleInit {
     });
 
     const counterpartyMap = new Map<
-      number,
+      number | null,
       { amountByType: Record<string, number> }
     >();
 
@@ -370,7 +367,7 @@ export class AssetManagementService implements OnModuleInit {
       counterpartyMap.set(counterpartyId, entry);
     }
 
-    const counterpartyIds = Array.from(counterpartyMap.keys());
+    const counterpartyIds = Array.from(counterpartyMap.keys()).filter(id => id !== null && id !== undefined);
     if (counterpartyIds.length === 0) {
       return [];
     }
@@ -695,43 +692,7 @@ export class AssetManagementService implements OnModuleInit {
     userId: number,
     _loanAccount: LoanAccount,
   ): Promise<void> {
-    const loanAccountIds =
-      await this.accessScopeService.getLoanAccountIdsByUserRole(
-        userId,
-        'risk_controller',
-      );
-    let total_amount = 0;
-
-    if (loanAccountIds.length > 0) {
-      const allLoanAccounts = await this.prisma.loanAccount.findMany({
-        where: {
-          id: { in: loanAccountIds },
-        },
-        select: {
-          handling_fee: true,
-          receiving_amount: true,
-          company_cost: true,
-        },
-      });
-
-      total_amount = allLoanAccounts.reduce(
-        (sum, acc) =>
-          sum +
-          Number(acc.handling_fee || 0) +
-          Number(acc.receiving_amount || 0) -
-          Number(acc.company_cost || 0),
-        0,
-      );
-    }
-
-    await this.prisma.riskControllerAssetManagement.upsert({
-      where: { admin_id: userId },
-      update: { total_amount },
-      create: {
-        admin_id: userId,
-        total_amount,
-      },
-    });
+    // No-op since RiskControllerAssetManagement table is deleted
   }
 
   // ─── 私有工具 ───────────────────────────────────────────────────────────
