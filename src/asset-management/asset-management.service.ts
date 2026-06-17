@@ -801,4 +801,88 @@ export class AssetManagementService implements OnModuleInit {
       ),
     };
   }
+
+  // ─── 管理员增减 ────────────────────────────────────────────────────────
+
+  /** 获取管理员增减总额（全局单行，id=1，不存在则初始化为 0） */
+  async getAdminAdjustTotal(): Promise<{ total: number }> {
+    const row = await this.prisma.adminAdjustment.upsert({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1, total: 0 },
+    });
+    return { total: Number(row.total) };
+  }
+
+  /** 管理员增减：delta 可正可负，事务写历史 */
+  async adminAdjust(
+    delta: number,
+    operator?: AssetOperator,
+    remark?: string,
+  ): Promise<{ total: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.adminAdjustment.upsert({
+        where: { id: 1 },
+        update: {},
+        create: { id: 1, total: 0 },
+      });
+      const oldTotal = Number(row.total);
+      const newTotal = oldTotal + delta;
+
+      await tx.adminAdjustment.update({
+        where: { id: 1 },
+        data: { total: newTotal },
+      });
+
+      let operatorUsername: string | null = null;
+      if (operator?.id) {
+        const op = await tx.staff.findUnique({
+          where: { id: operator.id },
+          select: { username: true },
+        });
+        operatorUsername = op?.username ?? null;
+      }
+
+      await tx.adminAdjustmentHistory.create({
+        data: {
+          delta,
+          old_total: oldTotal,
+          new_total: newTotal,
+          updated_by_admin_id: operator?.id ?? null,
+          updated_by_admin_username: operatorUsername,
+          remark: remark ?? null,
+        },
+      });
+
+      return { total: newTotal };
+    });
+  }
+
+  /** 管理员增减历史记录（分页，最新在前） */
+  async getAdminAdjustHistory(page = 1, pageSize = 100) {
+    const skip = (page - 1) * pageSize;
+    const [data, total] = await Promise.all([
+      this.prisma.adminAdjustmentHistory.findMany({
+        orderBy: { created_at: 'desc' },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.adminAdjustmentHistory.count(),
+    ]);
+    return {
+      data: data.map((r) => ({
+        id: r.id,
+        delta: Number(r.delta),
+        old_total: Number(r.old_total),
+        new_total: Number(r.new_total),
+        updated_by_admin_id: r.updated_by_admin_id,
+        updated_by_admin_username: r.updated_by_admin_username,
+        remark: r.remark,
+        created_at: r.created_at,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
 }

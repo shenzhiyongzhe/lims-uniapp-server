@@ -369,3 +369,27 @@ model RiskControllerReductionRecord {
   @@index([created_at])
   @@map("risk_controller_reduction_records")
 }
+
+/// 管理员增减总额（全局单行，id=1）
+model AdminAdjustment {
+  id         Int      @id @default(autoincrement())
+  total      Int      @default(0) // 累计增减总额
+  updated_at DateTime @updatedAt
+
+  @@map("admin_adjustment")
+}
+
+/// 管理员增减操作历史
+model AdminAdjustmentHistory {
+  id                        Int      @id @default(autoincrement())
+  delta                     Int      // 本次增减金额（正增/负减）
+  old_total                 Int      // 操作前总额
+  new_total                 Int      // 操作后总额
+  updated_by_admin_id       Int?
+  updated_by_admin_username String?  @db.VarChar(50)
+  remark                    String?  @db.VarChar(200)
+  created_at                DateTime @default(now())
+
+  @@index([created_at])
+  @@map("admin_adjustment_history")
+}

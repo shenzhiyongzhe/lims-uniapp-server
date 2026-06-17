@@ -26,6 +26,23 @@ import { QueryReductionCounterpartySummaryDto } from './dto/query-reduction-coun
 import { QueryDepositDailySummaryDto } from './dto/query-deposit-daily-summary.dto';
 import { QueryDepositRecordsDto } from './dto/query-deposit-records.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { AdminAdjustDto } from './dto/admin-adjust.dto';
+import { IsInt, IsOptional, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+
+class QueryPageDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  pageSize?: number;
+}
 
 @Controller('asset-management')
 @UseGuards(AuthGuard)
@@ -273,5 +290,50 @@ export class AssetManagementController {
       operator,
     );
     return ResponseHelper.success(data, '创建减资记录成功');
+  }
+
+  /** 获取管理员增减总额 */
+  @Get('admin-adjustment')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+  )
+  async getAdminAdjustTotal() {
+    const data = await this.assetManagementService.getAdminAdjustTotal();
+    return ResponseHelper.success(data, '获取管理员增减成功');
+  }
+
+  /** 管理员增减操作 */
+  @Put('admin-adjustment')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  async adminAdjust(
+    @Body() dto: AdminAdjustDto,
+    @CurrentUser() operator: { id: number; role: string },
+  ) {
+    const data = await this.assetManagementService.adminAdjust(
+      dto.delta,
+      operator,
+      dto.remark,
+    );
+    return ResponseHelper.success(data, '管理员增减成功');
+  }
+
+  /** 管理员增减历史记录 */
+  @Get('admin-adjustment-history')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+  )
+  async getAdminAdjustHistory(@Query() query: QueryPageDto) {
+    const data = await this.assetManagementService.getAdminAdjustHistory(
+      query.page ?? 1,
+      query.pageSize ?? 100,
+    );
+    return ResponseHelper.success(data, '获取管理员增减历史成功');
   }
 }
