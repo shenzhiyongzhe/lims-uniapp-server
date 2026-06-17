@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { LoanAccount, Prisma, ReductionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateCollectorAssetDto } from './dto/update-collector-asset.dto';
@@ -15,6 +21,7 @@ import { QueryDepositDailySummaryDto } from './dto/query-deposit-daily-summary.d
 import { QueryDepositRecordsDto } from './dto/query-deposit-records.dto';
 import {
   getBusinessDayTimestampRange,
+  getShanghaiBusinessDate,
   utcMidnightFromYmd,
 } from '../common/business-date';
 
@@ -489,6 +496,31 @@ export class AssetManagementService implements OnModuleInit {
       page,
       pageSize,
     };
+  }
+
+  /** 删除今日减资记录，供历史列表长按撤销使用 */
+  async deleteReductionRecord(id: number) {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw new BadRequestException('减资记录不存在');
+    }
+
+    const businessDate = getShanghaiBusinessDate();
+    const { start, end } = getBusinessDayTimestampRange(businessDate);
+
+    const record = await this.prisma.riskControllerReductionRecord.findUnique({
+      where: { id },
+      select: { id: true, created_at: true },
+    });
+    if (!record) {
+      throw new NotFoundException('减资记录不存在');
+    }
+    if (record.created_at < start || record.created_at >= end) {
+      throw new BadRequestException('只能撤销今日减资记录');
+    }
+
+    return this.prisma.riskControllerReductionRecord.delete({
+      where: { id },
+    });
   }
 
   /** 存出款按日汇总（日历展示） */

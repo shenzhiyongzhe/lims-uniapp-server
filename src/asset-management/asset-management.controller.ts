@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -156,6 +157,17 @@ export class AssetManagementController {
     }
     const data = await this.assetManagementService.findReductionRecords(query);
     return ResponseHelper.success(data, '获取减资明细成功');
+  }
+
+  /** 撤销今日减资记录：删除原记录，避免流水页出现反向记录 */
+  @Delete('reduction-records/:id')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  async deleteReductionRecord(@Param('id') id: string) {
+    const data = await this.assetManagementService.deleteReductionRecord(
+      parseInt(id, 10),
+    );
+    return ResponseHelper.success(data, '撤销减资记录成功');
   }
 
   @Get('collector/:userId')
