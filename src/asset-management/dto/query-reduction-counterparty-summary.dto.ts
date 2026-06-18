@@ -1,4 +1,4 @@
-import { IsEnum, IsNumber, IsOptional } from 'class-validator';
+import { IsEnum, IsNumber, IsOptional, IsString, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ReductionType } from '@prisma/client';
 
@@ -19,4 +19,10 @@ export class QueryReductionCounterpartySummaryDto {
   @IsOptional()
   @IsEnum(ReductionType)
   reductionType?: ReductionType;
+
+  /** 业务日筛选（可选，YYYY-MM-DD） */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date 必须为 YYYY-MM-DD 格式' })
+  date?: string;
 }

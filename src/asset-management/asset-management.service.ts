@@ -353,11 +353,21 @@ export class AssetManagementService implements OnModuleInit {
   async findReductionCounterpartySummary(
     query: QueryReductionCounterpartySummaryDto,
   ) {
-    const { perspective, adminId, reductionType } = query;
+    const { perspective, adminId, reductionType, date } = query;
     const where: Prisma.RiskControllerReductionRecordWhereInput =
       perspective === ReductionPerspective.collector
         ? { collector_id: adminId }
         : { risk_controller_id: adminId };
+    if (date) {
+      const [yearStr, monthStr, dayStr] = date.split('-');
+      const businessDate = utcMidnightFromYmd(
+        Number(yearStr),
+        Number(monthStr),
+        Number(dayStr),
+      );
+      const { start, end } = getBusinessDayTimestampRange(businessDate);
+      where.created_at = { gte: start, lt: end };
+    }
 
     const rows = await this.prisma.riskControllerReductionRecord.groupBy({
       by:
