@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ManagementRoles } from '@prisma/client';
+import { ManagementRoles, ReductionType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 export type ResolvedDataScope = {
@@ -133,8 +133,24 @@ export class AccessScopeService {
           handling_fee: true,
         },
       });
+      const amountReductionSums = await this.prisma.riskControllerReductionRecord.groupBy({
+        by: ['collector_id'],
+        where: {
+          risk_controller_id: userId,
+          reduction_type: ReductionType.amount,
+        },
+        _sum: {
+          amount: true,
+        },
+      });
+      const amountReductionMap = new Map<number, number>();
+      for (const row of amountReductionSums) {
+        if (row.collector_id) {
+          amountReductionMap.set(row.collector_id, row._sum.amount || 0);
+        }
+      }
 
-      const sumsMap = new Map<number, { remaining_amount_sum: number; handling_fee_sum: number }>();
+      const sumsMap = new Map<number, { remaining_amount_sum: number; handling_fee_sum: number; fines_sum: number }>();
       for (const sum of loanSums) {
         if (sum.collector_id) {
           const paidCapital = sum._sum.paid_capital || 0;
@@ -142,20 +158,23 @@ export class AccessScopeService {
           const totalFines = sum._sum.total_fines || 0;
           const loanAmount = sum._sum.loan_amount || 0;
           const handlingFee = sum._sum.handling_fee || 0;
+          const amountReduction = amountReductionMap.get(sum.collector_id) || 0;
 
           sumsMap.set(sum.collector_id, {
-            remaining_amount_sum: paidCapital + paidInterest + totalFines - loanAmount + handlingFee,
+            remaining_amount_sum: paidCapital + paidInterest + totalFines - loanAmount + handlingFee - amountReduction,
             handling_fee_sum: handlingFee,
+            fines_sum: totalFines,
           });
         }
       }
 
       const result = collectors.map((s) => {
-        const sums = sumsMap.get(s.id) || { remaining_amount_sum: 0, handling_fee_sum: 0 };
+        const sums = sumsMap.get(s.id) || { remaining_amount_sum: 0, handling_fee_sum: 0, fines_sum: 0 };
         return {
           ...s,
           remaining_amount_sum: sums.remaining_amount_sum,
           handling_fee_sum: sums.handling_fee_sum,
+          fines_sum: sums.fines_sum,
         };
       });
 
