@@ -15,12 +15,6 @@ import {
   calcLoanDisbursementDeltaTotal,
   calcPaidAmountTotal,
 } from '../common/loan-account-math';
-import {
-  buildReductionWhereFromLoanScope,
-  findReductionItems,
-  ReductionBalanceItem,
-  sumReductionAmount,
-} from '../common/reduction-balance';
 
 type DailyLoanBalanceItemType =
   | 'TODAY_LOAN'
@@ -50,11 +44,9 @@ type DailyLoanBalanceResult = {
   previousTotal: number;
   todayLoanTotal: number;
   todayRepaidTotal: number;
-  todayReductionTotal: number;
   todayTotal: number;
   todayLoanItems: DailyLoanBalanceItem[];
   todayRepaidItems: DailyLoanBalanceItem[];
-  todayReductionItems: ReductionBalanceItem[];
   expression: {
     todayLoans: string;
     todayRepayments: string;
@@ -305,14 +297,13 @@ export class RepaymentRecordsService {
       loan_account: scope.whereClause,
       paid_at: { gte: dayStart, lte: dayEnd },
     };
-    const reductionWhere = buildReductionWhereFromLoanScope(scope.whereClause);
 
     let previousTotal = 0;
     let previousRow: any = null;
 
     if (collectorId || riskControllerId || scope.isAllAccessible) {
       // 交集模式或 admin 全量模式下，动态算出之前的累计余额（避免读取陈旧归档）
-      const [loansBefore, repaymentsBefore, reductionsBefore] = await Promise.all([
+      const [loansBefore, repaymentsBefore] = await Promise.all([
         this.prisma.loanAccount.aggregate({
           where: {
             ...scope.whereClause,
@@ -332,7 +323,6 @@ export class RepaymentRecordsService {
             paid_amount: true,
           },
         }),
-        sumReductionAmount(this.prisma, reductionWhere, { lt: dayStart }),
       ]);
       const totalLentBefore = calcLoanDisbursementDelta({
         company_cost: loansBefore._sum.company_cost,
@@ -342,7 +332,7 @@ export class RepaymentRecordsService {
         { paid_amount: repaymentsBefore._sum.paid_amount },
       ]);
 
-      previousTotal = totalLentBefore + totalRepaidBefore - reductionsBefore;
+      previousTotal = totalLentBefore + totalRepaidBefore;
     } else {
       // 单用户模式下，从数据库归档表获取前一日的今日合计
       previousRow = await this.prisma.dailyLoanBalance.findFirst({
@@ -355,7 +345,7 @@ export class RepaymentRecordsService {
       previousTotal = Number(previousRow?.today_total ?? 0);
     }
 
-    const [todayLoans, todayRepayments, todayReductionItems] = await Promise.all([
+    const [todayLoans, todayRepayments] = await Promise.all([
       this.prisma.loanAccount.findMany({
         where: loansWhere,
         select: {
@@ -376,7 +366,6 @@ export class RepaymentRecordsService {
         },
         orderBy: { paid_at: 'asc' },
       }),
-      findReductionItems(this.prisma, reductionWhere, dayStart, dayEnd),
     ]);
 
     const todayLoanItems: DailyLoanBalanceItem[] = todayLoans.map((loan) => {
@@ -413,32 +402,22 @@ export class RepaymentRecordsService {
     const todayRepaidTotal = calcPaidAmountTotal(
       todayRepaidItems.map((item) => ({ paid_amount: item.amount })),
     );
-    const todayReductionTotal = todayReductionItems.reduce(
-      (sum, item) => sum + item.amount,
-      0,
-    );
-    const todayNetRepaidTotal = todayRepaidTotal - todayReductionTotal;
-    const todayTotal =
-      previousTotal + todayLoanTotal + todayNetRepaidTotal;
+    const todayTotal = previousTotal + todayLoanTotal + todayRepaidTotal;
 
     const result: DailyLoanBalanceResult = {
       previousTotal,
       todayLoanTotal,
       todayRepaidTotal,
-      todayReductionTotal,
       todayTotal,
       todayLoanItems,
       todayRepaidItems,
-      todayReductionItems,
       expression: {
         todayLoans: this.formatTodayLoansExpression(todayLoans, todayLoanTotal),
-        todayRepayments: this.formatRepaymentsWithReductionsExpression(
+        todayRepayments: this.formatRepaymentExpression(
           todayRepaidItems,
           todayRepaidTotal,
-          todayReductionItems,
-          todayReductionTotal,
         ),
-        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayNetRepaidTotal)} = ${this.formatNumber(todayTotal)}`,
+        summary: `${this.formatNumber(previousTotal)} ${this.formatSigned(todayLoanTotal)} ${this.formatSigned(todayRepaidTotal)} = ${this.formatNumber(todayTotal)}`,
       },
       date: businessDate.toISOString().slice(0, 10),
       userId: scopedBalanceUserId,
@@ -590,13 +569,10 @@ export class RepaymentRecordsService {
     return `${terms.join('')}=${this.formatNumber(total)}`;
   }
 
-  private formatRepaymentsWithReductionsExpression(
+  private formatRepaymentExpression(
     repaidItems: DailyLoanBalanceItem[],
     repaidTotal: number,
-    reductionItems: ReductionBalanceItem[],
-    reductionTotal: number,
   ): string {
-    const netTotal = repaidTotal - reductionTotal;
     const parts: string[] = [];
 
     for (const item of repaidItems) {
@@ -605,19 +581,10 @@ export class RepaymentRecordsService {
       parts.push(`${signed}${item.label || ''}`);
     }
 
-    for (const item of reductionItems) {
-      const base = this.formatNumber(Math.abs(item.amount));
-      if (item.amount >= 0) {
-        parts.push(`-${base}${item.label}`);
-      } else {
-        parts.push(`+${base}${item.label}`);
-      }
-    }
-
     if (!parts.length) {
       return `0`;
     }
-    return `${parts.join('')}=${this.formatNumber(netTotal)}`;
+    return `${parts.join('')}=${this.formatNumber(repaidTotal)}`;
   }
 
   private async buildDepositProcess(
