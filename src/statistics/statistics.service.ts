@@ -48,10 +48,7 @@ export class StatisticsService {
       collectorId,
       riskControllerId,
     );
-    return this.getDetailedStatisticsByLoanScope(
-      scope.whereClause,
-      targetDate,
-    );
+    return this.getDetailedStatisticsByLoanScope(scope.whereClause, targetDate);
   }
 
   private async getDetailedStatisticsByLoanScope(

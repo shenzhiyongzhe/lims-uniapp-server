@@ -74,7 +74,6 @@ export class StaffService {
         });
       }
 
-
       return staff;
     });
   }
@@ -136,8 +135,11 @@ export class StaffService {
           await tx.collectorAssetManagement.update({
             where: { admin_id: toId },
             data: {
-              total_handling_fee: Number(toAsset.total_handling_fee) + Number(fromAsset.total_handling_fee),
-              total_fines: Number(toAsset.total_fines) + Number(fromAsset.total_fines),
+              total_handling_fee:
+                Number(toAsset.total_handling_fee) +
+                Number(fromAsset.total_handling_fee),
+              total_fines:
+                Number(toAsset.total_fines) + Number(fromAsset.total_fines),
               deposit: Number(toAsset.deposit) + Number(fromAsset.deposit),
             },
           });
@@ -163,14 +165,12 @@ export class StaffService {
           where: { collector_id: fromId },
           data: { collector_id: toId },
         });
-
       } else if (role === ManagementRoles.RISK_CONTROLLER) {
         // 1. 迁移 LoanAccount (risk_controller_id)
         await tx.loanAccount.updateMany({
           where: { risk_controller_id: fromId },
           data: { risk_controller_id: toId },
         });
-
 
         // 3. 迁移 RiskControllerReductionRecord (risk_controller_id)
         await tx.riskControllerReductionRecord.updateMany({
@@ -214,22 +214,38 @@ export class StaffService {
           }
 
           let mergedRepaidItems: any[] = [];
-          if (dayB.today_repaid_items && Array.isArray(dayB.today_repaid_items)) {
-            mergedRepaidItems = mergedRepaidItems.concat(dayB.today_repaid_items);
+          if (
+            dayB.today_repaid_items &&
+            Array.isArray(dayB.today_repaid_items)
+          ) {
+            mergedRepaidItems = mergedRepaidItems.concat(
+              dayB.today_repaid_items,
+            );
           }
-          if (dayA.today_repaid_items && Array.isArray(dayA.today_repaid_items)) {
-            mergedRepaidItems = mergedRepaidItems.concat(dayA.today_repaid_items);
+          if (
+            dayA.today_repaid_items &&
+            Array.isArray(dayA.today_repaid_items)
+          ) {
+            mergedRepaidItems = mergedRepaidItems.concat(
+              dayA.today_repaid_items,
+            );
           }
 
           await tx.dailyLoanBalance.update({
             where: { id: dayB.id },
             data: {
-              previous_total: Number(dayB.previous_total) + Number(dayA.previous_total),
-              today_loan_total: Number(dayB.today_loan_total) + Number(dayA.today_loan_total),
-              today_repaid_total: Number(dayB.today_repaid_total) + Number(dayA.today_repaid_total),
+              previous_total:
+                Number(dayB.previous_total) + Number(dayA.previous_total),
+              today_loan_total:
+                Number(dayB.today_loan_total) + Number(dayA.today_loan_total),
+              today_repaid_total:
+                Number(dayB.today_repaid_total) +
+                Number(dayA.today_repaid_total),
               today_total: Number(dayB.today_total) + Number(dayA.today_total),
-              today_loan_items: mergedLoanItems.length > 0 ? mergedLoanItems : undefined,
-              today_repaid_items: mergedRepaidItems.length > 0 ? mergedRepaidItems : undefined,
+              today_loan_items:
+                mergedLoanItems.length > 0 ? mergedLoanItems : undefined,
+              today_repaid_items:
+                mergedRepaidItems.length > 0 ? mergedRepaidItems : undefined,
             },
           });
 
@@ -259,4 +275,3 @@ export class StaffService {
     });
   }
 }
-

@@ -226,10 +226,7 @@ export class BackupService {
           },
         },
       },
-      orderBy: [
-        { loan_id: 'desc' },
-        { period: 'asc' },
-      ],
+      orderBy: [{ loan_id: 'desc' }, { period: 'asc' }],
     });
 
     for (const s of schedules) {
@@ -322,7 +319,9 @@ export class BackupService {
       { header: '发生时间', key: 'created_at', width: 20 },
       { header: '备注', key: 'remark', width: 20 },
     ];
-    const schedLogs = await this.prisma.repaymentScheduleOperationLog.findMany({ orderBy: { id: 'desc' } });
+    const schedLogs = await this.prisma.repaymentScheduleOperationLog.findMany({
+      orderBy: { id: 'desc' },
+    });
     for (const log of schedLogs) {
       sheetSchedLogs.addRow({
         id: log.id,
@@ -353,7 +352,9 @@ export class BackupService {
       { header: '日志内容', key: 'content', width: 40 },
       { header: '时间', key: 'created_at', width: 20 },
     ];
-    const loanLogs = await this.prisma.loanAccountOperationLog.findMany({ orderBy: { id: 'desc' } });
+    const loanLogs = await this.prisma.loanAccountOperationLog.findMany({
+      orderBy: { id: 'desc' },
+    });
     for (const log of loanLogs) {
       sheetLoanLogs.addRow({
         id: log.id,
@@ -378,7 +379,9 @@ export class BackupService {
       { header: '今日结余', key: 'today_total', width: 15 },
       { header: '创建时间', key: 'created_at', width: 20 },
     ];
-    const dailyBalances = await this.prisma.dailyLoanBalance.findMany({ orderBy: { date: 'desc' } });
+    const dailyBalances = await this.prisma.dailyLoanBalance.findMany({
+      orderBy: { date: 'desc' },
+    });
     for (const d of dailyBalances) {
       sheetDaily.addRow({
         id: d.id,
@@ -403,7 +406,9 @@ export class BackupService {
       { header: '创建时间', key: 'created_at', width: 20 },
       { header: '更新时间', key: 'updated_at', width: 20 },
     ];
-    const collAssets = await this.prisma.collectorAssetManagement.findMany({ orderBy: { id: 'asc' } });
+    const collAssets = await this.prisma.collectorAssetManagement.findMany({
+      orderBy: { id: 'asc' },
+    });
     for (const ca of collAssets) {
       sheetCollAssets.addRow({
         id: ca.id,
@@ -415,7 +420,6 @@ export class BackupService {
         updated_at: this.formatDate(ca.updated_at, true),
       });
     }
-
 
     // 8.5 减资明细 Sheet
     const sheetReductions = workbook.addWorksheet('风控减资明细');
@@ -436,13 +440,15 @@ export class BackupService {
       handling_fee: '手续费',
       amount: '本金',
     };
-    const reductions = await this.prisma.riskControllerReductionRecord.findMany({
-      orderBy: { id: 'desc' },
-      include: {
-        risk_controller: { select: { username: true } },
-        collector: { select: { username: true } },
+    const reductions = await this.prisma.riskControllerReductionRecord.findMany(
+      {
+        orderBy: { id: 'desc' },
+        include: {
+          risk_controller: { select: { username: true } },
+          collector: { select: { username: true } },
+        },
       },
-    });
+    );
     for (const r of reductions) {
       sheetReductions.addRow({
         id: r.id,
@@ -473,7 +479,9 @@ export class BackupService {
       { header: '发生时间', key: 'created_at', width: 20 },
       { header: '备注', key: 'remark', width: 25 },
     ];
-    const histories = await this.prisma.assetReductionHistory.findMany({ orderBy: { id: 'desc' } });
+    const histories = await this.prisma.assetReductionHistory.findMany({
+      orderBy: { id: 'desc' },
+    });
     for (const h of histories) {
       sheetAssetHist.addRow({
         id: h.id,
@@ -508,7 +516,9 @@ export class BackupService {
       { header: '删除时间', key: 'deleted_at', width: 20 },
       { header: '操作人ID', key: 'deleted_by', width: 12 },
     ];
-    const deletedLoans = await this.prisma.deletedLoan.findMany({ orderBy: { id: 'desc' } });
+    const deletedLoans = await this.prisma.deletedLoan.findMany({
+      orderBy: { id: 'desc' },
+    });
     for (const dl of deletedLoans) {
       sheetDeleted.addRow({
         id: dl.id,

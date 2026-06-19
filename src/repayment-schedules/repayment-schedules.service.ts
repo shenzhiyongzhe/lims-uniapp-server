@@ -182,9 +182,11 @@ export class RepaymentSchedulesService {
       if (operatorAdminId) {
         const op = await tx.staff.findUnique({
           where: { id: operatorAdminId },
-          select: { nickname: true },
+          select: { username: true },
         });
-        operatorName = op?.nickname ?? null;
+        operatorName = op?.username
+          ? `${op.username}(${operatorAdminId})`
+          : null;
       }
       const paidAmount = inputCapital + inputInterest + finesValue;
       const nextPaid = paidAmount;

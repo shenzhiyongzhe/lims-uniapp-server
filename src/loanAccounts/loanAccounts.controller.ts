@@ -33,7 +33,11 @@ export class LoanAccountsController {
   ) {}
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+  )
   @Get()
   async findAll(): Promise<ApiResponseDto> {
     const loans = await this.loanAccountsService.findAll();
@@ -47,7 +51,8 @@ export class LoanAccountsController {
     @Query('userId') queryUserId?: string,
   ): Promise<ApiResponseDto> {
     const targetUserId = queryUserId ? parseInt(queryUserId, 10) : user.id;
-    const staffs = await this.accessScopeService.getAssociatedAdmins(targetUserId);
+    const staffs =
+      await this.accessScopeService.getAssociatedAdmins(targetUserId);
     return ResponseHelper.success(staffs, '获取相关业务人员成功');
   }
 
@@ -126,7 +131,11 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.ADMIN_LIMITED)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.ADMIN_LIMITED,
+  )
   @Get('deleted')
   async findDeletedLoans(): Promise<ApiResponseDto> {
     try {
@@ -204,7 +213,11 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
-  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN, ManagementRoles.RISK_CONTROLLER)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.RISK_CONTROLLER,
+  )
   @Post()
   async create(
     @Body() body: CreateLoanAccountDto,

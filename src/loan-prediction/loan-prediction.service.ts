@@ -30,7 +30,6 @@ export class LoanPredictionService {
     const pref = (prefix ?? '').trim();
 
     if (pref) {
-
       if (fieldName === 'payer_name') {
         const allPredictions = await this.prisma.loanFieldPrediction.findMany({
           where: { field_name: 'payer_name' },

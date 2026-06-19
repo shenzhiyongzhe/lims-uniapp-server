@@ -158,7 +158,7 @@ export class AuthController {
         data: {
           role: 'PENDING',
           openid,
-          nickname: nickname || "微信用户",
+          nickname: nickname || '微信用户',
           username: nickname ? nickname.slice(0, 10).trim() : null,
           avatar_url: avatar_url || null,
         },

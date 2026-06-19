@@ -80,7 +80,8 @@ export class AssetManagementController {
   ) {
     if (operator.role === 'COLLECTOR' || operator.role === 'RISK_CONTROLLER') {
       query.adminId = operator.id;
-      query.assetType = operator.role === 'COLLECTOR' ? 'collector' : 'risk_controller';
+      query.assetType =
+        operator.role === 'COLLECTOR' ? 'collector' : 'risk_controller';
     }
     const data = await this.assetManagementService.findAssetHistory(query);
     return ResponseHelper.success(data, '获取资产变更历史成功');

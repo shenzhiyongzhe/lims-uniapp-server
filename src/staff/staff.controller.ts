@@ -35,10 +35,7 @@ export class StaffController {
     @Param('id') id: string,
     @Body() body: UpdateStaffDto,
   ): Promise<ApiResponseDto> {
-    const updated = await this.staffService.updateStaff(
-      parseInt(id, 10),
-      body,
-    );
+    const updated = await this.staffService.updateStaff(parseInt(id, 10), body);
     return ResponseHelper.success(updated, '更新业务人员成功');
   }
 
@@ -62,7 +59,10 @@ export class StaffController {
     @Body('fromStaffId') fromStaffId: number,
     @Body('toStaffId') toStaffId: number,
   ): Promise<ApiResponseDto> {
-    const result = await this.staffService.migrateStaffData(fromStaffId, toStaffId);
+    const result = await this.staffService.migrateStaffData(
+      fromStaffId,
+      toStaffId,
+    );
     return ResponseHelper.success(result, '数据迁移成功');
   }
 }

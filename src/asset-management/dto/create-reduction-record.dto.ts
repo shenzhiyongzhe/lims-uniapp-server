@@ -1,4 +1,10 @@
-import { IsEnum, IsInt, IsOptional, IsString, NotEquals } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  NotEquals,
+} from 'class-validator';
 import { ReductionType } from '@prisma/client';
 
 export class CreateReductionRecordDto {

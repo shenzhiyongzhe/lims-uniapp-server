@@ -514,9 +514,7 @@ export class RepaymentRecordsService {
     rows.forEach((row) => {
       // Map paid_at to the business day it belongs to:
       // paid_at + 2h gives us the "business timestamp" starting from 00:00 of the business day
-      const businessTs = new Date(
-        row.paid_at.getTime() + TWO_HOURS_MS,
-      );
+      const businessTs = new Date(row.paid_at.getTime() + TWO_HOURS_MS);
       const date = businessTs.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
       old.totalPaidAmount += Number(row.paid_amount ?? 0);
@@ -711,9 +709,12 @@ export class RepaymentRecordsService {
       repaid_periods: record.loan_account?.repaid_periods || 0,
       total_periods: record.loan_account?.total_periods || undefined,
       remark: record.remark || undefined,
-      paid_capital: record.paid_capital != null ? Number(record.paid_capital) : undefined,
-      paid_interest: record.paid_interest != null ? Number(record.paid_interest) : undefined,
-      paid_fines: record.paid_fines != null ? Number(record.paid_fines) : undefined,
+      paid_capital:
+        record.paid_capital != null ? Number(record.paid_capital) : undefined,
+      paid_interest:
+        record.paid_interest != null ? Number(record.paid_interest) : undefined,
+      paid_fines:
+        record.paid_fines != null ? Number(record.paid_fines) : undefined,
     };
   }
 }

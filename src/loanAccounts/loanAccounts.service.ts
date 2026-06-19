@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   LoanAccount,
@@ -16,7 +20,11 @@ import {
   getShanghaiBusinessTodayAndYesterday,
   getBusinessDayTimestampRange,
 } from '../common/business-date';
-import { ensureOverdueRecordsForLoan, reconcileOverdueRecordsForLoan, removeOverdueRecordsForSchedules } from '../common/sync-overdue-records';
+import {
+  ensureOverdueRecordsForLoan,
+  reconcileOverdueRecordsForLoan,
+  removeOverdueRecordsForSchedules,
+} from '../common/sync-overdue-records';
 import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
@@ -39,11 +47,12 @@ export class LoanAccountsService {
     if (operatorAdminId) {
       const staff = await tx.staff.findUnique({
         where: { id: operatorAdminId },
-        select: { nickname: true, username: true },
+        select: { username: true },
       });
-      if (staff) {
-        operatorAdminName =
-          staff.nickname || staff.username || `ID:${operatorAdminId}`;
+      if (staff && staff.username) {
+        operatorAdminName = `${staff.username}(${operatorAdminId})`;
+      } else {
+        operatorAdminName = `ID:${operatorAdminId}`;
       }
     }
 
@@ -412,9 +421,18 @@ export class LoanAccountsService {
         }
       }
 
-      let finalCapital = data.period_capital !== undefined ? Number(data.period_capital) : Number(oldLoan.period_capital || 0);
-      let finalInterest = data.period_interest !== undefined ? Number(data.period_interest) : Number(oldLoan.period_interest || 0);
-      let finalLoanAmount = data.loan_amount !== undefined ? Number(data.loan_amount) : Number(oldLoan.loan_amount || 0);
+      const finalCapital =
+        data.period_capital !== undefined
+          ? Number(data.period_capital)
+          : Number(oldLoan.period_capital || 0);
+      const finalInterest =
+        data.period_interest !== undefined
+          ? Number(data.period_interest)
+          : Number(oldLoan.period_interest || 0);
+      const finalLoanAmount =
+        data.loan_amount !== undefined
+          ? Number(data.loan_amount)
+          : Number(oldLoan.loan_amount || 0);
 
       if (data.loan_amount !== undefined)
         updateData.loan_amount = data.loan_amount;
@@ -422,8 +440,10 @@ export class LoanAccountsService {
         updateData.receiving_amount = data.receiving_amount;
       if (data.to_hand_ratio !== undefined)
         updateData.to_hand_ratio = data.to_hand_ratio;
-      if (data.period_capital !== undefined) updateData.period_capital = data.period_capital;
-      if (data.period_interest !== undefined) updateData.period_interest = data.period_interest;
+      if (data.period_capital !== undefined)
+        updateData.period_capital = data.period_capital;
+      if (data.period_interest !== undefined)
+        updateData.period_interest = data.period_interest;
       if (data.handling_fee !== undefined)
         updateData.handling_fee = data.handling_fee;
 
@@ -450,14 +470,22 @@ export class LoanAccountsService {
       // Calculate daily_repayment automatically if capital/interest are updated
       if (data.daily_repayment !== undefined) {
         updateData.daily_repayment = data.daily_repayment;
-      } else if (data.period_capital !== undefined || data.period_interest !== undefined) {
+      } else if (
+        data.period_capital !== undefined ||
+        data.period_interest !== undefined
+      ) {
         updateData.daily_repayment = Math.round(finalCapital + finalInterest);
       }
 
       // Calculate due_end_date automatically if total_periods or due_start_date changes, and due_end_date is not provided
       if (data.due_end_date === undefined) {
-        const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
-        const finalPeriods = updateData.total_periods !== undefined ? updateData.total_periods : oldLoan.total_periods;
+        const finalStartDate =
+          newDueStartDate ||
+          (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
+        const finalPeriods =
+          updateData.total_periods !== undefined
+            ? updateData.total_periods
+            : oldLoan.total_periods;
         if (finalStartDate && finalPeriods > 0) {
           const endDate = new Date(finalStartDate);
           endDate.setUTCDate(finalStartDate.getUTCDate() + finalPeriods - 1);
@@ -467,8 +495,12 @@ export class LoanAccountsService {
 
       // If due_end_date was updated but total_periods wasn't, calculate total_periods based on dates
       if (data.due_end_date !== undefined && data.total_periods === undefined) {
-        const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
-        const finalEndDate = updateData.due_end_date || (oldLoan.due_end_date ? new Date(oldLoan.due_end_date) : null);
+        const finalStartDate =
+          newDueStartDate ||
+          (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
+        const finalEndDate =
+          updateData.due_end_date ||
+          (oldLoan.due_end_date ? new Date(oldLoan.due_end_date) : null);
         if (finalStartDate && finalEndDate) {
           const diffTime = finalEndDate.getTime() - finalStartDate.getTime();
           const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) + 1;
@@ -513,11 +545,25 @@ export class LoanAccountsService {
         data.due_end_date !== undefined;
 
       if (isScheduleUpdateNeeded) {
-        const finalStartDate = newDueStartDate || (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
-        const finalPeriods = updateData.total_periods !== undefined ? updateData.total_periods : oldLoan.total_periods;
-        const finalCapital = updateData.period_capital !== undefined ? Number(updateData.period_capital) : Number(oldLoan.period_capital || 0);
-        const finalInterest = updateData.period_interest !== undefined ? Number(updateData.period_interest) : Number(oldLoan.period_interest || 0);
-        const finalLoanAmount = updateData.loan_amount !== undefined ? Number(updateData.loan_amount) : Number(oldLoan.loan_amount || 0);
+        const finalStartDate =
+          newDueStartDate ||
+          (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
+        const finalPeriods =
+          updateData.total_periods !== undefined
+            ? updateData.total_periods
+            : oldLoan.total_periods;
+        const finalCapital =
+          updateData.period_capital !== undefined
+            ? Number(updateData.period_capital)
+            : Number(oldLoan.period_capital || 0);
+        const finalInterest =
+          updateData.period_interest !== undefined
+            ? Number(updateData.period_interest)
+            : Number(oldLoan.period_interest || 0);
+        const finalLoanAmount =
+          updateData.loan_amount !== undefined
+            ? Number(updateData.loan_amount)
+            : Number(oldLoan.loan_amount || 0);
 
         if (finalStartDate && finalPeriods > 0) {
           // Fetch existing schedules
@@ -528,29 +574,34 @@ export class LoanAccountsService {
 
           // Compute new expected schedules
           let remainingPrincipal = finalLoanAmount;
-          const calculatedSchedules = Array.from({ length: finalPeriods }).map((_, idx) => {
-            let curCapital = 0;
-            if (idx < finalPeriods - 1) {
-              curCapital = Math.min(finalCapital, Math.max(0, remainingPrincipal));
-            } else {
-              curCapital = Math.max(0, remainingPrincipal);
-            }
-            remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
+          const calculatedSchedules = Array.from({ length: finalPeriods }).map(
+            (_, idx) => {
+              let curCapital = 0;
+              if (idx < finalPeriods - 1) {
+                curCapital = Math.min(
+                  finalCapital,
+                  Math.max(0, remainingPrincipal),
+                );
+              } else {
+                curCapital = Math.max(0, remainingPrincipal);
+              }
+              remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
 
-            const curInterest = finalInterest;
-            const dueAmount = curCapital + curInterest;
+              const curInterest = finalInterest;
+              const dueAmount = curCapital + curInterest;
 
-            const d = new Date(finalStartDate);
-            d.setUTCDate(finalStartDate.getUTCDate() + idx);
+              const d = new Date(finalStartDate);
+              d.setUTCDate(finalStartDate.getUTCDate() + idx);
 
-            return {
-              period: idx + 1,
-              due_start_date: d,
-              capital: curCapital,
-              interest: finalInterest || null,
-              due_amount: dueAmount,
-            };
-          });
+              return {
+                period: idx + 1,
+                due_start_date: d,
+                capital: curCapital,
+                interest: finalInterest || null,
+                due_amount: dueAmount,
+              };
+            },
+          );
 
           // Update existing schedules, create new ones, or delete excess ones
           for (let idx = 0; idx < finalPeriods; idx++) {
@@ -558,7 +609,10 @@ export class LoanAccountsService {
             if (idx < schedules.length) {
               // Update existing
               const targetSched = schedules[idx];
-              const newStatus = this.determineScheduleStatus(calc.due_start_date, targetSched.status);
+              const newStatus = this.determineScheduleStatus(
+                calc.due_start_date,
+                targetSched.status,
+              );
               await tx.repaymentSchedule.update({
                 where: { id: targetSched.id },
                 data: {
@@ -572,7 +626,10 @@ export class LoanAccountsService {
               });
             } else {
               // Create new
-              const newStatus = this.determineScheduleStatus(calc.due_start_date, 'pending');
+              const newStatus = this.determineScheduleStatus(
+                calc.due_start_date,
+                'pending',
+              );
               await tx.repaymentSchedule.create({
                 data: {
                   loan_id: id,
@@ -624,8 +681,6 @@ export class LoanAccountsService {
           });
         }
       }
-
-
 
       // Log changes
       const staffs = await tx.staff.findMany({
@@ -1177,33 +1232,29 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, negotiatedStatus] }
         : negotiatedStatus;
 
-    const [
-      pendingNegotiatedAgg,
-      allLoansFeeAgg,
-      blacklistAgg,
-      negotiatedAgg,
-    ] = await Promise.all([
-      this.prisma.loanAccount.aggregate({
-        where: pendingNegotiatedWhere,
-        _sum: {
-          loan_amount: true,
-          paid_capital: true,
-          paid_interest: true,
-        },
-      }),
-      this.prisma.loanAccount.aggregate({
-        where: baseWhere,
-        _sum: { handling_fee: true, total_fines: true },
-      }),
-      this.prisma.loanAccount.aggregate({
-        where: blacklistWhere,
-        _sum: { loan_amount: true },
-      }),
-      this.prisma.loanAccount.aggregate({
-        where: negotiatedWhere,
-        _sum: { loan_amount: true },
-      }),
-    ]);
+    const [pendingNegotiatedAgg, allLoansFeeAgg, blacklistAgg, negotiatedAgg] =
+      await Promise.all([
+        this.prisma.loanAccount.aggregate({
+          where: pendingNegotiatedWhere,
+          _sum: {
+            loan_amount: true,
+            paid_capital: true,
+            paid_interest: true,
+          },
+        }),
+        this.prisma.loanAccount.aggregate({
+          where: baseWhere,
+          _sum: { handling_fee: true, total_fines: true },
+        }),
+        this.prisma.loanAccount.aggregate({
+          where: blacklistWhere,
+          _sum: { loan_amount: true },
+        }),
+        this.prisma.loanAccount.aggregate({
+          where: negotiatedWhere,
+          _sum: { loan_amount: true },
+        }),
+      ]);
 
     const inStock = this.toNumber(pendingNegotiatedAgg._sum.loan_amount);
     const remainingDebt =
@@ -1877,10 +1928,22 @@ export class LoanAccountsService {
           repaid_periods: loanData.repaid_periods,
           daily_repayment: loanData.daily_repayment,
           apply_times: loanData.apply_times,
-          period_capital: loanData.period_capital !== undefined ? loanData.period_capital : loanData.capital,
-          period_interest: loanData.period_interest !== undefined ? loanData.period_interest : loanData.interest,
-          last_edit_pay_capital: loanData.period_capital !== undefined ? loanData.period_capital : loanData.capital,
-          last_edit_pay_interest: loanData.period_interest !== undefined ? loanData.period_interest : loanData.interest,
+          period_capital:
+            loanData.period_capital !== undefined
+              ? loanData.period_capital
+              : loanData.capital,
+          period_interest:
+            loanData.period_interest !== undefined
+              ? loanData.period_interest
+              : loanData.interest,
+          last_edit_pay_capital:
+            loanData.period_capital !== undefined
+              ? loanData.period_capital
+              : loanData.capital,
+          last_edit_pay_interest:
+            loanData.period_interest !== undefined
+              ? loanData.period_interest
+              : loanData.interest,
           status: loanData.status,
           total_fines: loanData.total_fines,
           paid_capital: loanData.paid_capital,
@@ -1941,8 +2004,6 @@ export class LoanAccountsService {
           },
         });
       }
-
-
 
       await this.logOperation(
         tx,
@@ -2038,12 +2099,17 @@ export class LoanAccountsService {
         data: { overdue_time: next },
       });
 
-      // Fetch operator staff nickname/username
+      // Fetch operator staff username
       const staff = await tx.staff.findUnique({
         where: { id: operator.id },
-        select: { nickname: true, username: true },
+        select: { username: true },
       });
-      const staffName = staff ? staff.nickname || staff.username : operator.role;
+      const staffName =
+        staff && staff.username
+          ? `${staff.username}(${operator.id})`
+          : staff
+            ? `ID:${operator.id}`
+            : operator.role;
 
       // Log this manual deletion in LoanAccountOperationLog
       await tx.loanAccountOperationLog.create({

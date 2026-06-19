@@ -107,16 +107,18 @@ export class AssetManagementService implements OnModuleInit {
     const { reduced_fines, reduced_handling_fee, reduced_by_risk_controller } =
       await this.getCollectorReductions(userId);
 
-    const transferAggregate = await this.prisma.assetReductionHistory.aggregate({
-      where: {
-        admin_id: userId,
-        asset_type: 'collector',
-        field_name: 'transfer',
+    const transferAggregate = await this.prisma.assetReductionHistory.aggregate(
+      {
+        where: {
+          admin_id: userId,
+          asset_type: 'collector',
+          field_name: 'transfer',
+        },
+        _sum: {
+          input_value: true,
+        },
       },
-      _sum: {
-        input_value: true,
-      },
-    });
+    );
     const transfer_amount = Number(transferAggregate._sum.input_value || 0);
 
     const loansAggregate = await this.prisma.loanAccount.aggregate({
@@ -180,7 +182,6 @@ export class AssetManagementService implements OnModuleInit {
       select: { id: true, username: true, nickname: true },
     });
 
-
     const loanAccountIds =
       await this.accessScopeService.getLoanAccountIdsByUserRole(
         userId,
@@ -212,11 +213,12 @@ export class AssetManagementService implements OnModuleInit {
     const reduced_amount = await this.getRiskControllerReductions(userId);
 
     // 查询该风控人对各 collector 的减资汇总（二维透视）
-    const reductionByCollector = await this.prisma.riskControllerReductionRecord.groupBy({
-      by: ['collector_id', 'reduction_type'],
-      where: { risk_controller_id: userId },
-      _sum: { amount: true },
-    });
+    const reductionByCollector =
+      await this.prisma.riskControllerReductionRecord.groupBy({
+        by: ['collector_id', 'reduction_type'],
+        where: { risk_controller_id: userId },
+        _sum: { amount: true },
+      });
 
     const reduction_by_counterparty = (
       await this.findReductionCounterpartySummary({
@@ -262,7 +264,7 @@ export class AssetManagementService implements OnModuleInit {
       data: {
         risk_controller_id: riskControllerId,
         collector_id: dto.collector_id,
-        reduction_type: dto.reduction_type as ReductionType,
+        reduction_type: dto.reduction_type,
         amount: dto.amount,
         remark: dto.remark ?? null,
         created_by: operator?.id ?? null,
@@ -301,9 +303,7 @@ export class AssetManagementService implements OnModuleInit {
     >();
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
     rows.forEach((row) => {
-      const businessTs = new Date(
-        row.created_at.getTime() + TWO_HOURS_MS,
-      );
+      const businessTs = new Date(row.created_at.getTime() + TWO_HOURS_MS);
       const date = businessTs.toISOString().slice(0, 10);
       const old = dayMap.get(date) || { totalPaidAmount: 0, count: 0 };
       old.totalPaidAmount += row.amount;
@@ -397,7 +397,9 @@ export class AssetManagementService implements OnModuleInit {
       counterpartyMap.set(counterpartyId, entry);
     }
 
-    const counterpartyIds = Array.from(counterpartyMap.keys()).filter(id => id !== null && id !== undefined);
+    const counterpartyIds = Array.from(counterpartyMap.keys()).filter(
+      (id) => id !== null && id !== undefined,
+    );
     if (counterpartyIds.length === 0) {
       return [];
     }
@@ -480,7 +482,9 @@ export class AssetManagementService implements OnModuleInit {
         skip,
         take: pageSize,
         include: {
-          risk_controller: { select: { id: true, username: true, nickname: true } },
+          risk_controller: {
+            select: { id: true, username: true, nickname: true },
+          },
           collector: { select: { id: true, username: true, nickname: true } },
           operator: { select: { id: true, username: true } },
         },

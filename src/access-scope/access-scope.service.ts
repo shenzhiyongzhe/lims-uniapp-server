@@ -133,16 +133,17 @@ export class AccessScopeService {
           handling_fee: true,
         },
       });
-      const amountReductionSums = await this.prisma.riskControllerReductionRecord.groupBy({
-        by: ['collector_id'],
-        where: {
-          risk_controller_id: userId,
-          reduction_type: ReductionType.amount,
-        },
-        _sum: {
-          amount: true,
-        },
-      });
+      const amountReductionSums =
+        await this.prisma.riskControllerReductionRecord.groupBy({
+          by: ['collector_id'],
+          where: {
+            risk_controller_id: userId,
+            reduction_type: ReductionType.amount,
+          },
+          _sum: {
+            amount: true,
+          },
+        });
       const amountReductionMap = new Map<number, number>();
       for (const row of amountReductionSums) {
         if (row.collector_id) {
@@ -150,7 +151,14 @@ export class AccessScopeService {
         }
       }
 
-      const sumsMap = new Map<number, { remaining_amount_sum: number; handling_fee_sum: number; fines_sum: number }>();
+      const sumsMap = new Map<
+        number,
+        {
+          remaining_amount_sum: number;
+          handling_fee_sum: number;
+          fines_sum: number;
+        }
+      >();
       for (const sum of loanSums) {
         if (sum.collector_id) {
           const paidCapital = sum._sum.paid_capital || 0;
@@ -161,7 +169,13 @@ export class AccessScopeService {
           const amountReduction = amountReductionMap.get(sum.collector_id) || 0;
 
           sumsMap.set(sum.collector_id, {
-            remaining_amount_sum: paidCapital + paidInterest + totalFines - loanAmount + handlingFee - amountReduction,
+            remaining_amount_sum:
+              paidCapital +
+              paidInterest +
+              totalFines -
+              loanAmount +
+              handlingFee -
+              amountReduction,
             handling_fee_sum: handlingFee,
             fines_sum: totalFines,
           });
@@ -169,7 +183,11 @@ export class AccessScopeService {
       }
 
       const result = collectors.map((s) => {
-        const sums = sumsMap.get(s.id) || { remaining_amount_sum: 0, handling_fee_sum: 0, fines_sum: 0 };
+        const sums = sumsMap.get(s.id) || {
+          remaining_amount_sum: 0,
+          handling_fee_sum: 0,
+          fines_sum: 0,
+        };
         return {
           ...s,
           remaining_amount_sum: sums.remaining_amount_sum,
@@ -183,10 +201,7 @@ export class AccessScopeService {
 
     const myLoans = await this.prisma.loanAccount.findMany({
       where: {
-        OR: [
-          { collector_id: userId },
-          { risk_controller_id: userId },
-        ],
+        OR: [{ collector_id: userId }, { risk_controller_id: userId }],
       },
       select: {
         collector_id: true,

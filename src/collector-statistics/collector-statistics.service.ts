@@ -34,9 +34,10 @@ export class CollectorStatisticsService {
     const riskControllerTotalAmount = calcLoanAccountNetTotal(allLoanAccounts);
 
     // 从明细表聚合所有减资总额
-    const reductionAgg = await this.prisma.riskControllerReductionRecord.aggregate({
-      _sum: { amount: true },
-    });
+    const reductionAgg =
+      await this.prisma.riskControllerReductionRecord.aggregate({
+        _sum: { amount: true },
+      });
     const totalReduction = this.toNumber(reductionAgg._sum.amount);
 
     const remainingFunds = riskControllerTotalAmount - totalReduction;
