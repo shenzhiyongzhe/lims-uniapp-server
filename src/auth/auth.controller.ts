@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
   Body,
   BadRequestException,
+  Put,
 } from '@nestjs/common';
 import { AuthGuard } from './auth.guard';
 import { CurrentUser } from './current-user.decorator';
@@ -217,6 +218,38 @@ export class AuthController {
       },
       '登录成功',
     );
+  }
+
+  @Put('profile')
+  @UseGuards(AuthGuard)
+  async updateProfile(
+    @CurrentUser() user: { id: number },
+    @Body('nickname') nickname?: string,
+    @Body('avatar_url') avatar_url?: string,
+  ): Promise<ApiResponseDto> {
+    const updateData: any = {};
+    if (nickname !== undefined) {
+      updateData.nickname = nickname;
+      updateData.username = nickname ? nickname.slice(0, 10).trim() : null;
+    }
+    if (avatar_url !== undefined) {
+      updateData.avatar_url = avatar_url;
+    }
+
+    const updated = await this.prisma.staff.update({
+      where: { id: user.id },
+      data: updateData,
+      select: {
+        id: true,
+        openid: true,
+        role: true,
+        nickname: true,
+        username: true,
+        avatar_url: true,
+      },
+    });
+
+    return ResponseHelper.success(updated, '更新个人信息成功');
   }
 
   @Post('upload-avatar')
