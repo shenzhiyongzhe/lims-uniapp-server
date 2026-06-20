@@ -1831,6 +1831,7 @@ export class LoanAccountsService {
         company_cost: backup?.loan?.company_cost ?? null,
         receiving_amount: backup?.loan?.receiving_amount ?? null,
         ownership: backup?.loan?.ownership ?? null,
+        apply_times: backup?.loan?.apply_times ?? 0,
       };
     });
   }
@@ -1884,6 +1885,7 @@ export class LoanAccountsService {
         due_end_date: loan.due_end_date,
         created_at: loan.created_at,
         ownership: loan.ownership,
+        apply_times: loan.apply_times,
       })),
       pagination: {
         page,
