@@ -1821,17 +1821,41 @@ export class LoanAccountsService {
   }
 
   async findDeletedLoans() {
-    const list = await this.prisma.deletedLoan.findMany({
-      orderBy: { deleted_at: 'desc' },
-    });
+    const [list, staffs] = await Promise.all([
+      this.prisma.deletedLoan.findMany({
+        orderBy: { deleted_at: 'desc' },
+      }),
+      this.prisma.staff.findMany({
+        select: { id: true, username: true },
+      }),
+    ]);
+
+    const staffMap = new Map<number, string | null>(
+      staffs.map((s) => [s.id, s.username]),
+    );
+
     return list.map((item) => {
       const backup = item.data as any;
+      const collector_id = backup?.loan?.collector_id;
+      const risk_controller_id = backup?.loan?.risk_controller_id;
       return {
         ...item,
         company_cost: backup?.loan?.company_cost ?? null,
         receiving_amount: backup?.loan?.receiving_amount ?? null,
         ownership: backup?.loan?.ownership ?? null,
         apply_times: backup?.loan?.apply_times ?? 0,
+        collector: collector_id
+          ? {
+              id: collector_id,
+              username: staffMap.get(collector_id) || null,
+            }
+          : null,
+        risk_controller: risk_controller_id
+          ? {
+              id: risk_controller_id,
+              username: staffMap.get(risk_controller_id) || null,
+            }
+          : null,
       };
     });
   }
@@ -1859,6 +1883,8 @@ export class LoanAccountsService {
         orderBy: { created_at: 'desc' },
         include: {
           user: true,
+          collector: { select: { id: true, username: true, nickname: true } },
+          risk_controller: { select: { id: true, username: true, nickname: true } },
         },
         skip,
         take: pageSize,
@@ -1886,6 +1912,8 @@ export class LoanAccountsService {
         created_at: loan.created_at,
         ownership: loan.ownership,
         apply_times: loan.apply_times,
+        collector: loan.collector,
+        risk_controller: loan.risk_controller,
       })),
       pagination: {
         page,
