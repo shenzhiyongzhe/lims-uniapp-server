@@ -23,6 +23,7 @@ export class LoanAccountInfo {
   daily_repayment: number;
   risk_controller: string;
   collector: string;
+  creator: string;
   lender: string;
   user?: UserInfo;
 }

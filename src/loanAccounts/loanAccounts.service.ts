@@ -943,6 +943,9 @@ export class LoanAccountsService {
         collector: {
           select: { id: true, username: true, nickname: true },
         },
+        creator: {
+          select: { id: true, username: true, nickname: true },
+        },
         repaymentSchedules: {
           orderBy: { period: 'asc' },
         },
@@ -1312,6 +1315,7 @@ export class LoanAccountsService {
       user: true,
       collector: { select: { id: true, username: true, nickname: true } },
       risk_controller: { select: { id: true, username: true, nickname: true } },
+      creator: { select: { id: true, username: true, nickname: true } },
     };
 
     const [rows, totalCount, statsResult] = await Promise.all([
@@ -1663,6 +1667,7 @@ export class LoanAccountsService {
       user: true,
       collector: { select: { id: true, username: true, nickname: true } },
       risk_controller: { select: { id: true, username: true, nickname: true } },
+      creator: { select: { id: true, username: true, nickname: true } },
     };
 
     const scheduleWithLatestRecordRemark = {
@@ -1885,6 +1890,7 @@ export class LoanAccountsService {
           user: true,
           collector: { select: { id: true, username: true, nickname: true } },
           risk_controller: { select: { id: true, username: true, nickname: true } },
+          creator: { select: { id: true, username: true, nickname: true } },
         },
         skip,
         take: pageSize,

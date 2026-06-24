@@ -70,6 +70,13 @@ export class RepaymentSchedulesService {
                 nickname: true,
               },
             },
+            creator: {
+              select: {
+                id: true,
+                nickname: true,
+                username: true,
+              },
+            },
           },
         },
       },
@@ -464,6 +471,7 @@ export class RepaymentSchedulesService {
           risk_controller:
             schedule.loan_account.risk_controller?.nickname || '',
           collector: schedule.loan_account.collector?.nickname || '',
+          creator: schedule.loan_account.creator?.nickname || schedule.loan_account.creator?.username || '',
           lender: '', // Not in this schema
           user: schedule.loan_account.user
             ? {

@@ -39,6 +39,7 @@ model Staff {
 
   loanAccountsAsCollector           LoanAccount[]                        @relation("CollectorLoanAccounts")
   loanAccountsAsRiskController      LoanAccount[]                        @relation("RiskControllerLoanAccounts")
+  loanAccountsAsCreator             LoanAccount[]                        @relation("CreatorLoanAccounts")
   dailyLoanBalances                 DailyLoanBalance[]
   repaymentRecords                  RepaymentRecord[]
   scheduleOperationLogs             RepaymentScheduleOperationLog[]
@@ -96,6 +97,7 @@ model LoanAccount {
   payer_name               String?             @db.VarChar(100)
   collector                Staff               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
   risk_controller          Staff               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
+  creator                  Staff               @relation("CreatorLoanAccounts", fields: [created_by], references: [id])
   user                     User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   repaymentRecords         RepaymentRecord[]
   repaymentSchedules       RepaymentSchedule[]
