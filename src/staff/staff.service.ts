@@ -188,6 +188,10 @@ export class StaffService {
         where: { operator_admin_id: fromId },
         data: { operator_admin_id: toId },
       });
+      await tx.loanAccount.updateMany({
+        where: { created_by: fromId },
+        data: { created_by: toId },
+      });
 
       // 6. 合并 DailyLoanBalance
       const fromDaily = await tx.dailyLoanBalance.findMany({
