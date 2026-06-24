@@ -1843,12 +1843,14 @@ export class LoanAccountsService {
       const backup = item.data as any;
       const collector_id = backup?.loan?.collector_id;
       const risk_controller_id = backup?.loan?.risk_controller_id;
+      const creator_id = backup?.loan?.created_by;
       return {
         ...item,
         company_cost: backup?.loan?.company_cost ?? null,
         receiving_amount: backup?.loan?.receiving_amount ?? null,
         ownership: backup?.loan?.ownership ?? null,
         apply_times: backup?.loan?.apply_times ?? 0,
+        created_by: creator_id || null,
         collector: collector_id
           ? {
               id: collector_id,
@@ -1859,6 +1861,12 @@ export class LoanAccountsService {
           ? {
               id: risk_controller_id,
               username: staffMap.get(risk_controller_id) || null,
+            }
+          : null,
+        creator: creator_id
+          ? {
+              id: creator_id,
+              username: staffMap.get(creator_id) || null,
             }
           : null,
       };
@@ -1920,6 +1928,8 @@ export class LoanAccountsService {
         apply_times: loan.apply_times,
         collector: loan.collector,
         risk_controller: loan.risk_controller,
+        created_by: loan.created_by,
+        creator: loan.creator,
       })),
       pagination: {
         page,
