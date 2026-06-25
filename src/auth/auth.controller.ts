@@ -16,6 +16,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ResponseHelper } from '../common/response-helper';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { AuthJwtService } from './jwt.service';
+import { PinService } from './pin.service';
 import type { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -26,6 +27,7 @@ export class AuthController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authJwtService: AuthJwtService,
+    private readonly pinService: PinService,
   ) {}
 
   @Get('verify')
@@ -281,5 +283,46 @@ export class AuthController {
       { avatarUrl: `/uploads/avatars/${fileName}` },
       '上传成功',
     );
+  }
+
+  // ─── PIN 密码锁 API ────────────────────────────────────────────────
+
+  /** 获取当前用户密码锁状态 */
+  @Get('pin/status')
+  @UseGuards(AuthGuard)
+  async getPinStatus(
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
+    const status = await this.pinService.getPinStatus(user.id);
+    return ResponseHelper.success(status, '获取密码锁状态成功');
+  }
+
+  /** 用户验证 PIN 码（用于解锁） */
+  @Post('pin/verify')
+  @UseGuards(AuthGuard)
+  async verifyPin(
+    @CurrentUser() user: { id: number },
+    @Body('pin') pin: string,
+  ): Promise<ApiResponseDto> {
+    if (!pin || !/^\d{4}$/.test(pin)) {
+      throw new BadRequestException('请输入4位数字密码');
+    }
+    const result = await this.pinService.verifyPin(user.id, pin);
+    return ResponseHelper.success(result, result.success ? '验证成功' : '密码错误');
+  }
+
+  /** 用户修改自己的 PIN 码 */
+  @Put('pin/change')
+  @UseGuards(AuthGuard)
+  async changePin(
+    @CurrentUser() user: { id: number },
+    @Body('old_pin') oldPin: string,
+    @Body('new_pin') newPin: string,
+  ): Promise<ApiResponseDto> {
+    if (!oldPin || !newPin) {
+      throw new BadRequestException('请提供旧密码和新密码');
+    }
+    const result = await this.pinService.changePin(user.id, oldPin, newPin);
+    return ResponseHelper.success(result, '密码修改成功');
   }
 }

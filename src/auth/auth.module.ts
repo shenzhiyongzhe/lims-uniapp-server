@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthJwtService } from './jwt.service';
 import { LoginAttemptService } from './login-attempt.service';
 import { AuthGuard } from './auth.guard';
+import { PinService } from './pin.service';
 
 @Global()
 @Module({
@@ -25,8 +26,8 @@ import { AuthGuard } from './auth.guard';
       inject: [ConfigService],
     }),
   ],
-  providers: [AuthJwtService, LoginAttemptService, AuthGuard],
+  providers: [AuthJwtService, LoginAttemptService, AuthGuard, PinService],
   controllers: [AuthController],
-  exports: [AuthJwtService, LoginAttemptService, AuthGuard],
+  exports: [AuthJwtService, LoginAttemptService, AuthGuard, PinService],
 })
 export class AuthModule {}

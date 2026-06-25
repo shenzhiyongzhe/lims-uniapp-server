@@ -17,12 +17,16 @@ import { ManagementRoles } from '@prisma/client';
 import { ResponseHelper } from '../common/response-helper';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { UpdateStaffDto } from './dto/update-staff.dto';
+import { PinService } from '../auth/pin.service';
 
 @Controller('staffs')
 @UseGuards(AuthGuard, RolesGuard)
 @Roles(ManagementRoles.SUPER_ADMIN)
 export class StaffController {
-  constructor(private readonly staffService: StaffService) {}
+  constructor(
+    private readonly staffService: StaffService,
+    private readonly pinService: PinService,
+  ) {}
 
   @Get()
   async findAll(): Promise<ApiResponseDto> {
@@ -64,5 +68,26 @@ export class StaffController {
       toStaffId,
     );
     return ResponseHelper.success(result, '数据迁移成功');
+  }
+
+  /** 管理员开启/关闭全局密码锁 */
+  @Put('pin/global')
+  async toggleGlobalPin(
+    @Body('enabled') enabled: boolean,
+  ): Promise<ApiResponseDto> {
+    const result = await this.pinService.toggleGlobalPin(enabled);
+    return ResponseHelper.success(
+      result,
+      enabled ? '已开启全局密码锁' : '已关闭全局密码锁',
+    );
+  }
+
+  /** 管理员重置指定用户的密码为默认密码 1234 */
+  @Put(':id/pin/reset')
+  async resetStaffPin(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto> {
+    const result = await this.pinService.resetStaffPin(parseInt(id, 10));
+    return ResponseHelper.success(result, '密码重置成功，该用户密码已重置为 1234');
   }
 }

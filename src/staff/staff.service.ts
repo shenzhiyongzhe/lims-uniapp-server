@@ -12,7 +12,8 @@ export class StaffService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    return this.prisma.staff.findMany({
+    const now = new Date();
+    const staffs = await this.prisma.staff.findMany({
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -22,8 +23,18 @@ export class StaffService {
         openid: true,
         avatar_url: true,
         createdAt: true,
+        pin_enabled: true,
+        is_default_pin: true,
+        locked_until: true,
+        failed_login_attempts: true,
+        last_login_at: true,
       },
     });
+
+    return staffs.map((s) => ({
+      ...s,
+      is_locked: !!(s.locked_until && s.locked_until > now),
+    }));
   }
 
   async updateRole(id: number, role: ManagementRoles) {

@@ -34,6 +34,9 @@ model Staff {
   last_login_at                 DateTime?
   last_login_ip                 String?                        @db.VarChar(45)
   token_version                 Int                            @default(1)
+  pin_enabled                   Boolean                        @default(false)
+  pin_hash                      String?                        @db.VarChar(100)
+  is_default_pin                Boolean                        @default(true)
   assetReductionHistory             AssetReductionHistory[]              @relation("AssetReductionHistory")
   collectorAssetManagement          CollectorAssetManagement?
 
