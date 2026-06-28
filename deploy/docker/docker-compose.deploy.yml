@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: lims-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-prisma_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-soeasy246800}
+      POSTGRES_DB: ${DB_NAME:-lims}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: ${DOCKER_IMAGE:-lims-uniapp-server:latest}
+    container_name: lims-uniapp-server
+    restart: unless-stopped
+    env_file:
+      - ${ENV_FILE:-../../.env}
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-prisma_user}:${DB_PASSWORD:-soeasy246800}@db:5432/${DB_NAME:-lims}?schema=public
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    command: sh -c "npx prisma migrate deploy && node dist/src/main.js"
+
+  nginx:
+    image: nginx:alpine
+    container_name: lims-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+      - uploads_data:/app/uploads:ro
+    depends_on:
+      - api
+
+volumes:
+  pg_data:
+  uploads_data:

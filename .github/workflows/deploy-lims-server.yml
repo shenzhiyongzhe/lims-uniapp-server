@@ -141,3 +141,44 @@ jobs:
             cd "${DEPLOY_PATH}"
             export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
             bash deploy/remote-deploy.sh
+
+  deploy-server-b:
+    needs: [changes, build-and-push]
+    runs-on: ubuntu-latest
+    if: |
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      vars.DEPLOY_HOST_B != '' &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.deploy == 'true' ||
+        (needs.changes.outputs.app == 'true' && needs.build-and-push.result == 'success')
+      ) &&
+      needs.build-and-push.result != 'failure'
+    steps:
+      - name: Resolve deploy image
+        id: deploy_image
+        run: |
+          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE_REPO="ghcr.io/${OWNER_LC}/lims-uniapp-server"
+          if [ "${{ needs.build-and-push.result }}" = "success" ]; then
+            echo "image=${IMAGE_REPO}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=${IMAGE_REPO}:latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_FULL_SHA: ${{ steps.deploy_image.outputs.image }}
+          DEPLOY_PATH_B: ${{ vars.DEPLOY_PATH_B }}
+        with:
+          host: ${{ vars.DEPLOY_HOST_B }}
+          username: ${{ vars.DEPLOY_USER_B }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD_B }}
+          envs: IMAGE_FULL_SHA,DEPLOY_PATH_B
+          script_stop: true
+          script: |
+            set -exo pipefail
+            cd "${DEPLOY_PATH_B}"
+            export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
+            bash deploy/docker/deploy.sh
+
