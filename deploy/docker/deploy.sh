@@ -20,7 +20,7 @@ ENV_FILE="${PROJECT_ROOT}/.env"
 echo "Using env file: ${ENV_FILE}"
 
 # Export DOCKER_IMAGE if not set (default is local build image tag)
-export DOCKER_IMAGE="${DOCKER_IMAGE:-lims-uniapp-server:latest}"
+export DOCKER_IMAGE="${DOCKER_IMAGE:-ghcr.io/shenzhiyongzhe/lims-uniapp-server:latest}"
 echo "Deploying image: ${DOCKER_IMAGE}"
 
 # Create certs directory if not exists
