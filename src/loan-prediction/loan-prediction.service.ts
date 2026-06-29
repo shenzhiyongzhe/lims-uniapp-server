@@ -30,9 +30,9 @@ export class LoanPredictionService {
     const pref = (prefix ?? '').trim();
 
     if (pref) {
-      if (fieldName === 'payer_name') {
+      if (fieldName === 'payer_name' || fieldName === 'ownership') {
         const allPredictions = await this.prisma.loanFieldPrediction.findMany({
-          where: { field_name: 'payer_name' },
+          where: { field_name: fieldName },
           orderBy: [{ frequency: 'desc' }, { last_used_at: 'desc' }],
         });
         const filtered = allPredictions
@@ -68,7 +68,7 @@ export class LoanPredictionService {
       take: 3,
     });
 
-    if (fieldName === 'payer_name') {
+    if (fieldName === 'payer_name' || fieldName === 'ownership') {
       return predictions.map((p) => ({
         value: p.value,
         frequency: p.frequency,
@@ -82,7 +82,7 @@ export class LoanPredictionService {
   }
 
   async recordFieldUsage(fieldName: string, value: string): Promise<void> {
-    if (fieldName === 'payer_name') {
+    if (fieldName === 'payer_name' || fieldName === 'ownership') {
       const t = value.trim();
       if (!t || t.length > 50) return;
       await this.prisma.loanFieldPrediction.upsert({
@@ -149,6 +149,11 @@ export class LoanPredictionService {
     const payer = loanAccount.payer_name?.trim();
     if (payer) {
       await this.recordFieldUsage('payer_name', payer);
+    }
+
+    const ownership = loanAccount.ownership?.trim();
+    if (ownership) {
+      await this.recordFieldUsage('ownership', ownership);
     }
   }
 }

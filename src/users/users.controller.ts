@@ -15,6 +15,15 @@ export class UsersController {
     return ResponseHelper.success(users, '获取用户列表成功');
   }
 
+  @Get('loan-count')
+  async getLoanCount(@Query('username') username: string): Promise<ApiResponseDto> {
+    if (!username) {
+      return ResponseHelper.error('用户名不能为空', 400);
+    }
+    const count = await this.usersService.getLoanCount(username);
+    return ResponseHelper.success({ count }, '获取用户方案数量成功');
+  }
+
   @Post()
   async create(@Body('username') username: string): Promise<ApiResponseDto> {
     if (!username) {

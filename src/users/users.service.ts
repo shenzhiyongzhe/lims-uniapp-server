@@ -29,4 +29,16 @@ export class UsersService {
       },
     });
   }
+
+  async getLoanCount(username: string): Promise<number> {
+    const user = await this.prisma.user.findFirst({
+      where: { username },
+    });
+    if (!user) {
+      return 0;
+    }
+    return this.prisma.loanAccount.count({
+      where: { user_id: user.id },
+    });
+  }
 }

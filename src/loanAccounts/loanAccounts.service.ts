@@ -1210,7 +1210,10 @@ export class LoanAccountsService {
     return baseAndParts;
   }
 
-  private async computeListStatistics(baseAndParts: Record<string, unknown>[]) {
+  private async computeListStatistics(
+    baseAndParts: Record<string, unknown>[],
+    customWhereOverdueLoans?: any,
+  ) {
     const baseWhere = baseAndParts.length ? { AND: baseAndParts } : {};
 
     const pendingNegotiatedStatus = {
@@ -1229,13 +1232,56 @@ export class LoanAccountsService {
         ? { AND: [...baseAndParts, blacklistStatus] }
         : blacklistStatus;
 
-    const negotiatedStatus = { status: 'negotiated' as LoanAccountStatus };
-    const negotiatedWhere =
-      baseAndParts.length > 0
-        ? { AND: [...baseAndParts, negotiatedStatus] }
-        : negotiatedStatus;
+    let overdueWhere = customWhereOverdueLoans;
+    if (!overdueWhere) {
+      const { yesterday: yesterdayShanghai } = getShanghaiBusinessTodayAndYesterday();
+      const activeLoanStatusFilter = {
+        status: {
+          notIn: ['settled', 'blacklist'] satisfies LoanAccountStatus[],
+        },
+      };
+      const loanAccountWhereForScheduleTabs =
+        baseAndParts.length > 0
+          ? { AND: [...baseAndParts, activeLoanStatusFilter] }
+          : activeLoanStatusFilter;
 
-    const [pendingNegotiatedAgg, allLoansFeeAgg, blacklistAgg, negotiatedAgg] =
+      const whereOverdueNegotiated =
+        baseAndParts.length > 0
+          ? { AND: [...baseAndParts, { status: 'negotiated' as const }] }
+          : { status: 'negotiated' as const };
+
+      const dayBeforeYesterdayShanghai = new Date(
+        yesterdayShanghai.getTime() - 24 * 60 * 60 * 1000,
+      );
+
+      const whereOverdueBySchedule = {
+        AND: [
+          loanAccountWhereForScheduleTabs,
+          {
+            repaymentSchedules: {
+              some: {
+                due_start_date: dayBeforeYesterdayShanghai,
+                status: 'overdue' as const,
+              },
+            },
+          },
+          {
+            repaymentSchedules: {
+              some: {
+                due_start_date: yesterdayShanghai,
+                status: 'overdue' as const,
+              },
+            },
+          },
+        ],
+      };
+
+      overdueWhere = {
+        OR: [whereOverdueNegotiated, whereOverdueBySchedule],
+      };
+    }
+
+    const [pendingNegotiatedAgg, allLoansFeeAgg, blacklistAgg, overdueAgg] =
       await Promise.all([
         this.prisma.loanAccount.aggregate({
           where: pendingNegotiatedWhere,
@@ -1254,7 +1300,7 @@ export class LoanAccountsService {
           _sum: { loan_amount: true },
         }),
         this.prisma.loanAccount.aggregate({
-          where: negotiatedWhere,
+          where: overdueWhere,
           _sum: { loan_amount: true },
         }),
       ]);
@@ -1271,7 +1317,7 @@ export class LoanAccountsService {
         handlingFee: this.toNumber(allLoansFeeAgg._sum.handling_fee),
         fines: this.toNumber(allLoansFeeAgg._sum.total_fines),
         inStockBlacklist: this.toNumber(blacklistAgg._sum.loan_amount),
-        inStockOverdue: this.toNumber(negotiatedAgg._sum.loan_amount),
+        inStockOverdue: this.toNumber(overdueAgg._sum.loan_amount),
       },
     };
   }
@@ -1818,11 +1864,14 @@ export class LoanAccountsService {
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { baseAndParts } = await this.buildListWhereConditions(
+    const conditions = await this.buildListWhereConditions(
       query,
       currentUser,
     );
-    return this.computeListStatistics(baseAndParts);
+    return this.computeListStatistics(
+      conditions.baseAndParts,
+      conditions.whereOverdueLoans,
+    );
   }
 
   async findDeletedLoans() {
