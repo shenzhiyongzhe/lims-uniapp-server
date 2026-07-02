@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -56,13 +57,18 @@ export class RepaymentSchedulesController {
   )
   async create(
     @Body() data: { loan_id: number | string },
+    @CurrentUser() user: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const loanId = Number(data.loan_id);
     if (!Number.isFinite(loanId)) {
       throw new NotFoundException('缺少或无效的 loan_id 参数');
     }
 
-    const newSchedule = await this.repaymentSchedulesService.create(loanId);
+    try {
+      const newSchedule = await this.repaymentSchedulesService.create(
+        loanId,
+        user,
+      );
 
     const responseData = {
       id: newSchedule.id,
@@ -81,17 +87,24 @@ export class RepaymentSchedulesController {
     };
 
     return ResponseHelper.success(responseData, '创建还款计划成功');
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) {
+        return ResponseHelper.error(error.message, 403);
+      }
+      throw error;
+    }
   }
 
   @Put()
   async update(
     @Body() data: any,
-    @CurrentUser() user: { id: number },
+    @CurrentUser() user: { id: number; role: string },
   ): Promise<ApiResponseDto> {
-    const updatedSchedule = await this.repaymentSchedulesService.update(
-      data,
-      user?.id,
-    );
+    try {
+      const updatedSchedule = await this.repaymentSchedulesService.update(
+        data,
+        user,
+      );
 
     const responseData = {
       id: updatedSchedule.id,
@@ -110,5 +123,11 @@ export class RepaymentSchedulesController {
     };
 
     return ResponseHelper.success(responseData, '更新还款计划成功');
+    } catch (error: any) {
+      if (error instanceof ForbiddenException) {
+        return ResponseHelper.error(error.message, 403);
+      }
+      throw error;
+    }
   }
 }

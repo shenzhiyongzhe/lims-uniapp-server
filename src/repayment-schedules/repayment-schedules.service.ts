@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepaymentSchedule, RepaymentScheduleStatus } from '@prisma/client';
+import { LoanAccountsService } from '../loanAccounts/loanAccounts.service';
 
 type ScheduleOperationType = 'collect' | 'edit';
 
@@ -25,7 +26,10 @@ import { getShanghaiBusinessTodayAndYesterday } from '../common/business-date';
 
 @Injectable()
 export class RepaymentSchedulesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly loanAccountsService: LoanAccountsService,
+  ) { }
 
   /** Prisma client 在 migrate 后需执行 generate；此处兼容 generate 尚未刷新的环境 */
   private get operationLogDelegate(): {
@@ -131,8 +135,22 @@ export class RepaymentSchedulesService {
       remark?: string;
       action_type?: ScheduleOperationType | string;
     },
-    operatorAdminId?: number,
+    operator?: { id: number; role: string },
   ): Promise<RepaymentSchedule> {
+    const scheduleRef = await this.prisma.repaymentSchedule.findUnique({
+      where: { id: data.id },
+      select: { loan_id: true },
+    });
+    if (!scheduleRef) {
+      throw new NotFoundException('还款计划不存在');
+    }
+    if (operator?.role) {
+      await this.loanAccountsService.assertLoanAccountEditable(
+        scheduleRef.loan_id,
+        operator.role,
+      );
+    }
+
     return await this.prisma.$transaction(async (tx) => {
       // 1. 获取更新前的还款计划数据
       const currentSchedule = await tx.repaymentSchedule.findUnique({
@@ -186,21 +204,21 @@ export class RepaymentSchedulesService {
           : toNumber(currentSchedule.fines);
 
       let operatorName: string | null = null;
-      if (operatorAdminId) {
+      if (operator?.id) {
         const op = await tx.staff.findUnique({
-          where: { id: operatorAdminId },
+          where: { id: operator.id },
           select: { username: true, nickname: true },
         });
         operatorName = op?.username
-          ? `${op.username} (${operatorAdminId})`
-          : `${op?.nickname} (${operatorAdminId})`;
+          ? `${op.username} (${operator.id})`
+          : `${op?.nickname} (${operator.id})`;
       }
       const paidAmount = inputCapital + inputInterest + finesValue;
       const nextPaid = paidAmount;
       updatePayload.paid_amount = nextPaid;
 
-      if (operatorAdminId) {
-        updatePayload.operator_admin_id = operatorAdminId;
+      if (operator?.id) {
+        updatePayload.operator_admin_id = operator.id;
         updatePayload.operator_admin_name = operatorName;
       }
       let derivedStatus: RepaymentScheduleStatus = currentSchedule.status;
@@ -225,7 +243,7 @@ export class RepaymentSchedulesService {
           schedule_id: data.id!,
           loan_id: currentSchedule.loan_id,
           action_type: actionType,
-          operator_admin_id: operatorAdminId ?? null,
+          operator_admin_id: operator?.id ?? null,
           operator_admin_name: operatorName,
           paid_capital_before: toNumber(currentSchedule.paid_capital),
           paid_interest_before: toNumber(currentSchedule.paid_interest),
@@ -303,7 +321,7 @@ export class RepaymentSchedulesService {
           paid_interest: inputInterest,
           paid_fines: finesValue,
           repayment_schedule_id: data.id,
-          actual_collector_id: operatorAdminId ?? null,
+          actual_collector_id: operator?.id ?? null,
           remark: remark || null,
           due_date: currentSchedule.due_start_date,
           is_overdue_repaid:
@@ -366,7 +384,17 @@ export class RepaymentSchedulesService {
     });
   }
 
-  async create(loanId: number): Promise<RepaymentSchedule> {
+  async create(
+    loanId: number,
+    operator?: { id: number; role: string },
+  ): Promise<RepaymentSchedule> {
+    if (operator?.role) {
+      await this.loanAccountsService.assertLoanAccountEditable(
+        loanId,
+        operator.role,
+      );
+    }
+
     return await this.prisma.$transaction(async (tx) => {
       const allSchedules = await tx.repaymentSchedule.findMany({
         where: {

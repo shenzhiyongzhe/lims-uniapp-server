@@ -50,6 +50,7 @@ model Staff {
   reductionsAsRiskController        RiskControllerReductionRecord[]      @relation("RCReductionByRiskController")
   reductionsAsCollector             RiskControllerReductionRecord[]      @relation("RCReductionToCollector")
   reductionOperationLogs            RiskControllerReductionRecord[]      @relation("RCReductionOperator")
+  lockedLoanAccounts                LoanAccount[]                        @relation("LockedLoanAccounts")
 
   @@map("staffs")
 }
@@ -98,9 +99,13 @@ model LoanAccount {
   overdue_count            Int                 @default(0)
   ownership                String?             @db.VarChar(5)
   payer_name               String?             @db.VarChar(100)
+  is_locked                Boolean             @default(false)
+  locked_at                DateTime?
+  locked_by                Int?
   collector                Staff               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
   risk_controller          Staff               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
   creator                  Staff               @relation("CreatorLoanAccounts", fields: [created_by], references: [id])
+  locker                   Staff?              @relation("LockedLoanAccounts", fields: [locked_by], references: [id])
   user                     User                @relation(fields: [user_id], references: [id], onDelete: Cascade)
   repaymentRecords         RepaymentRecord[]
   repaymentSchedules       RepaymentSchedule[]

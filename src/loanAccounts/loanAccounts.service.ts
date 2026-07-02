@@ -36,6 +36,63 @@ export class LoanAccountsService {
     private readonly accessScopeService: AccessScopeService,
   ) { }
 
+  private isPlatformAdmin(role: string): boolean {
+    return (
+      role === ManagementRoles.SUPER_ADMIN || role === ManagementRoles.ADMIN
+    );
+  }
+
+  async assertLoanAccountEditable(
+    loanId: number,
+    operatorRole: string,
+  ): Promise<void> {
+    const loan = await this.prisma.loanAccount.findUnique({
+      where: { id: loanId },
+      select: { is_locked: true },
+    });
+    if (!loan) {
+      throw new NotFoundException('贷款记录不存在');
+    }
+    if (loan.is_locked && !this.isPlatformAdmin(operatorRole)) {
+      throw new ForbiddenException('该方案已锁定，无法操作');
+    }
+  }
+
+  async setLock(
+    id: number,
+    isLocked: boolean,
+    operatorId: number,
+  ): Promise<LoanAccount> {
+    const loan = await this.prisma.loanAccount.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!loan) {
+      throw new NotFoundException('贷款记录不存在');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.loanAccount.update({
+        where: { id },
+        data: {
+          is_locked: isLocked,
+          locked_at: isLocked ? new Date() : null,
+          locked_by: isLocked ? operatorId : null,
+        },
+      });
+
+      await this.logOperation(
+        tx,
+        id,
+        operatorId,
+        isLocked ? 'lock' : 'unlock',
+        isLocked ? '锁定方案' : '解锁方案',
+      );
+
+      return updated;
+    });
+  }
+
   private async logOperation(
     tx: any,
     loanId: number,
@@ -354,8 +411,12 @@ export class LoanAccountsService {
   async update(
     id: number,
     data: UpdateLoanAccountDto,
-    operatorAdminId?: number,
+    operator?: { id: number; role: string },
   ): Promise<LoanAccount> {
+    if (operator?.role) {
+      await this.assertLoanAccountEditable(id, operator.role);
+    }
+
     let prevCollectorId: number | undefined;
     let prevRiskId: number | undefined;
 
@@ -772,7 +833,7 @@ export class LoanAccountsService {
         await this.logOperation(
           tx,
           id,
-          operatorAdminId,
+          operator?.id,
           'update',
           changes.join(', '),
         );
@@ -831,6 +892,10 @@ export class LoanAccountsService {
 
     if (!fullLoan) {
       throw new NotFoundException('贷款记录不存在');
+    }
+
+    if (fullLoan.is_locked) {
+      throw new ForbiddenException('该方案已锁定，无法删除');
     }
 
     const { collector_id, risk_controller_id } = fullLoan;
@@ -946,6 +1011,9 @@ export class LoanAccountsService {
         creator: {
           select: { id: true, username: true, nickname: true },
         },
+        locker: {
+          select: { id: true, username: true, nickname: true },
+        },
         repaymentSchedules: {
           orderBy: { period: 'asc' },
         },
@@ -963,8 +1031,12 @@ export class LoanAccountsService {
   async updateAccountStatus(
     id: number,
     dto: UpdateLoanAccountStatusDto,
-    operatorAdminId?: number,
+    operator?: { id: number; role: string },
   ): Promise<void> {
+    if (operator?.role) {
+      await this.assertLoanAccountEditable(id, operator.role);
+    }
+
     const { status, settlement_capital, settlement_date } = dto;
 
     if (status === 'settled' || status === 'blacklist') {
@@ -1142,7 +1214,7 @@ export class LoanAccountsService {
         await this.logOperation(
           tx,
           id,
-          operatorAdminId,
+          operator?.id,
           'update_status',
           `状态更新为 ${status}${settlement_capital ? `, 提前结清本金: ${settlement_capital}` : ''}`,
         );
@@ -1163,7 +1235,7 @@ export class LoanAccountsService {
       await this.logOperation(
         tx,
         id,
-        operatorAdminId,
+        operator?.id,
         'update_status',
         `状态更新为 ${status}`,
       );
@@ -2176,6 +2248,8 @@ export class LoanAccountsService {
     if (!isSuperAdmin && !isAdmin && !isAssignedCollector) {
       throw new ForbiddenException('您没有权限删除该逾期记录');
     }
+
+    await this.assertLoanAccountEditable(loanId, operator.role);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.overdueRecord.delete({

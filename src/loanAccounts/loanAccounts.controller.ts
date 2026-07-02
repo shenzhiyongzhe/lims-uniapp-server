@@ -16,6 +16,7 @@ import { LoanAccountsService } from './loanAccounts.service';
 import { CreateLoanAccountDto } from './dto/create-loanAccount.dto';
 import { UpdateLoanAccountDto } from './dto/update-loanAccount.dto';
 import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto';
+import { UpdateLoanAccountLockDto } from './dto/update-loan-account-lock.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -232,6 +233,29 @@ export class LoanAccountsController {
   }
 
   @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN, ManagementRoles.ADMIN)
+  @Put(':id/lock')
+  async setLock(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateLoanAccountLockDto,
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
+    try {
+      await this.loanAccountsService.setLock(id, body.is_locked, user.id);
+      const loan = await this.loanAccountsService.findById(id);
+      return ResponseHelper.success(loan, body.is_locked ? '锁定成功' : '解锁成功');
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return ResponseHelper.error(error.message, 404);
+      }
+      return ResponseHelper.error(
+        `更新锁定状态失败: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles(
     ManagementRoles.SUPER_ADMIN,
     ManagementRoles.ADMIN,
@@ -242,13 +266,16 @@ export class LoanAccountsController {
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateLoanAccountStatusDto,
-    @CurrentUser() user: { id: number },
+    @CurrentUser() user: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     try {
-      await this.loanAccountsService.updateAccountStatus(id, body, user.id);
+      await this.loanAccountsService.updateAccountStatus(id, body, user);
       const loan = await this.loanAccountsService.findById(id);
       return ResponseHelper.success(loan, '更新贷款状态成功');
     } catch (error: any) {
+      if (error instanceof ForbiddenException) {
+        return ResponseHelper.error(error.message, 403);
+      }
       return ResponseHelper.error(`更新贷款状态失败: ${error.message}`, 500);
     }
   }
@@ -264,12 +291,15 @@ export class LoanAccountsController {
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateLoanAccountDto,
-    @CurrentUser() user: { id: number },
+    @CurrentUser() user: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     try {
-      const updated = await this.loanAccountsService.update(id, body, user.id);
+      const updated = await this.loanAccountsService.update(id, body, user);
       return ResponseHelper.success(updated, '更新贷款记录成功');
     } catch (error: any) {
+      if (error instanceof ForbiddenException) {
+        return ResponseHelper.error(error.message, 403);
+      }
       return ResponseHelper.error(`更新贷款记录失败: ${error.message}`, 500);
     }
   }
@@ -284,6 +314,9 @@ export class LoanAccountsController {
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return ResponseHelper.error(error.message, 404);
+      }
+      if (error instanceof ForbiddenException) {
+        return ResponseHelper.error(error.message, 403);
       }
       return ResponseHelper.error(`删除贷款记录失败: ${error.message}`, 500);
     }

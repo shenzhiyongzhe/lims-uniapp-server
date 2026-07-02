@@ -17,5 +17,6 @@ import { AccessScopeModule } from '../access-scope/access-scope.module';
   ],
   controllers: [LoanAccountsController],
   providers: [LoanAccountsService],
+  exports: [LoanAccountsService],
 })
 export class LoanAccountsModule {}
