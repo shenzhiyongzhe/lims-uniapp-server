@@ -102,6 +102,7 @@ model LoanAccount {
   is_locked                Boolean             @default(false)
   locked_at                DateTime?
   locked_by                Int?
+  auto_relock_at            DateTime?
   collector                Staff               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
   risk_controller          Staff               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
   creator                  Staff               @relation("CreatorLoanAccounts", fields: [created_by], references: [id])
@@ -114,6 +115,7 @@ model LoanAccount {
   @@index([collector_id])
   @@index([risk_controller_id])
   @@index([user_id])
+  @@index([auto_relock_at])
   @@map("loan_accounts")
 }
 

@@ -302,6 +302,7 @@ export class RepaymentSchedulesService {
           user_id: true,
           early_settlement_capital: true,
           total_periods: true,
+          status: true,
         },
       });
 
@@ -366,6 +367,19 @@ export class RepaymentSchedulesService {
         updateLoanData.status = 'settled';
       }
 
+      let shouldLogSettledAutoLock = false;
+      if (
+        loan &&
+        updateLoanData.status === 'settled' &&
+        this.loanAccountsService.isTransitionToSettled(loan.status, 'settled')
+      ) {
+        Object.assign(
+          updateLoanData,
+          this.loanAccountsService.getSettledAutoLockFields(),
+        );
+        shouldLogSettledAutoLock = true;
+      }
+
       // 计算该 loanAccount 关联的所有 RepaymentSchedule.status = 'overdue' 的数量
       const overdueCount = await tx.repaymentSchedule.count({
         where: {
@@ -379,6 +393,10 @@ export class RepaymentSchedulesService {
         where: { id: loanId },
         data: updateLoanData,
       });
+
+      if (shouldLogSettledAutoLock) {
+        await this.loanAccountsService.logSettledAutoLock(tx, loanId);
+      }
 
       return updatedSchedule;
     });

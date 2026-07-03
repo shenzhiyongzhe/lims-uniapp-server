@@ -29,6 +29,8 @@ import { AccessScopeService } from '../access-scope/access-scope.service';
 
 @Injectable()
 export class LoanAccountsService {
+  private static readonly SETTLED_RELOCK_DELAY_MS = 60 * 60 * 1000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly loanPredictionService: LoanPredictionService,
@@ -40,6 +42,90 @@ export class LoanAccountsService {
     return (
       role === ManagementRoles.SUPER_ADMIN || role === ManagementRoles.ADMIN
     );
+  }
+
+  getSettledAutoLockFields() {
+    return {
+      is_locked: true as const,
+      locked_at: new Date(),
+      locked_by: null,
+      auto_relock_at: null,
+    };
+  }
+
+  private getManualUnlockFields(status: LoanAccountStatus) {
+    return {
+      is_locked: false as const,
+      locked_at: null,
+      locked_by: null,
+      auto_relock_at:
+        status === 'settled'
+          ? new Date(Date.now() + LoanAccountsService.SETTLED_RELOCK_DELAY_MS)
+          : null,
+    };
+  }
+
+  private getManualLockFields(operatorId: number) {
+    return {
+      is_locked: true as const,
+      locked_at: new Date(),
+      locked_by: operatorId,
+      auto_relock_at: null,
+    };
+  }
+
+  isTransitionToSettled(
+    oldStatus: LoanAccountStatus,
+    newStatus: LoanAccountStatus,
+  ): boolean {
+    return oldStatus !== 'settled' && newStatus === 'settled';
+  }
+
+  async logSettledAutoLock(
+    tx: any,
+    loanId: number,
+    content = '状态变为已结清，自动锁定',
+  ): Promise<void> {
+    await this.logOperation(tx, loanId, undefined, 'auto_lock', content);
+  }
+
+  async relockExpiredSettledLoans(): Promise<number> {
+    const now = new Date();
+    const loans = await this.prisma.loanAccount.findMany({
+      where: {
+        status: 'settled',
+        is_locked: false,
+        auto_relock_at: { not: null, lte: now },
+      },
+      select: { id: true },
+    });
+
+    for (const loan of loans) {
+      await this.prisma.$transaction(async (tx) => {
+        const current = await tx.loanAccount.findFirst({
+          where: {
+            id: loan.id,
+            status: 'settled',
+            is_locked: false,
+            auto_relock_at: { not: null, lte: now },
+          },
+        });
+        if (!current) return;
+
+        await tx.loanAccount.update({
+          where: { id: loan.id },
+          data: this.getSettledAutoLockFields(),
+        });
+
+        await this.logSettledAutoLock(
+          tx,
+          loan.id,
+          '已结清方案解锁超时，自动重新锁定',
+        );
+      });
+    }
+
+    return loans.length;
   }
 
   async assertLoanAccountEditable(
@@ -65,20 +151,20 @@ export class LoanAccountsService {
   ): Promise<LoanAccount> {
     const loan = await this.prisma.loanAccount.findUnique({
       where: { id },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!loan) {
       throw new NotFoundException('贷款记录不存在');
     }
 
+    const lockData = isLocked
+      ? this.getManualLockFields(operatorId)
+      : this.getManualUnlockFields(loan.status);
+
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.loanAccount.update({
         where: { id },
-        data: {
-          is_locked: isLocked,
-          locked_at: isLocked ? new Date() : null,
-          locked_by: isLocked ? operatorId : null,
-        },
+        data: lockData,
       });
 
       await this.logOperation(
@@ -588,6 +674,17 @@ export class LoanAccountsService {
         updateData.payer_name = t ? t : null;
       }
 
+      let shouldLogSettledAutoLock = false;
+      if (data.status !== undefined) {
+        const newStatus = data.status as LoanAccountStatus;
+        if (this.isTransitionToSettled(oldLoan.status, newStatus)) {
+          Object.assign(updateData, this.getSettledAutoLockFields());
+          shouldLogSettledAutoLock = true;
+        } else if (oldLoan.status === 'settled' && newStatus !== 'settled') {
+          updateData.auto_relock_at = null;
+        }
+      }
+
       const updatedRow = await tx.loanAccount.update({
         where: { id },
         data: updateData,
@@ -596,6 +693,10 @@ export class LoanAccountsService {
           repaymentSchedules: true,
         },
       });
+
+      if (shouldLogSettledAutoLock) {
+        await this.logSettledAutoLock(tx, id);
+      }
 
       const isScheduleUpdateNeeded =
         data.period_capital !== undefined ||
@@ -1206,6 +1307,10 @@ export class LoanAccountsService {
           updateData.early_settlement_capital = manualCapital;
         }
 
+        if (status === 'settled' && loan.status !== 'settled') {
+          Object.assign(updateData, this.getSettledAutoLockFields());
+        }
+
         await tx.loanAccount.update({
           where: { id },
           data: updateData,
@@ -1218,14 +1323,29 @@ export class LoanAccountsService {
           'update_status',
           `状态更新为 ${status}${settlement_capital ? `, 提前结清本金: ${settlement_capital}` : ''}`,
         );
+
+        if (status === 'settled' && loan.status !== 'settled') {
+          await this.logSettledAutoLock(tx, id);
+        }
       });
       return;
     }
 
     await this.prisma.$transaction(async (tx) => {
+      const oldLoan = await tx.loanAccount.findUnique({
+        where: { id },
+        select: { status: true },
+      });
+      if (!oldLoan) {
+        throw new Error('贷款记录不存在');
+      }
+
       const updateData: Record<string, unknown> = { status };
       if (status === 'negotiated') {
         updateData.status_changed_at = new Date();
+      }
+      if (oldLoan.status === 'settled') {
+        updateData.auto_relock_at = null;
       }
       await tx.loanAccount.update({
         where: { id },
