@@ -178,7 +178,7 @@ jobs:
           script_stop: true
           script: |
             set -exo pipefail
-            cd "${DEPLOY_PATH_B}"
+            cd "${DEPLOY_PATH}"
             export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
             bash deploy/docker/deploy.sh
 
