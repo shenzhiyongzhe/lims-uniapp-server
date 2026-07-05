@@ -868,21 +868,21 @@ export class LoanAccountsService {
         );
       };
 
-      compareField('贷款金额', 'loan_amount');
-      compareField('应收金额', 'receiving_amount');
+      compareField('借出金额', 'loan_amount');
+      compareField('已收金额', 'receiving_amount');
       compareField('到手比例', 'to_hand_ratio');
       compareField('每期本金', 'period_capital');
       compareField('每期利息', 'period_interest');
       compareField('手续费', 'handling_fee');
       compareField('总期数', 'total_periods');
       compareField('已还期数', 'repaid_periods');
-      compareField('日还款额', 'daily_repayment');
+      compareField('天退', 'daily_repayment');
       compareField('状态', 'status');
       compareField('公司成本', 'company_cost');
       compareField('申请次数', 'apply_times');
       compareField('备注', 'note');
       compareField('归属', 'ownership');
-      compareField('打款人', 'payer_name');
+      compareField('收款人', 'payer_name');
 
       if (data.due_start_date !== undefined) {
         const oldDateStr = oldLoan.due_start_date

@@ -269,7 +269,7 @@ model CollectorAssetManagement {
 model LoanFieldPrediction {
   id           Int      @id @default(autoincrement())
   field_name   String   @db.VarChar(50)
-  /// 数值类字段存规范化数字字符串；打款人 `payer_name` 存原始文本（最长 50）
+  /// 数值类字段存规范化数字字符串；收款人 `payer_name` 存原始文本（最长 50）
   value        String   @db.VarChar(50)
   frequency    Int      @default(1)
   last_used_at DateTime @default(now())
