@@ -19,12 +19,21 @@ fi
 ENV_FILE="${PROJECT_ROOT}/.env"
 echo "Using env file: ${ENV_FILE}"
 
+# 2.5 Generate nginx.generated.conf from nginx.conf (substituting DOMAIN environment variable)
+DOMAIN=$(grep -E '^DOMAIN=' "${ENV_FILE}" | head -1 | cut -d= -f2- | tr -d '\r' | sed -e 's/^["'\'']//' -e 's/["'\'']$//')
+DOMAIN="${DOMAIN:-www.jindijz.cn}" # Default fallback domain if not defined
+echo "Generating nginx.generated.conf with domain: ${DOMAIN}"
+cp "${SCRIPT_DIR}/nginx.conf" "${SCRIPT_DIR}/nginx.generated.conf"
+# Use sed to replace the __DOMAIN__ placeholder
+sed -i "s/__DOMAIN__/${DOMAIN}/g" "${SCRIPT_DIR}/nginx.generated.conf"
+
 # Export DOCKER_IMAGE if not set (default is local build image tag)
 export DOCKER_IMAGE="${DOCKER_IMAGE:-ghcr.io/shenzhiyongzhe/lims-uniapp-server:latest}"
 echo "Deploying image: ${DOCKER_IMAGE}"
 
 # Create certs directory if not exists
 mkdir -p "${SCRIPT_DIR}/certs"
+mkdir -p "${SCRIPT_DIR}/certbot-challenge" # Ensure certbot-challenge dir exists
 
 # 3. Pull latest image if using remote image
 if [[ "${DOCKER_IMAGE}" == *"ghcr.io"* ]]; then

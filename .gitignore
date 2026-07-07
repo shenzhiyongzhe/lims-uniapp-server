@@ -12,3 +12,4 @@ node_modules
 
 /deploy/postgresql/pgloader-production.load
 /scripts
+/deploy/docker/nginx.generated.conf
