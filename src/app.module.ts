@@ -19,6 +19,7 @@ import { ScheduleTasksModule } from './schedule/schedule-tasks.module';
 import { ChangelogsModule } from './changelogs/changelogs.module';
 import { buildPinoParams } from './logger/pino-params.factory';
 import { BackupModule } from './backup/backup.module';
+import { FeedbackModule } from './feedback/feedback.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { BackupModule } from './backup/backup.module';
     ScheduleTasksModule,
     ChangelogsModule,
     BackupModule,
+    FeedbackModule,
   ],
   controllers: [AppController],
   providers: [AppService],

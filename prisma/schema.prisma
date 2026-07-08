@@ -51,6 +51,7 @@ model Staff {
   reductionsAsCollector             RiskControllerReductionRecord[]      @relation("RCReductionToCollector")
   reductionOperationLogs            RiskControllerReductionRecord[]      @relation("RCReductionOperator")
   lockedLoanAccounts                LoanAccount[]                        @relation("LockedLoanAccounts")
+  feedbacks                         Feedback[]
 
   @@map("staffs")
 }
@@ -404,4 +405,31 @@ model AdminAdjustmentHistory {
 
   @@index([created_at])
   @@map("admin_adjustment_history")
+}
+
+enum FeedbackType {
+  suggestion
+  issue
+}
+
+enum FeedbackStatus {
+  pending
+  resolved
+}
+
+model Feedback {
+  id         Int            @id @default(autoincrement())
+  staff_id   Int
+  type       FeedbackType
+  status     FeedbackStatus @default(pending)
+  content    String         @db.VarChar(2000)
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+
+  staff      Staff          @relation(fields: [staff_id], references: [id])
+
+  @@index([staff_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("feedback")
 }
