@@ -154,9 +154,9 @@ jobs:
           - name: server-c
             host: ${{ vars.DEPLOY_HOST_C }}
             path: ${{ vars.DEPLOY_PATH_C || vars.DEPLOY_PATH }}
+    # matrix 上下文不能在 job 级 if 中使用，host 是否配置在 step 级判断
     if: |
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-      matrix.server.host != '' &&
       (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.deploy == 'true' ||
@@ -165,6 +165,7 @@ jobs:
       needs.build-and-push.result != 'failure'
     steps:
       - name: Resolve deploy image
+        if: matrix.server.host != ''
         id: deploy_image
         run: |
           OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
@@ -176,6 +177,7 @@ jobs:
           fi
 
       - name: Deploy to ${{ matrix.server.name }}
+        if: matrix.server.host != ''
         uses: appleboy/ssh-action@v1.2.0
         env:
           IMAGE_FULL_SHA: ${{ steps.deploy_image.outputs.image }}
