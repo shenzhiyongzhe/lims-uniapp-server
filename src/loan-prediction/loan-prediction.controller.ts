@@ -9,6 +9,12 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 export class LoanPredictionController {
   constructor(private readonly loanPredictionService: LoanPredictionService) {}
 
+  @Get('batch')
+  async getAllPredictions(): Promise<ApiResponseDto> {
+    const data = await this.loanPredictionService.getAllPredictions();
+    return ResponseHelper.success(data, '获取全部预测数据成功');
+  }
+
   @Get(':field')
   async getPredictions(
     @Param('field') field: string,

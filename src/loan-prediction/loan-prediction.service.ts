@@ -6,6 +6,29 @@ export type LoanPredictionItem =
   | { value: number; frequency: number }
   | { value: string; frequency: number };
 
+export const PREDICTION_FIELDS = [
+  'loan_amount',
+  'to_hand_ratio',
+  'company_cost',
+  'period_capital',
+  'period_interest',
+  'handling_fee',
+  'ownership',
+  'payer_name',
+] as const;
+
+const TEXT_PREDICTION_FIELDS = new Set(['payer_name', 'ownership']);
+
+function mapRowToPredictionItem(
+  fieldName: string,
+  row: { value: string; frequency: number },
+): LoanPredictionItem {
+  if (TEXT_PREDICTION_FIELDS.has(fieldName)) {
+    return { value: row.value, frequency: row.frequency };
+  }
+  return { value: Number(row.value), frequency: row.frequency };
+}
+
 /** 非 payer_name 字段：入库用的规范化数字串；因为现在字段全为整型，所以存整数字符串 */
 function storageValueForNumericField(
   fieldName: string,
@@ -79,6 +102,26 @@ export class LoanPredictionService {
       value: Number(p.value),
       frequency: p.frequency,
     }));
+  }
+
+  async getAllPredictions(): Promise<Record<string, LoanPredictionItem[]>> {
+    const rows = await this.prisma.loanFieldPrediction.findMany({
+      where: { field_name: { in: [...PREDICTION_FIELDS] } },
+      orderBy: [{ frequency: 'desc' }, { last_used_at: 'desc' }],
+    });
+
+    const grouped: Record<string, LoanPredictionItem[]> = {};
+    for (const field of PREDICTION_FIELDS) {
+      grouped[field] = [];
+    }
+
+    for (const row of rows) {
+      const list = grouped[row.field_name];
+      if (!list || list.length >= 3) continue;
+      list.push(mapRowToPredictionItem(row.field_name, row));
+    }
+
+    return grouped;
   }
 
   async recordFieldUsage(fieldName: string, value: string): Promise<void> {
