@@ -150,6 +150,30 @@ export class LoanAccountsController {
     }
   }
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(
+    ManagementRoles.SUPER_ADMIN,
+    ManagementRoles.ADMIN,
+    ManagementRoles.RISK_CONTROLLER,
+  )
+  @Get('name-query')
+  async nameQuery(
+    @Query('name') name: string,
+    @Query('pageNum') pageNum?: string,
+    @Query('pageSize') pageSize?: string,
+  ): Promise<ApiResponseDto> {
+    try {
+      const result = await this.loanAccountsService.searchByNameFromQueryInfo(
+        name,
+        parseInt(pageNum || '1', 10) || 1,
+        parseInt(pageSize || '50', 10) || 50,
+      );
+      return ResponseHelper.success(result, '姓名查询成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`姓名查询失败: ${error.message}`, 500);
+    }
+  }
+
   @UseGuards(AuthGuard)
   @Get('created-history')
   async findHistoryCreatedLoans(

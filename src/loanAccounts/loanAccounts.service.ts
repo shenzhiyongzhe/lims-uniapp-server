@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   LoanAccount,
@@ -36,6 +37,7 @@ export class LoanAccountsService {
     private readonly loanPredictionService: LoanPredictionService,
     private readonly assetManagementService: AssetManagementService,
     private readonly accessScopeService: AccessScopeService,
+    private readonly config: ConfigService,
   ) { }
 
   private isPlatformAdmin(role: string): boolean {
@@ -2411,5 +2413,53 @@ export class LoanAccountsService {
         },
       });
     });
+  }
+
+  /** 代理 query_info：按姓名（及可选尾号）查询人员记录 */
+  async searchByNameFromQueryInfo(
+    name: string,
+    pageNum = 1,
+    pageSize = 50,
+  ): Promise<{ list: unknown[]; total: number }> {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      return { list: [], total: 0 };
+    }
+
+    const base = (this.config.get<string>('QUERY_INFO_BASE_URL') || '').replace(
+      /\/$/,
+      '',
+    );
+    if (!base) {
+      throw new Error('QUERY_INFO_BASE_URL 未配置');
+    }
+
+    const qs = new URLSearchParams({
+      name: trimmed,
+      pageNum: String(pageNum),
+      pageSize: String(pageSize),
+    });
+    const url = `${base}/web-api/records/search-by-name?${qs.toString()}`;
+
+    let body: {
+      code?: number;
+      message?: string;
+      result?: { list?: unknown[]; total?: number };
+    };
+    try {
+      const res = await fetch(url);
+      body = (await res.json()) as typeof body;
+    } catch (err: any) {
+      throw new Error(`无法连接 query_info: ${err?.message || err}`);
+    }
+
+    if (body.code !== 200) {
+      throw new Error(body.message || 'query_info 姓名查询失败');
+    }
+
+    const list = Array.isArray(body.result?.list) ? body.result.list : [];
+    const total =
+      typeof body.result?.total === 'number' ? body.result.total : list.length;
+    return { list, total };
   }
 }

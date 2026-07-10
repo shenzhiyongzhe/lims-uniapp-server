@@ -2,6 +2,7 @@
 # 用法：export DOCKER_IMAGE=ghcr.io/<owner>/lims-uniapp-server:latest
 #      docker compose -f docker-compose.prod.yml up -d
 # .env 中 DATABASE_URL 主机勿用 localhost（除非 PostgreSQL 真跑在同一容器内）
+# .env 需配置 QUERY_INFO_BASE_URL（姓名查询代理，如 https://www.xinde8888.com/api/query_info）
 services:
   api:
     image: ${DOCKER_IMAGE:?Set DOCKER_IMAGE to ghcr.io/.../lims-uniapp-server:tag}
