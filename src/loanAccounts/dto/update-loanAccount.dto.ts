@@ -105,4 +105,9 @@ export class UpdateLoanAccountDto {
   @IsOptional()
   @Length(0, 100)
   payer_name?: string;
+
+  @IsString()
+  @IsOptional()
+  @Length(1, 10)
+  username?: string;
 }

@@ -513,6 +513,7 @@ export class LoanAccountsService {
         where: { id },
         select: {
           user_id: true,
+          user: { select: { username: true } },
           due_start_date: true,
           collector_id: true,
           risk_controller_id: true,
@@ -541,6 +542,30 @@ export class LoanAccountsService {
 
       prevCollectorId = oldLoan.collector_id;
       prevRiskId = oldLoan.risk_controller_id;
+
+      let oldUsername: string | null = null;
+      let newUsername: string | null = null;
+      if (data.username !== undefined) {
+        const trimmed = data.username.trim();
+        const currentUsername = oldLoan.user?.username ?? '';
+        if (trimmed !== currentUsername) {
+          if (!trimmed) {
+            throw new Error('客户姓名不能为空');
+          }
+          const existingUser = await tx.user.findFirst({
+            where: { username: trimmed, id: { not: oldLoan.user_id } },
+          });
+          if (existingUser) {
+            throw new Error('该客户姓名已存在');
+          }
+          await tx.user.update({
+            where: { id: oldLoan.user_id },
+            data: { username: trimmed },
+          });
+          oldUsername = currentUsername;
+          newUsername = trimmed;
+        }
+      }
 
       const updateData: any = {};
       let newDueStartDate: Date | null = null;
@@ -885,6 +910,12 @@ export class LoanAccountsService {
       compareField('备注', 'note');
       compareField('归属', 'ownership');
       compareField('收款人', 'payer_name');
+
+      if (newUsername !== null && oldUsername !== newUsername) {
+        changes.push(
+          `客户姓名 从 "${oldUsername || '无'}" 修改为 "${newUsername}"`,
+        );
+      }
 
       if (data.due_start_date !== undefined) {
         const oldDateStr = oldLoan.due_start_date
