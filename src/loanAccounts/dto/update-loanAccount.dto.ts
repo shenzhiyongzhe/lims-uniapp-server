@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsDateString,
   IsNumber,
   IsOptional,
@@ -110,4 +111,8 @@ export class UpdateLoanAccountDto {
   @IsOptional()
   @Length(1, 10)
   username?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  reassign_to_existing_user?: boolean;
 }

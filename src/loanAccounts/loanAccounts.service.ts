@@ -545,6 +545,7 @@ export class LoanAccountsService {
 
       let oldUsername: string | null = null;
       let newUsername: string | null = null;
+      let reassignedUserId: number | null = null;
       if (data.username !== undefined) {
         const trimmed = data.username.trim();
         const currentUsername = oldLoan.user?.username ?? '';
@@ -556,18 +557,35 @@ export class LoanAccountsService {
             where: { username: trimmed, id: { not: oldLoan.user_id } },
           });
           if (existingUser) {
-            throw new Error('该客户姓名已存在');
+            if (!data.reassign_to_existing_user) {
+              throw new Error('该客户姓名已存在');
+            }
+            reassignedUserId = existingUser.id;
+            oldUsername = currentUsername;
+            newUsername = trimmed;
+          } else {
+            await tx.user.update({
+              where: { id: oldLoan.user_id },
+              data: { username: trimmed },
+            });
+            oldUsername = currentUsername;
+            newUsername = trimmed;
           }
-          await tx.user.update({
-            where: { id: oldLoan.user_id },
-            data: { username: trimmed },
-          });
-          oldUsername = currentUsername;
-          newUsername = trimmed;
         }
       }
 
       const updateData: any = {};
+      if (reassignedUserId !== null) {
+        updateData.user_id = reassignedUserId;
+        await tx.repaymentRecord.updateMany({
+          where: { loan_id: id },
+          data: { user_id: reassignedUserId },
+        });
+        await tx.overdueRecord.updateMany({
+          where: { loan_id: id },
+          data: { user_id: reassignedUserId },
+        });
+      }
       let newDueStartDate: Date | null = null;
 
       if (data.due_start_date) {
