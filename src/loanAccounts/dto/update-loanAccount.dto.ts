@@ -14,9 +14,8 @@ import { LoanAccountStatus } from '@prisma/client';
 
 export class UpdateLoanAccountDto {
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @IsOptional()
-  @Min(100)
   @Max(1000000)
   loan_amount?: number;
 
@@ -27,12 +26,12 @@ export class UpdateLoanAccountDto {
   to_hand_ratio?: number;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @IsOptional()
   period_capital?: number;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @IsOptional()
   period_interest?: number;
 
@@ -49,7 +48,7 @@ export class UpdateLoanAccountDto {
   status?: LoanAccountStatus;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @IsOptional()
   handling_fee?: number;
 

@@ -17,8 +17,7 @@ export class CreateLoanAccountDto {
   user_id: number;
 
   @IsNumber()
-  @IsPositive()
-  @Min(100)
+  @Min(0)
   @Max(1000000)
   loan_amount: number;
 
@@ -46,7 +45,7 @@ export class CreateLoanAccountDto {
   status?: RepaymentScheduleStatus;
 
   @IsNumber()
-  @IsPositive()
+  @Min(0)
   @IsOptional()
   handling_fee?: number;
 

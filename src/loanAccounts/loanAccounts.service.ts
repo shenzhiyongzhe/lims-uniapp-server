@@ -368,7 +368,15 @@ export class LoanAccountsService {
     };
 
     const startDate = parseDate(due_start_date);
-    const endDate = parseDate(data.due_end_date);
+    let endDate = parseDate(data.due_end_date);
+    let totalPeriodsVal = Number(total_periods) || 0;
+
+    if (Number(data.loan_amount) === 0) {
+      totalPeriodsVal = 50;
+      const end = new Date(startDate);
+      end.setUTCDate(startDate.getUTCDate() + 50 - 1);
+      endDate = end;
+    }
 
     const loan = await this.prisma.$transaction(async (tx) => {
       const existingCount = await tx.loanAccount.count({
@@ -389,7 +397,7 @@ export class LoanAccountsService {
           to_hand_ratio: data.to_hand_ratio,
           due_start_date: startDate,
           due_end_date: endDate,
-          total_periods: Number(total_periods),
+          total_periods: Number(totalPeriodsVal),
           daily_repayment: Number(daily_repayment),
           apply_times: applyTimes,
           period_capital: Number(period_capital),
@@ -408,7 +416,7 @@ export class LoanAccountsService {
       // Record field usage for predictions
       await this.loanPredictionService.updatePredictions(created);
 
-      const periods = Number(total_periods) || 0;
+      const periods = Number(totalPeriodsVal) || 0;
       const perCapital = Number(period_capital) || 0;
       const perInterest = Number(period_interest) || 0;
       let remainingPrincipal = Number(data.loan_amount) || 0;
@@ -424,16 +432,19 @@ export class LoanAccountsService {
         );
 
         let curCapital = 0;
-        if (idx < periods - 1) {
-          curCapital = Math.min(perCapital, Math.max(0, remainingPrincipal));
+        if (Number(data.loan_amount) === 0) {
+          curCapital = perCapital;
         } else {
-          curCapital = Math.max(0, remainingPrincipal);
+          if (idx < periods - 1) {
+            curCapital = Math.min(perCapital, Math.max(0, remainingPrincipal));
+          } else {
+            curCapital = Math.max(0, remainingPrincipal);
+          }
+          remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
         }
 
         const curInterest = perInterest;
         const dueAmount = curCapital + curInterest;
-
-        remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
 
         const scheduleStatus = this.determineScheduleStatus(d, 'pending');
 
@@ -647,7 +658,13 @@ export class LoanAccountsService {
         data.period_interest !== undefined ||
         data.loan_amount !== undefined
       ) {
-        if (finalCapital > 0) {
+        if (finalLoanAmount === 0) {
+          if (finalCapital > 0 || finalInterest > 0) {
+            updateData.total_periods = 50;
+          } else {
+            updateData.total_periods = 0;
+          }
+        } else if (finalCapital > 0) {
           updateData.total_periods = Math.ceil(finalLoanAmount / finalCapital);
         } else if (finalInterest > 0) {
           updateData.total_periods = Math.ceil(finalLoanAmount / finalInterest);
@@ -755,7 +772,7 @@ export class LoanAccountsService {
         const finalStartDate =
           newDueStartDate ||
           (oldLoan.due_start_date ? new Date(oldLoan.due_start_date) : null);
-        const finalPeriods =
+        let finalPeriods =
           updateData.total_periods !== undefined
             ? updateData.total_periods
             : oldLoan.total_periods;
@@ -772,6 +789,10 @@ export class LoanAccountsService {
             ? Number(updateData.loan_amount)
             : Number(oldLoan.loan_amount || 0);
 
+        if (finalLoanAmount === 0) {
+          finalPeriods = 50;
+        }
+
         if (finalStartDate && finalPeriods > 0) {
           // Fetch existing schedules
           const schedules = await tx.repaymentSchedule.findMany({
@@ -784,15 +805,19 @@ export class LoanAccountsService {
           const calculatedSchedules = Array.from({ length: finalPeriods }).map(
             (_, idx) => {
               let curCapital = 0;
-              if (idx < finalPeriods - 1) {
-                curCapital = Math.min(
-                  finalCapital,
-                  Math.max(0, remainingPrincipal),
-                );
+              if (finalLoanAmount === 0) {
+                curCapital = finalCapital;
               } else {
-                curCapital = Math.max(0, remainingPrincipal);
+                if (idx < finalPeriods - 1) {
+                  curCapital = Math.min(
+                    finalCapital,
+                    Math.max(0, remainingPrincipal),
+                  );
+                } else {
+                  curCapital = Math.max(0, remainingPrincipal);
+                }
+                remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
               }
-              remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
 
               const curInterest = finalInterest;
               const dueAmount = curCapital + curInterest;
