@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
+/** JWT claims: identity only. Role is always loaded from DB in AuthGuard. */
 export interface TokenPayload {
   id: number;
   openid: string;
-  role: string;
   type: 'access' | 'refresh';
+  tokenVersion: number;
 }
 
 @Injectable()
@@ -20,10 +21,12 @@ export class AuthJwtService {
   generateAccessToken(payload: {
     id: number;
     openid: string;
-    role: string;
+    tokenVersion: number;
   }): string {
     const tokenPayload: TokenPayload = {
-      ...payload,
+      id: payload.id,
+      openid: payload.openid,
+      tokenVersion: payload.tokenVersion,
       type: 'access',
     };
     return this.jwtService.sign(tokenPayload, {
@@ -38,24 +41,20 @@ export class AuthJwtService {
   generateRefreshToken(payload: {
     id: number;
     openid: string;
-    role: string;
     tokenVersion: number;
   }): string {
     const tokenPayload: TokenPayload = {
       id: payload.id,
       openid: payload.openid,
-      role: payload.role,
+      tokenVersion: payload.tokenVersion,
       type: 'refresh',
     };
-    return this.jwtService.sign(
-      { ...tokenPayload, tokenVersion: payload.tokenVersion },
-      {
-        expiresIn: '7d',
-        secret:
-          this.configService.get<string>('JWT_REFRESH_SECRET') ||
-          'your-refresh-secret-key-change-in-production',
-      },
-    );
+    return this.jwtService.sign(tokenPayload, {
+      expiresIn: '7d',
+      secret:
+        this.configService.get<string>('JWT_REFRESH_SECRET') ||
+        'your-refresh-secret-key-change-in-production',
+    });
   }
 
   // 验证Access Token
@@ -76,13 +75,9 @@ export class AuthJwtService {
   }
 
   // 验证Refresh Token
-  verifyRefreshToken(
-    token: string,
-  ): (TokenPayload & { tokenVersion: number }) | null {
+  verifyRefreshToken(token: string): TokenPayload | null {
     try {
-      const payload = this.jwtService.verify<
-        TokenPayload & { tokenVersion: number }
-      >(token, {
+      const payload = this.jwtService.verify<TokenPayload>(token, {
         secret:
           this.configService.get<string>('JWT_REFRESH_SECRET') ||
           'your-refresh-secret-key-change-in-production',

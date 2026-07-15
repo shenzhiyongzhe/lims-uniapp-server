@@ -79,20 +79,22 @@ export class AuthController {
       throw new UnauthorizedException('用户不存在');
     }
 
-    if (payload.tokenVersion !== staff.token_version) {
+    if (
+      typeof payload.tokenVersion !== 'number' ||
+      payload.tokenVersion !== staff.token_version
+    ) {
       throw new UnauthorizedException('Token已失效，请重新登录');
     }
 
     const newAccessToken = this.authJwtService.generateAccessToken({
       id: staff.id,
       openid: staff.openid ?? '',
-      role: staff.role,
+      tokenVersion: staff.token_version,
     });
 
     const newRefreshToken = this.authJwtService.generateRefreshToken({
       id: staff.id,
       openid: staff.openid ?? '',
-      role: staff.role,
       tokenVersion: staff.token_version,
     });
 
@@ -181,13 +183,12 @@ export class AuthController {
     const accessToken = this.authJwtService.generateAccessToken({
       id: staff.id,
       openid: staff.openid ?? '',
-      role: staff.role,
+      tokenVersion: staff.token_version,
     });
 
     const refreshToken = this.authJwtService.generateRefreshToken({
       id: staff.id,
       openid: staff.openid ?? '',
-      role: staff.role,
       tokenVersion: staff.token_version,
     });
 

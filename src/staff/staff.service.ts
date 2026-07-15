@@ -64,12 +64,19 @@ export class StaffService {
         throw new NotFoundException(`业务人员不存在: ${id}`);
       }
 
-      const data: { username?: string | null; role?: ManagementRoles } = {};
+      const data: {
+        username?: string | null;
+        role?: ManagementRoles;
+        token_version?: { increment: number };
+      } = {};
       if (usernameProvided) {
         data.username = normalizedUsername ?? null;
       }
       if (roleProvided && dto.role !== undefined) {
         data.role = dto.role;
+        if (dto.role !== existing.role) {
+          data.token_version = { increment: 1 };
+        }
       }
 
       const staff = await tx.staff.update({
@@ -277,10 +284,13 @@ export class StaffService {
         }
       }
 
-      // 7. 将源员工降级为 PENDING
+      // 7. 将源员工降级为 PENDING，并使既有会话失效
       await tx.staff.update({
         where: { id: fromId },
-        data: { role: ManagementRoles.PENDING },
+        data: {
+          role: ManagementRoles.PENDING,
+          token_version: { increment: 1 },
+        },
       });
 
       return {

@@ -44,10 +44,10 @@ export class AuthGuard implements CanActivate {
         // Token有效，检查是否即将过期（滑动过期机制）
         if (this.authJwtService.isTokenExpiringSoon(accessToken)) {
           // Token即将过期，尝试自动刷新
-          await this.attemptTokenRefresh(refreshToken, response, payload);
+          await this.attemptTokenRefresh(refreshToken, response);
         }
 
-        // 从数据库验证用户和token版本
+        // 从数据库验证用户和token版本；role 始终取自 DB，不信 JWT
         const staff = await this.prisma.staff.findUnique({
           where: { id: payload.id },
           select: { id: true, openid: true, role: true, token_version: true },
@@ -55,6 +55,13 @@ export class AuthGuard implements CanActivate {
 
         if (!staff) {
           throw new UnauthorizedException('用户不存在');
+        }
+
+        if (
+          typeof payload.tokenVersion !== 'number' ||
+          payload.tokenVersion !== staff.token_version
+        ) {
+          throw new UnauthorizedException('Token已失效，请重新登录');
         }
 
         request.user = { id: staff.id, role: staff.role };
@@ -71,10 +78,19 @@ export class AuthGuard implements CanActivate {
           if (refreshPayload) {
             const staff = await this.prisma.staff.findUnique({
               where: { id: refreshPayload.id },
-              select: { id: true, openid: true, role: true },
+              select: {
+                id: true,
+                openid: true,
+                role: true,
+                token_version: true,
+              },
             });
 
-            if (staff) {
+            if (
+              staff &&
+              typeof refreshPayload.tokenVersion === 'number' &&
+              refreshPayload.tokenVersion === staff.token_version
+            ) {
               request.user = { id: staff.id, role: staff.role };
               return true;
             }
@@ -89,7 +105,6 @@ export class AuthGuard implements CanActivate {
   private async attemptTokenRefresh(
     refreshToken: string | undefined,
     response: Response,
-    currentPayload?: { id: number; openid: string; role: string },
   ): Promise<boolean> {
     if (!refreshToken) {
       return false;
@@ -106,21 +121,24 @@ export class AuthGuard implements CanActivate {
       select: { id: true, openid: true, role: true, token_version: true },
     });
 
-    if (!staff || staff.token_version !== payload.tokenVersion) {
+    if (
+      !staff ||
+      typeof payload.tokenVersion !== 'number' ||
+      staff.token_version !== payload.tokenVersion
+    ) {
       return false;
     }
 
-    // 生成新的tokens
+    // 生成新的tokens（不含 role；role 由 AuthGuard 从 DB 注入）
     const newAccessToken = this.authJwtService.generateAccessToken({
       id: staff.id,
       openid: staff.openid ?? '',
-      role: staff.role,
+      tokenVersion: staff.token_version,
     });
 
     const newRefreshToken = this.authJwtService.generateRefreshToken({
       id: staff.id,
       openid: staff.openid ?? '',
-      role: staff.role,
       tokenVersion: staff.token_version,
     });
 
