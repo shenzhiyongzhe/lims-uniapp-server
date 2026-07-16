@@ -150,10 +150,13 @@ jobs:
         server:
           - name: server-b
             host: ${{ vars.DEPLOY_HOST_B }}
-            path: ${{ vars.DEPLOY_PATH_B || vars.DEPLOY_PATH }}
+            path: ${{ vars.DEPLOY_PATH }}
           - name: server-c
             host: ${{ vars.DEPLOY_HOST_C }}
-            path: ${{ vars.DEPLOY_PATH_C || vars.DEPLOY_PATH }}
+            path: ${{ vars.DEPLOY_PATH }}
+          - name: server-d
+            host: ${{ vars.DEPLOY_HOST_D }}
+            path: ${{ vars.DEPLOY_PATH }}
     # matrix 上下文不能在 job 级 if 中使用，host 是否配置在 step 级判断
     if: |
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
