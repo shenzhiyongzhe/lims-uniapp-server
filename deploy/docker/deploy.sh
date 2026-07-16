@@ -29,10 +29,34 @@ DOMAIN="${DOMAIN:-www.jindijz.cn}"
 SSL_EMAIL="$(read_env_var SSL_EMAIL)"
 CERT_PATH="${SCRIPT_DIR}/certs/live/${DOMAIN}/fullchain.pem"
 
+assert_nginx_generated() {
+  local generated="${SCRIPT_DIR}/nginx.generated.conf"
+
+  if [ ! -s "${generated}" ]; then
+    echo "ERROR: nginx.generated.conf was not created or is empty." >&2
+    exit 1
+  fi
+
+  if grep -q '__DOMAIN__' "${generated}"; then
+    echo "ERROR: nginx.generated.conf still contains __DOMAIN__ placeholder." >&2
+    echo "       DOMAIN=${DOMAIN}" >&2
+    echo "       Check DOMAIN in ${ENV_FILE} and ensure the template substitution succeeded." >&2
+    exit 1
+  fi
+}
+
 generate_nginx_conf() {
   local template="$1"
+
+  if [ -z "${DOMAIN}" ]; then
+    echo "ERROR: DOMAIN is empty — cannot generate a valid nginx config." >&2
+    echo "       Set DOMAIN=your.domain.com in ${ENV_FILE}" >&2
+    exit 1
+  fi
+
   echo "Generating nginx.generated.conf from ${template} (domain: ${DOMAIN})"
-  sed "s/__DOMAIN__/${DOMAIN}/g" "${SCRIPT_DIR}/${template}" > "${SCRIPT_DIR}/nginx.generated.conf"
+  sed "s|__DOMAIN__|${DOMAIN}|g" "${SCRIPT_DIR}/${template}" > "${SCRIPT_DIR}/nginx.generated.conf"
+  assert_nginx_generated
 }
 
 # 2.5 Generate nginx config (bootstrap HTTP-only until the first certificate exists)
