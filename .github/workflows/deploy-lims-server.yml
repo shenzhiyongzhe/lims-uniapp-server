@@ -151,9 +151,9 @@ jobs:
           # - name: server-b
           #   host: ${{ vars.DEPLOY_HOST_B }}
           #   path: ${{ vars.DEPLOY_PATH }}
-          # - name: server-c
-          #   host: ${{ vars.DEPLOY_HOST_C }}
-          #   path: ${{ vars.DEPLOY_PATH }}
+          - name: server-c
+            host: ${{ vars.DEPLOY_HOST_C }}
+            path: ${{ vars.DEPLOY_PATH }}
           - name: server-d
             host: ${{ vars.DEPLOY_HOST_D }}
             path: ${{ vars.DEPLOY_PATH }}
