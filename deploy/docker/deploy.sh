@@ -47,6 +47,7 @@ assert_nginx_generated() {
 
 generate_nginx_conf() {
   local template="$1"
+  local generated="${SCRIPT_DIR}/nginx.generated.conf"
 
   if [ -z "${DOMAIN}" ]; then
     echo "ERROR: DOMAIN is empty — cannot generate a valid nginx config." >&2
@@ -55,8 +56,31 @@ generate_nginx_conf() {
   fi
 
   echo "Generating nginx.generated.conf from ${template} (domain: ${DOMAIN})"
-  sed "s|__DOMAIN__|${DOMAIN}|g" "${SCRIPT_DIR}/${template}" > "${SCRIPT_DIR}/nginx.generated.conf"
+  # cp + sed -i keeps the same inode; redirect (>) can leave the container
+  # bind-mounted to a stale deleted file until nginx is recreated.
+  cp "${SCRIPT_DIR}/${template}" "${generated}"
+  sed -i "s|__DOMAIN__|${DOMAIN}|g" "${generated}"
   assert_nginx_generated
+}
+
+apply_nginx_config() {
+  echo "Applying nginx configuration to container..."
+
+  if docker exec lims-nginx grep -q '__DOMAIN__' /etc/nginx/nginx.conf 2>/dev/null; then
+    echo "WARN: Container sees stale nginx config — recreating nginx"
+    docker compose -f "${COMPOSE_FILE}" up -d --no-deps --force-recreate nginx
+  fi
+
+  if docker exec lims-nginx grep -q '__DOMAIN__' /etc/nginx/nginx.conf 2>/dev/null; then
+    echo "ERROR: nginx container still has __DOMAIN__ in /etc/nginx/nginx.conf" >&2
+    echo "       Host file looks like:" >&2
+    grep -n '__DOMAIN__\|ssl_certificate' "${SCRIPT_DIR}/nginx.generated.conf" >&2 || true
+    exit 1
+  fi
+
+  docker exec lims-nginx nginx -t
+  docker exec lims-nginx nginx -s reload
+  echo "nginx config applied successfully"
 }
 
 # 2.5 Generate nginx config (bootstrap HTTP-only until the first certificate exists)
@@ -88,6 +112,7 @@ fi
 echo "=== [3/5] Starting services (Database, API, Nginx, Certbot) ==="
 export ENV_FILE
 docker compose -f "${COMPOSE_FILE}" --env-file "${ENV_FILE}" up -d --remove-orphans
+apply_nginx_config
 
 # 4.5 Obtain initial SSL certificate if missing
 if [ ! -f "${CERT_PATH}" ]; then
@@ -108,8 +133,7 @@ if [ ! -f "${CERT_PATH}" ]; then
     if [ -f "${CERT_PATH}" ]; then
       echo "Certificate issued — switching nginx to HTTPS config"
       generate_nginx_conf "nginx.conf"
-      docker exec lims-nginx nginx -t
-      docker exec lims-nginx nginx -s reload
+      apply_nginx_config
     else
       echo "ERROR: Certificate request finished but ${CERT_PATH} was not created." >&2
       exit 1
