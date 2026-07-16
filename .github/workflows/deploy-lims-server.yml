@@ -101,45 +101,45 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
-  deploy:
-    needs: [changes, build-and-push]
-    runs-on: ubuntu-latest
-    if: |
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-      vars.DEPLOY_HOST != '' &&
-      (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.deploy == 'true' ||
-        (needs.changes.outputs.app == 'true' && needs.build-and-push.result == 'success')
-      ) &&
-      needs.build-and-push.result != 'failure'
-    steps:
-      - name: Resolve deploy image
-        id: deploy_image
-        run: |
-          OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-          IMAGE_REPO="ghcr.io/${OWNER_LC}/lims-uniapp-server"
-          if [ "${{ needs.build-and-push.result }}" = "success" ]; then
-            echo "image=${IMAGE_REPO}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          else
-            echo "image=${IMAGE_REPO}:latest" >> "$GITHUB_OUTPUT"
-          fi
+  # deploy:
+  #   needs: [changes, build-and-push]
+  #   runs-on: ubuntu-latest
+  #   if: |
+  #     (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+  #     vars.DEPLOY_HOST != '' &&
+  #     (
+  #       github.event_name == 'workflow_dispatch' ||
+  #       needs.changes.outputs.deploy == 'true' ||
+  #       (needs.changes.outputs.app == 'true' && needs.build-and-push.result == 'success')
+  #     ) &&
+  #     needs.build-and-push.result != 'failure'
+  #   steps:
+  #     - name: Resolve deploy image
+  #       id: deploy_image
+  #       run: |
+  #         OWNER_LC="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+  #         IMAGE_REPO="ghcr.io/${OWNER_LC}/lims-uniapp-server"
+  #         if [ "${{ needs.build-and-push.result }}" = "success" ]; then
+  #           echo "image=${IMAGE_REPO}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+  #         else
+  #           echo "image=${IMAGE_REPO}:latest" >> "$GITHUB_OUTPUT"
+  #         fi
 
-      - uses: appleboy/ssh-action@v1.2.0
-        env:
-          IMAGE_FULL_SHA: ${{ steps.deploy_image.outputs.image }}
-          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-        with:
-          host: ${{ vars.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          envs: IMAGE_FULL_SHA,DEPLOY_PATH
-          script_stop: true
-          script: |
-            set -exo pipefail
-            cd "${DEPLOY_PATH}"
-            export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
-            bash deploy/remote-deploy.sh
+  #     - uses: appleboy/ssh-action@v1.2.0
+  #       env:
+  #         IMAGE_FULL_SHA: ${{ steps.deploy_image.outputs.image }}
+  #         DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+  #       with:
+  #         host: ${{ vars.DEPLOY_HOST }}
+  #         username: ${{ vars.DEPLOY_USER }}
+  #         key: ${{ secrets.DEPLOY_SSH_KEY }}
+  #         envs: IMAGE_FULL_SHA,DEPLOY_PATH
+  #         script_stop: true
+  #         script: |
+  #           set -exo pipefail
+  #           cd "${DEPLOY_PATH}"
+  #           export DOCKER_IMAGE="${IMAGE_FULL_SHA}"
+  #           bash deploy/remote-deploy.sh
 
   deploy-additional-servers:
     needs: [changes, build-and-push]
@@ -148,12 +148,12 @@ jobs:
       fail-fast: false
       matrix:
         server:
-          - name: server-b
-            host: ${{ vars.DEPLOY_HOST_B }}
-            path: ${{ vars.DEPLOY_PATH }}
-          - name: server-c
-            host: ${{ vars.DEPLOY_HOST_C }}
-            path: ${{ vars.DEPLOY_PATH }}
+          # - name: server-b
+          #   host: ${{ vars.DEPLOY_HOST_B }}
+          #   path: ${{ vars.DEPLOY_PATH }}
+          # - name: server-c
+          #   host: ${{ vars.DEPLOY_HOST_C }}
+          #   path: ${{ vars.DEPLOY_PATH }}
           - name: server-d
             host: ${{ vars.DEPLOY_HOST_D }}
             path: ${{ vars.DEPLOY_PATH }}
