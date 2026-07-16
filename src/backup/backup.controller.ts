@@ -33,7 +33,6 @@ export class BackupController {
   @Post()
   async triggerBackup() {
     const filename = await this.backupService.createBackupExcel();
-    console.log('filename', filename);
     return ResponseHelper.success({ filename }, '生成数据备份成功');
   }
 
