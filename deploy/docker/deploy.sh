@@ -32,8 +32,7 @@ CERT_PATH="${SCRIPT_DIR}/certs/live/${DOMAIN}/fullchain.pem"
 generate_nginx_conf() {
   local template="$1"
   echo "Generating nginx.generated.conf from ${template} (domain: ${DOMAIN})"
-  cp "${SCRIPT_DIR}/${template}" "${SCRIPT_DIR}/nginx.generated.conf"
-  sed -i "s/__DOMAIN__/${DOMAIN}/g" "${SCRIPT_DIR}/nginx.generated.conf"
+  sed "s/__DOMAIN__/${DOMAIN}/g" "${SCRIPT_DIR}/${template}" > "${SCRIPT_DIR}/nginx.generated.conf"
 }
 
 # 2.5 Generate nginx config (bootstrap HTTP-only until the first certificate exists)
@@ -85,6 +84,7 @@ if [ ! -f "${CERT_PATH}" ]; then
     if [ -f "${CERT_PATH}" ]; then
       echo "Certificate issued — switching nginx to HTTPS config"
       generate_nginx_conf "nginx.conf"
+      docker exec lims-nginx nginx -t
       docker exec lims-nginx nginx -s reload
     else
       echo "ERROR: Certificate request finished but ${CERT_PATH} was not created." >&2
