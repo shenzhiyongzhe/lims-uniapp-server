@@ -11,10 +11,6 @@ if ! command -v docker >/dev/null 2>&1; then
   fi
 fi
 
-reload_nginx() {
-  docker exec lims-nginx nginx -s reload 2>/dev/null || true
-}
-
 trap 'exit 0' TERM INT
 
 while :; do
