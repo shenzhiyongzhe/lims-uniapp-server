@@ -448,7 +448,7 @@ model Archive {
   account    String    @default("") @db.VarChar(128)
   password   String    @default("") @db.VarChar(128)
   situation  String    @default("") @db.Text
-  detail     String    @default("") @db.VarChar(2000)
+  detail     String    @default("") @db.Text
   photos     Json      @default("[]") // 存储为本地相对路径数组，如 ["/uploads/archives/xxx.jpg"]
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
