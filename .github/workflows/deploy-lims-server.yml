@@ -157,6 +157,9 @@ jobs:
           - name: server-d
             host: ${{ vars.DEPLOY_HOST_D }}
             path: ${{ vars.DEPLOY_PATH }}
+          - name: server-e
+            host: ${{ vars.DEPLOY_HOST_E }}
+            path: ${{ vars.DEPLOY_PATH }}
     # matrix 上下文不能在 job 级 if 中使用，host 是否配置在 step 级判断
     if: |
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
