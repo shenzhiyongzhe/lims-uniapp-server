@@ -20,6 +20,7 @@ import { ChangelogsModule } from './changelogs/changelogs.module';
 import { buildPinoParams } from './logger/pino-params.factory';
 import { BackupModule } from './backup/backup.module';
 import { FeedbackModule } from './feedback/feedback.module';
+import { ArchivesModule } from './archives/archives.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { FeedbackModule } from './feedback/feedback.module';
     ChangelogsModule,
     BackupModule,
     FeedbackModule,
+    ArchivesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

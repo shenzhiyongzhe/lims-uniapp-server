@@ -5,6 +5,7 @@ import { RepaymentRecordsModule } from '../repayment-records/repayment-records.m
 import { DailyLoanBalanceService } from './daily-loan-balance.service';
 import { LoanSettledRelockService } from './loan-settled-relock.service';
 import { LoanAccountsModule } from '../loanAccounts/loanAccounts.module';
+import { ArchivesCleanupService } from './archives-cleanup.service';
 
 @Module({
   imports: [PrismaModule, RepaymentRecordsModule, LoanAccountsModule],
@@ -12,6 +13,7 @@ import { LoanAccountsModule } from '../loanAccounts/loanAccounts.module';
     OverdueSweepService,
     DailyLoanBalanceService,
     LoanSettledRelockService,
+    ArchivesCleanupService,
   ],
 })
 export class ScheduleTasksModule {}

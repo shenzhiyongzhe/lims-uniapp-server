@@ -52,6 +52,7 @@ model Staff {
   reductionOperationLogs            RiskControllerReductionRecord[]      @relation("RCReductionOperator")
   lockedLoanAccounts                LoanAccount[]                        @relation("LockedLoanAccounts")
   feedbacks                         Feedback[]
+  archives                          Archive[]                            @relation("CreatorArchives")
 
   @@map("staffs")
 }
@@ -433,3 +434,29 @@ model Feedback {
   @@index([created_at])
   @@map("feedback")
 }
+
+model Archive {
+  id         Int       @id @default(autoincrement())
+  creator_id Int
+  name       String    @db.VarChar(128)
+  phone      String    @default("") @db.VarChar(32)
+  address    String    @default("") @db.VarChar(256)
+  amount     Int       @default(0)
+  job        String    @default("") @db.VarChar(128)
+  income     String    @default("") @db.VarChar(128)
+  date       DateTime? @db.Date
+  account    String    @default("") @db.VarChar(128)
+  password   String    @default("") @db.VarChar(128)
+  situation  String    @default("") @db.Text
+  detail     String    @default("") @db.VarChar(2000)
+  photos     Json      @default("[]") // 存储为本地相对路径数组，如 ["/uploads/archives/xxx.jpg"]
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  creator    Staff     @relation("CreatorArchives", fields: [creator_id], references: [id])
+
+  @@index([creator_id])
+  @@index([name])
+  @@map("archives")
+}
+
