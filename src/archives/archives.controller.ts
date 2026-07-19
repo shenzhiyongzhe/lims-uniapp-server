@@ -75,22 +75,35 @@ export class ArchivesController {
   }
 
   /**
-   * 获取单份档案详情
+   * 获取单份档案详情（附带当前用户的编辑/删除权限）
    */
   @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number) {
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: { id: number; role: string },
+  ) {
     const archive = await this.archivesService.findOne(id);
-    return ResponseHelper.success(archive, '获取档案详情成功');
+    const permissions = await this.archivesService.resolvePermissions(
+      archive.name,
+      user,
+    );
+    return ResponseHelper.success(
+      { ...archive, ...permissions },
+      '获取档案详情成功',
+    );
   }
 
   /**
    * 更新档案内容
+   * 超级管理员/管理员始终可编辑；风控仅在关联方案未锁定时可编辑
    */
   @Put(':id')
   async update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateArchiveDto: UpdateArchiveDto,
+    @CurrentUser() user: { id: number; role: string },
   ) {
+    await this.archivesService.assertCanEdit(id, user);
     const updated = await this.archivesService.update(id, updateArchiveDto);
     return ResponseHelper.success(updated, '更新档案成功');
   }

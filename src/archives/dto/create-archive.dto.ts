@@ -54,10 +54,6 @@ export class CreateArchiveDto {
 
   @IsString()
   @IsOptional()
-  situation?: string;
-
-  @IsString()
-  @IsOptional()
   @MaxLength(2000)
   detail?: string;
 

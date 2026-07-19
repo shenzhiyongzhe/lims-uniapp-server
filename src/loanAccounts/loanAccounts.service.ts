@@ -219,6 +219,48 @@ export class LoanAccountsService {
     });
   }
 
+  /** 为有备注的贷款批量附加最近一次备注变更时间（无变更日志则回退 created_at） */
+  private async attachNoteUpdatedAt<
+    T extends { id: number; note?: string | null; created_at?: Date | string | null },
+  >(loans: T[]): Promise<Array<T & { noteUpdatedAt: string | null }>> {
+    if (!loans.length) return [];
+
+    const idsWithNote = loans
+      .filter((loan) => String(loan.note ?? '').trim() !== '')
+      .map((loan) => loan.id);
+
+    const latestByLoanId = new Map<number, Date>();
+    if (idsWithNote.length > 0) {
+      const logs = await this.prisma.loanAccountOperationLog.findMany({
+        where: {
+          loan_id: { in: idsWithNote },
+          content: { contains: '备注' },
+        },
+        orderBy: { created_at: 'desc' },
+        select: { loan_id: true, created_at: true },
+      });
+      for (const log of logs) {
+        if (!latestByLoanId.has(log.loan_id)) {
+          latestByLoanId.set(log.loan_id, log.created_at);
+        }
+      }
+    }
+
+    return loans.map((loan) => {
+      const hasNote = String(loan.note ?? '').trim() !== '';
+      if (!hasNote) {
+        return { ...loan, noteUpdatedAt: null };
+      }
+      const fromLog = latestByLoanId.get(loan.id);
+      const fallback = loan.created_at ? new Date(loan.created_at) : null;
+      const date = fromLog ?? fallback;
+      return {
+        ...loan,
+        noteUpdatedAt: date && !Number.isNaN(date.getTime()) ? date.toISOString() : null,
+      };
+    });
+  }
+
   /** 创建/编辑方案时下拉：全部负责人与风控，不按当前用户关联过滤 */
   async findAssignableStaffs() {
     return this.prisma.staff.findMany({
@@ -1644,11 +1686,15 @@ export class LoanAccountsService {
       this.computeListStatistics(baseAndParts),
     ]);
 
-    return {
-      data: rows.map((loan) => ({
+    const data = await this.attachNoteUpdatedAt(
+      rows.map((loan) => ({
         ...loan,
         __rowKey: String(loan.id),
       })),
+    );
+
+    return {
+      data,
       total: totalCount,
       statistics: statsResult.statistics,
     };
@@ -2110,8 +2156,10 @@ export class LoanAccountsService {
       total = tab === 'today_paid' ? countTabTodayPaid : countTabTodayUnpaid;
     }
 
+    const dataWithNoteDate = await this.attachNoteUpdatedAt(data);
+
     return {
-      data,
+      data: dataWithNoteDate,
       total,
       listFilterCounts: {
         blacklist: countTabBlacklist,

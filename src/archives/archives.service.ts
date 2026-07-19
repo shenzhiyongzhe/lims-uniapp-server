@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ManagementRoles } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateArchiveDto } from './dto/create-archive.dto';
 import { UpdateArchiveDto } from './dto/update-archive.dto';
@@ -6,11 +12,61 @@ import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
 
+export type ArchiveOperator = { id: number; role: string };
+
+export type ArchivePermissions = {
+  can_edit: boolean;
+  can_delete: boolean;
+};
+
 @Injectable()
 export class ArchivesService {
   private readonly logger = new Logger(ArchivesService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private isPlatformAdmin(role: string): boolean {
+    const r = String(role || '').toUpperCase();
+    return r === ManagementRoles.SUPER_ADMIN || r === ManagementRoles.ADMIN;
+  }
+
+  /**
+   * 档案与方案按客户姓名（archive.name ≈ user.username）关联。
+   * 风控仅在「本人负责且未锁定」的方案存在时可编辑。
+   */
+  async resolvePermissions(
+    archiveName: string,
+    operator: ArchiveOperator,
+  ): Promise<ArchivePermissions> {
+    const role = String(operator.role || '').toUpperCase();
+
+    if (this.isPlatformAdmin(role)) {
+      return { can_edit: true, can_delete: true };
+    }
+
+    if (role === ManagementRoles.RISK_CONTROLLER) {
+      const unlockedLoan = await this.prisma.loanAccount.findFirst({
+        where: {
+          is_locked: false,
+          risk_controller_id: operator.id,
+          user: { username: archiveName },
+        },
+        select: { id: true },
+      });
+      return { can_edit: !!unlockedLoan, can_delete: false };
+    }
+
+    // ADMIN_LIMITED 及其他角色：只读
+    return { can_edit: false, can_delete: false };
+  }
+
+  async assertCanEdit(id: number, operator: ArchiveOperator): Promise<void> {
+    const archive = await this.findOne(id);
+    const permissions = await this.resolvePermissions(archive.name, operator);
+    if (!permissions.can_edit) {
+      throw new ForbiddenException('无权编辑该档案');
+    }
+  }
 
   /**
    * 保存并压缩图片
