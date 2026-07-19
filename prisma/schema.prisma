@@ -438,7 +438,7 @@ model Feedback {
 model Archive {
   id         Int       @id @default(autoincrement())
   creator_id Int
-  name       String    @db.VarChar(128)
+  name       String    @unique @db.VarChar(128)
   phone      String    @default("") @db.VarChar(32)
   address    String    @default("") @db.VarChar(256)
   amount     Int       @default(0)
@@ -455,7 +455,6 @@ model Archive {
   creator    Staff     @relation("CreatorArchives", fields: [creator_id], references: [id])
 
   @@index([creator_id])
-  @@index([name])
   @@map("archives")
 }
 

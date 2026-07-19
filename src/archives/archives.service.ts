@@ -113,21 +113,40 @@ export class ArchivesService {
   }
 
   /**
+   * 按姓名精确查找档案（用于唯一性校验）
+   */
+  async findByExactName(name: string) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return null;
+    return this.prisma.archive.findUnique({
+      where: { name: trimmed },
+      select: { id: true, name: true },
+    });
+  }
+
+  /**
    * 创建档案
    */
   async create(creatorId: number, dto: CreateArchiveDto) {
+    const name = (dto.name || '').trim();
+    const existing = await this.findByExactName(name);
+    if (existing) {
+      return { conflict: true as const, existingId: existing.id };
+    }
+
     const { date, photos, ...rest } = dto;
     const parsedDate = date ? new Date(date) : null;
-    
+
     const archive = await this.prisma.archive.create({
       data: {
         ...rest,
+        name,
         creator_id: creatorId,
         date: parsedDate,
         photos: photos || [],
       },
     });
-    return archive;
+    return { conflict: false as const, archive };
   }
 
   /**
@@ -176,6 +195,17 @@ export class ArchivesService {
   async update(id: number, dto: UpdateArchiveDto) {
     const archive = await this.findOne(id);
 
+    if (dto.name !== undefined) {
+      const nextName = dto.name.trim();
+      if (nextName !== archive.name) {
+        const existing = await this.findByExactName(nextName);
+        if (existing && existing.id !== id) {
+          return { conflict: true as const, existingId: existing.id };
+        }
+      }
+      dto = { ...dto, name: nextName };
+    }
+
     const { date, photos, ...rest } = dto;
     const parsedDate = date !== undefined ? (date ? new Date(date) : null) : undefined;
     
@@ -196,7 +226,7 @@ export class ArchivesService {
       },
     });
 
-    return updated;
+    return { conflict: false as const, archive: updated };
   }
 
   /**

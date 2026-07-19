@@ -50,8 +50,15 @@ export class ArchivesController {
     @CurrentUser() user: { id: number },
     @Body() createArchiveDto: CreateArchiveDto,
   ) {
-    const archive = await this.archivesService.create(user.id, createArchiveDto);
-    return ResponseHelper.success({ id: archive.id }, '创建档案成功');
+    const result = await this.archivesService.create(user.id, createArchiveDto);
+    if (result.conflict) {
+      return {
+        code: 409,
+        message: '已存在该 name 的档案信息',
+        data: { id: result.existingId },
+      };
+    }
+    return ResponseHelper.success({ id: result.archive.id }, '创建档案成功');
   }
 
   /**
@@ -72,6 +79,18 @@ export class ArchivesController {
       sizeNum,
     );
     return ResponseHelper.success(data, '获取档案列表成功');
+  }
+
+  /**
+   * 按姓名精确查询（用于创建前重名校验）
+   */
+  @Get('by-name')
+  async findByName(@Query('name') name?: string) {
+    const archive = await this.archivesService.findByExactName(name || '');
+    return ResponseHelper.success(
+      archive ? { id: archive.id, name: archive.name } : null,
+      '查询完成',
+    );
   }
 
   /**
@@ -104,8 +123,15 @@ export class ArchivesController {
     @CurrentUser() user: { id: number; role: string },
   ) {
     await this.archivesService.assertCanEdit(id, user);
-    const updated = await this.archivesService.update(id, updateArchiveDto);
-    return ResponseHelper.success(updated, '更新档案成功');
+    const result = await this.archivesService.update(id, updateArchiveDto);
+    if (result.conflict) {
+      return {
+        code: 409,
+        message: '已存在该 name 的档案信息',
+        data: { id: result.existingId },
+      };
+    }
+    return ResponseHelper.success(result.archive, '更新档案成功');
   }
 
   /**
