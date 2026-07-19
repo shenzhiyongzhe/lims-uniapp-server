@@ -2060,7 +2060,13 @@ export class LoanAccountsService {
       this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
     ]);
 
-    let data: Array<Record<string, unknown>>;
+    let data: Array<
+      Record<string, any> & {
+        id: number;
+        note?: string | null;
+        created_at?: Date | string | null;
+      }
+    >;
     let total: number;
 
     if (tab === 'blacklist' || tab === 'completed') {
