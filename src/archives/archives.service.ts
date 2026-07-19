@@ -118,7 +118,7 @@ export class ArchivesService {
   async findByExactName(name: string) {
     const trimmed = (name || '').trim();
     if (!trimmed) return null;
-    return this.prisma.archive.findUnique({
+    return this.prisma.archive.findFirst({
       where: { name: trimmed },
       select: { id: true, name: true },
     });

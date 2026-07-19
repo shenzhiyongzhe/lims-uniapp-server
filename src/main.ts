@@ -20,8 +20,15 @@ async function bootstrap() {
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
 
+  // 静态上传同样禁用 ETag/Last-Modified，避免小程序 image / previewImage 遇 304 空白
+  // 文件名含时间戳，可用长期缓存且无需协商校验
   app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
     prefix: '/uploads',
+    etag: false,
+    lastModified: false,
+    setHeaders(res) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
   });
 
   // 配置CORS
