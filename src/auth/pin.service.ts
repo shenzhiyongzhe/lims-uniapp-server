@@ -268,4 +268,25 @@ export class PinService {
 
     return { success: true };
   }
+
+  /**
+   * 管理员解除指定 staff 的密码输入错误锁定
+   */
+  async unlockStaffPin(staffId: number) {
+    const staff = await this.prisma.staff.findUnique({
+      where: { id: staffId },
+      select: { id: true },
+    });
+    if (!staff) throw new NotFoundException(`用户不存在 (ID: ${staffId})`);
+
+    await this.prisma.staff.update({
+      where: { id: staffId },
+      data: {
+        failed_login_attempts: 0,
+        locked_until: null,
+      },
+    });
+
+    return { success: true };
+  }
 }
