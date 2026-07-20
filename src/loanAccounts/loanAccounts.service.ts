@@ -41,7 +41,7 @@ export class LoanAccountsService {
     private readonly accessScopeService: AccessScopeService,
     private readonly archivesService: ArchivesService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   private isPlatformAdmin(role: string): boolean {
     return (
@@ -224,7 +224,11 @@ export class LoanAccountsService {
 
   /** 为有备注的贷款批量附加最近一次备注变更时间（无变更日志则回退 created_at） */
   private async attachNoteUpdatedAt<
-    T extends { id: number; note?: string | null; created_at?: Date | string | null },
+    T extends {
+      id: number;
+      note?: string | null;
+      created_at?: Date | string | null;
+    },
   >(loans: T[]): Promise<Array<T & { noteUpdatedAt: string | null }>> {
     if (!loans.length) return [];
 
@@ -259,7 +263,8 @@ export class LoanAccountsService {
       const date = fromLog ?? fallback;
       return {
         ...loan,
-        noteUpdatedAt: date && !Number.isNaN(date.getTime()) ? date.toISOString() : null,
+        noteUpdatedAt:
+          date && !Number.isNaN(date.getTime()) ? date.toISOString() : null,
       };
     });
   }
@@ -783,7 +788,7 @@ export class LoanAccountsService {
 
       let shouldLogSettledAutoLock = false;
       if (data.status !== undefined) {
-        const newStatus = data.status as LoanAccountStatus;
+        const newStatus = data.status;
         if (this.isTransitionToSettled(oldLoan.status, newStatus)) {
           Object.assign(updateData, this.getSettledAutoLockFields());
           shouldLogSettledAutoLock = true;
@@ -861,7 +866,10 @@ export class LoanAccountsService {
                 } else {
                   curCapital = Math.max(0, remainingPrincipal);
                 }
-                remainingPrincipal = Math.max(0, remainingPrincipal - curCapital);
+                remainingPrincipal = Math.max(
+                  0,
+                  remainingPrincipal - curCapital,
+                );
               }
 
               const curInterest = finalInterest;
@@ -1561,7 +1569,8 @@ export class LoanAccountsService {
 
     let overdueWhere = customWhereOverdueLoans;
     if (!overdueWhere) {
-      const { yesterday: yesterdayShanghai } = getShanghaiBusinessTodayAndYesterday();
+      const { yesterday: yesterdayShanghai } =
+        getShanghaiBusinessTodayAndYesterday();
       const activeLoanStatusFilter = {
         status: {
           notIn: ['settled', 'blacklist'] satisfies LoanAccountStatus[],
@@ -2203,10 +2212,7 @@ export class LoanAccountsService {
     },
     currentUser?: { id: number; role: string },
   ) {
-    const conditions = await this.buildListWhereConditions(
-      query,
-      currentUser,
-    );
+    const conditions = await this.buildListWhereConditions(query, currentUser);
     return this.computeListStatistics(
       conditions.baseAndParts,
       conditions.whereOverdueLoans,
@@ -2285,7 +2291,9 @@ export class LoanAccountsService {
         include: {
           user: true,
           collector: { select: { id: true, username: true, nickname: true } },
-          risk_controller: { select: { id: true, username: true, nickname: true } },
+          risk_controller: {
+            select: { id: true, username: true, nickname: true },
+          },
           creator: { select: { id: true, username: true, nickname: true } },
         },
         skip,

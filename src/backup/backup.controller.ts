@@ -22,7 +22,7 @@ import * as fs from 'fs';
 @UseGuards(AuthGuard, RolesGuard)
 @Roles(ManagementRoles.SUPER_ADMIN)
 export class BackupController {
-  constructor(private readonly backupService: BackupService) { }
+  constructor(private readonly backupService: BackupService) {}
 
   @Get()
   async getBackups() {

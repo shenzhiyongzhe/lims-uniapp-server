@@ -76,8 +76,7 @@ export class PinService {
     });
 
     if (!staff) throw new NotFoundException('用户不存在');
-    if (!staff.pin_enabled)
-      throw new BadRequestException('密码解锁功能未开启');
+    if (!staff.pin_enabled) throw new BadRequestException('密码解锁功能未开启');
 
     const now = new Date();
 
@@ -85,9 +84,7 @@ export class PinService {
     if (staff.locked_until && staff.locked_until > now) {
       const remainMs = staff.locked_until.getTime() - now.getTime();
       const remainMin = Math.ceil(remainMs / 60000);
-      throw new ForbiddenException(
-        `账号已锁定，请 ${remainMin} 分钟后再试`,
-      );
+      throw new ForbiddenException(`账号已锁定，请 ${remainMin} 分钟后再试`);
     }
 
     // 锁定已过期，重置
@@ -101,8 +98,7 @@ export class PinService {
     }
 
     // 若尚未设置 pin_hash，使用默认密码
-    const hashToCompare =
-      staff.pin_hash ?? (await this.hashPin(DEFAULT_PIN));
+    const hashToCompare = staff.pin_hash ?? (await this.hashPin(DEFAULT_PIN));
     const isMatch = await this.comparePin(inputPin, hashToCompare);
 
     if (isMatch) {
@@ -174,8 +170,7 @@ export class PinService {
     });
 
     if (!staff) throw new NotFoundException('用户不存在');
-    if (!staff.pin_enabled)
-      throw new BadRequestException('密码解锁功能未开启');
+    if (!staff.pin_enabled) throw new BadRequestException('密码解锁功能未开启');
 
     // 锁定检查
     const now = new Date();
@@ -186,8 +181,7 @@ export class PinService {
     }
 
     // 验证旧密码
-    const hashToCompare =
-      staff.pin_hash ?? (await this.hashPin(DEFAULT_PIN));
+    const hashToCompare = staff.pin_hash ?? (await this.hashPin(DEFAULT_PIN));
     const isMatch = await this.comparePin(oldPin, hashToCompare);
 
     if (!isMatch) {

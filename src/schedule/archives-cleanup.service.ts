@@ -20,7 +20,7 @@ export class ArchivesCleanupService {
   @Cron('0 30 2 * * *', { timeZone: 'Asia/Shanghai' })
   async cleanupOldArchivePhotos() {
     this.logger.log('Starting scheduled cleanup of old archive photos...');
-    
+
     // 计算 60 天前的时间点
     const cutOffDate = new Date();
     cutOffDate.setDate(cutOffDate.getDate() - 60);
@@ -68,15 +68,16 @@ export class ArchivesCleanupService {
               user: { select: { username: true } },
             },
           });
-          matchingLoan = candidateLoans.find((loan) =>
-            isSamePerson(loan.user?.username || '', archive.name),
-          ) || null;
+          matchingLoan =
+            candidateLoans.find((loan) =>
+              isSamePerson(loan.user?.username || '', archive.name),
+            ) || null;
         }
 
         // 如果没有匹配的方案，则清理照片
         if (!matchingLoan) {
           this.logger.log(
-            `Archive ID ${archive.id} (name: "${archive.name}", created at: ${archive.createdAt.toISOString()}) has no matching loan account. Cleaning photos...`
+            `Archive ID ${archive.id} (name: "${archive.name}", created at: ${archive.createdAt.toISOString()}) has no matching loan account. Cleaning photos...`,
           );
 
           // 物理清理图片文件
@@ -89,7 +90,9 @@ export class ArchivesCleanupService {
                 this.logger.log(`Cleanup: Deleted file ${absolutePath}`);
               }
             } catch (err) {
-              this.logger.error(`Cleanup: Failed to delete file ${absolutePath}, error: ${(err as Error).message}`);
+              this.logger.error(
+                `Cleanup: Failed to delete file ${absolutePath}, error: ${(err as Error).message}`,
+              );
             }
           }
 
@@ -103,9 +106,13 @@ export class ArchivesCleanupService {
         }
       }
 
-      this.logger.log(`Cleanup finished. Cleaned photos for ${cleanedCount} archive(s).`);
+      this.logger.log(
+        `Cleanup finished. Cleaned photos for ${cleanedCount} archive(s).`,
+      );
     } catch (error) {
-      this.logger.error(`Scheduled cleanup failed: ${(error as Error).message}`);
+      this.logger.error(
+        `Scheduled cleanup failed: ${(error as Error).message}`,
+      );
     }
   }
 }

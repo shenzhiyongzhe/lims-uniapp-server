@@ -70,23 +70,23 @@ export class RepaymentSchedulesController {
         user,
       );
 
-    const responseData = {
-      id: newSchedule.id,
-      loan_id: newSchedule.loan_id,
-      period: newSchedule.period,
-      due_start_date: newSchedule.due_start_date,
-      due_amount: newSchedule.due_amount,
-      capital: newSchedule.capital,
-      interest: newSchedule.interest,
-      paid_capital: newSchedule.paid_capital,
-      paid_interest: newSchedule.paid_interest,
-      fines: newSchedule.fines,
-      status: newSchedule.status,
-      paid_amount: newSchedule.paid_amount,
-      paid_at: newSchedule.paid_at,
-    };
+      const responseData = {
+        id: newSchedule.id,
+        loan_id: newSchedule.loan_id,
+        period: newSchedule.period,
+        due_start_date: newSchedule.due_start_date,
+        due_amount: newSchedule.due_amount,
+        capital: newSchedule.capital,
+        interest: newSchedule.interest,
+        paid_capital: newSchedule.paid_capital,
+        paid_interest: newSchedule.paid_interest,
+        fines: newSchedule.fines,
+        status: newSchedule.status,
+        paid_amount: newSchedule.paid_amount,
+        paid_at: newSchedule.paid_at,
+      };
 
-    return ResponseHelper.success(responseData, '创建还款计划成功');
+      return ResponseHelper.success(responseData, '创建还款计划成功');
     } catch (error: any) {
       if (error instanceof ForbiddenException) {
         return ResponseHelper.error(error.message, 403);
@@ -106,23 +106,23 @@ export class RepaymentSchedulesController {
         user,
       );
 
-    const responseData = {
-      id: updatedSchedule.id,
-      loan_id: updatedSchedule.loan_id,
-      period: updatedSchedule.period,
-      due_start_date: updatedSchedule.due_start_date,
-      due_amount: updatedSchedule.due_amount,
-      capital: updatedSchedule.capital,
-      interest: updatedSchedule.interest,
-      paid_capital: updatedSchedule.paid_capital,
-      paid_interest: updatedSchedule.paid_interest,
-      fines: updatedSchedule.fines,
-      status: updatedSchedule.status,
-      paid_amount: updatedSchedule.paid_amount,
-      paid_at: updatedSchedule.paid_at,
-    };
+      const responseData = {
+        id: updatedSchedule.id,
+        loan_id: updatedSchedule.loan_id,
+        period: updatedSchedule.period,
+        due_start_date: updatedSchedule.due_start_date,
+        due_amount: updatedSchedule.due_amount,
+        capital: updatedSchedule.capital,
+        interest: updatedSchedule.interest,
+        paid_capital: updatedSchedule.paid_capital,
+        paid_interest: updatedSchedule.paid_interest,
+        fines: updatedSchedule.fines,
+        status: updatedSchedule.status,
+        paid_amount: updatedSchedule.paid_amount,
+        paid_at: updatedSchedule.paid_at,
+      };
 
-    return ResponseHelper.success(responseData, '更新还款计划成功');
+      return ResponseHelper.success(responseData, '更新还款计划成功');
     } catch (error: any) {
       if (error instanceof ForbiddenException) {
         return ResponseHelper.error(error.message, 403);

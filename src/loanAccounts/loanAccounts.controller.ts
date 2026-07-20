@@ -267,15 +267,15 @@ export class LoanAccountsController {
     try {
       await this.loanAccountsService.setLock(id, body.is_locked, user.id);
       const loan = await this.loanAccountsService.findById(id);
-      return ResponseHelper.success(loan, body.is_locked ? '锁定成功' : '解锁成功');
+      return ResponseHelper.success(
+        loan,
+        body.is_locked ? '锁定成功' : '解锁成功',
+      );
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         return ResponseHelper.error(error.message, 404);
       }
-      return ResponseHelper.error(
-        `更新锁定状态失败: ${error.message}`,
-        500,
-      );
+      return ResponseHelper.error(`更新锁定状态失败: ${error.message}`, 500);
     }
   }
 

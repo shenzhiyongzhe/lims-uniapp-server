@@ -309,7 +309,10 @@ export class AuthController {
       throw new BadRequestException('请输入4位数字密码');
     }
     const result = await this.pinService.verifyPin(user.id, pin);
-    return ResponseHelper.success(result, result.success ? '验证成功' : '密码错误');
+    return ResponseHelper.success(
+      result,
+      result.success ? '验证成功' : '密码错误',
+    );
   }
 
   /** 用户修改自己的 PIN 码 */

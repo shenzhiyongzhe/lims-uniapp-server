@@ -84,18 +84,17 @@ export class StaffController {
 
   /** 管理员重置指定用户的密码为默认密码 1234 */
   @Put(':id/pin/reset')
-  async resetStaffPin(
-    @Param('id') id: string,
-  ): Promise<ApiResponseDto> {
+  async resetStaffPin(@Param('id') id: string): Promise<ApiResponseDto> {
     const result = await this.pinService.resetStaffPin(parseInt(id, 10));
-    return ResponseHelper.success(result, '密码重置成功，该用户密码已重置为 1234');
+    return ResponseHelper.success(
+      result,
+      '密码重置成功，该用户密码已重置为 1234',
+    );
   }
 
   /** 管理员解除指定用户的密码锁定状态 */
   @Put(':id/pin/unlock')
-  async unlockStaffPin(
-    @Param('id') id: string,
-  ): Promise<ApiResponseDto> {
+  async unlockStaffPin(@Param('id') id: string): Promise<ApiResponseDto> {
     const result = await this.pinService.unlockStaffPin(parseInt(id, 10));
     return ResponseHelper.success(result, '密码锁定已解除');
   }

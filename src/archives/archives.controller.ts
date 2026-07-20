@@ -24,21 +24,26 @@ import { ArchivesService } from './archives.service';
 import { CreateArchiveDto } from './dto/create-archive.dto';
 import { UpdateArchiveDto } from './dto/update-archive.dto';
 
+type UploadedArchiveFile = {
+  originalname?: string;
+  buffer: Buffer;
+};
+
 @Controller('archives')
 @UseGuards(AuthGuard)
 export class ArchivesController {
   constructor(private readonly archivesService: ArchivesService) {}
 
   /**
-   * 上传档案照片，自动进行服务器端图片压缩
+   * 上传档案照片，直接保存前端已压缩后的文件
    */
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
-  async uploadFile(@UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@UploadedFile() file?: UploadedArchiveFile) {
     if (!file) {
       throw new BadRequestException('请选择上传的文件');
     }
-    const path = await this.archivesService.saveCompressedImage(file);
+    const path = await this.archivesService.saveUploadedImage(file);
     return ResponseHelper.success(path, '上传成功');
   }
 
@@ -92,7 +97,9 @@ export class ArchivesController {
     }
     const archive = await this.archivesService.findByUserId(id);
     return ResponseHelper.success(
-      archive ? { id: archive.id, name: archive.name, user_id: archive.user_id } : null,
+      archive
+        ? { id: archive.id, name: archive.name, user_id: archive.user_id }
+        : null,
       '查询完成',
     );
   }

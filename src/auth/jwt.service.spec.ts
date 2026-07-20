@@ -30,7 +30,11 @@ describe('AuthJwtService Scheme A', () => {
       type: 'access',
       tokenVersion: 3,
     });
-    expect(payload && 'role' in payload ? (payload as { role?: string }).role : undefined).toBeUndefined();
+    expect(
+      payload && 'role' in payload
+        ? (payload as { role?: string }).role
+        : undefined,
+    ).toBeUndefined();
   });
 
   it('refresh token has tokenVersion and no role claim', () => {
@@ -46,6 +50,10 @@ describe('AuthJwtService Scheme A', () => {
       type: 'refresh',
       tokenVersion: 3,
     });
-    expect(payload && 'role' in payload ? (payload as { role?: string }).role : undefined).toBeUndefined();
+    expect(
+      payload && 'role' in payload
+        ? (payload as { role?: string }).role
+        : undefined,
+    ).toBeUndefined();
   });
 });

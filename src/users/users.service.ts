@@ -45,7 +45,9 @@ export class UsersService {
 
     const prefix = extractChinesePrefix(normalized);
     const candidates = await this.prisma.user.findMany({
-      where: prefix ? { username: { startsWith: prefix } } : { username: normalized },
+      where: prefix
+        ? { username: { startsWith: prefix } }
+        : { username: normalized },
     });
     const match = candidates.find((u) => isSamePerson(u.username, normalized));
     if (match) return match;

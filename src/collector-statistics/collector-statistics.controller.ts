@@ -20,7 +20,7 @@ export class CollectorStatisticsController {
   constructor(
     private readonly collectorStatisticsService: CollectorStatisticsService,
     private readonly repaymentRecordsService: RepaymentRecordsService,
-  ) { }
+  ) {}
 
   @Get('statistics')
   async getTopStatistics(

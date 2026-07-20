@@ -16,7 +16,9 @@ export class UsersController {
   }
 
   @Get('loan-count')
-  async getLoanCount(@Query('username') username: string): Promise<ApiResponseDto> {
+  async getLoanCount(
+    @Query('username') username: string,
+  ): Promise<ApiResponseDto> {
     if (!username) {
       return ResponseHelper.error('用户名不能为空', 400);
     }

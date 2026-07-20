@@ -17,7 +17,6 @@ import {
 } from '../common/person-name-match';
 import * as fs from 'fs';
 import * as path from 'path';
-import sharp from 'sharp';
 
 export type ArchiveOperator = { id: number; role: string };
 
@@ -29,6 +28,11 @@ export type ArchivePermissions = {
 export type ArchiveIdentity = {
   name: string;
   user_id: number | null;
+};
+
+type UploadedArchiveFile = {
+  originalname?: string;
+  buffer: Buffer;
 };
 
 @Injectable()
@@ -78,7 +82,9 @@ export class ArchivesService {
     return { can_edit: false, can_delete: false };
   }
 
-  private async resolveUserIdsForArchive(archive: ArchiveIdentity): Promise<number[]> {
+  private async resolveUserIdsForArchive(
+    archive: ArchiveIdentity,
+  ): Promise<number[]> {
     if (archive.user_id) {
       return [archive.user_id];
     }
@@ -106,25 +112,24 @@ export class ArchivesService {
     }
   }
 
-  async saveCompressedImage(file: Express.Multer.File): Promise<string> {
+  async saveUploadedImage(file: UploadedArchiveFile): Promise<string> {
     const uploadDir = path.join(process.cwd(), 'uploads', 'archives');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+    const originalExt = path.extname(file.originalname || '').toLowerCase();
+    const ext = originalExt || '.jpg';
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
     const outputPath = path.join(uploadDir, filename);
 
     try {
-      await sharp(file.buffer)
-        .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toFile(outputPath);
+      await fs.promises.writeFile(outputPath, file.buffer);
 
       return `/uploads/archives/${filename}`;
     } catch (error) {
-      this.logger.error(`图片压缩保存失败: ${(error as Error).message}`);
-      throw new Error(`图片压缩处理失败: ${(error as Error).message}`);
+      this.logger.error(`图片保存失败: ${(error as Error).message}`);
+      throw new Error(`图片保存失败: ${(error as Error).message}`);
     }
   }
 
@@ -138,7 +143,9 @@ export class ArchivesService {
           this.logger.log(`物理图片已清理: ${absolutePath}`);
         }
       } catch (err) {
-        this.logger.error(`清理物理图片失败: ${absolutePath}, error: ${(err as Error).message}`);
+        this.logger.error(
+          `清理物理图片失败: ${absolutePath}, error: ${(err as Error).message}`,
+        );
       }
     }
   }
@@ -156,14 +163,14 @@ export class ArchivesService {
 
     const prefix = extractChinesePrefix(normalized);
     const candidates = await this.prisma.archive.findMany({
-      where: prefix
-        ? { name: { startsWith: prefix } }
-        : { name: normalized },
+      where: prefix ? { name: { startsWith: prefix } } : { name: normalized },
       select: { id: true, name: true, user_id: true },
       take: 50,
     });
 
-    return candidates.find((item) => isSamePerson(item.name, normalized)) || null;
+    return (
+      candidates.find((item) => isSamePerson(item.name, normalized)) || null
+    );
   }
 
   async findByExactName(name: string) {
@@ -193,7 +200,9 @@ export class ArchivesService {
       return { conflict: true as const, existingId: existing.id };
     }
 
-    const { date, photos, user_id: _uid, name: _dtoName, ...rest } = dto;
+    const { date, photos, ...rest } = dto;
+    delete (rest as Partial<CreateArchiveDto>).user_id;
+    delete (rest as Partial<CreateArchiveDto>).name;
     const parsedDate = date ? new Date(date) : null;
 
     const archive = await this.prisma.archive.create({
@@ -258,7 +267,8 @@ export class ArchivesService {
     }
 
     const { date, photos, ...rest } = dto;
-    const parsedDate = date !== undefined ? (date ? new Date(date) : null) : undefined;
+    const parsedDate =
+      date !== undefined ? (date ? new Date(date) : null) : undefined;
 
     if (photos !== undefined) {
       const oldPhotos = (archive.photos as string[]) || [];

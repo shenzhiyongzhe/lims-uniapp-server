@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RepaymentSchedule, RepaymentScheduleStatus } from '@prisma/client';
 import { LoanAccountsService } from '../loanAccounts/loanAccounts.service';
@@ -29,7 +33,7 @@ export class RepaymentSchedulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly loanAccountsService: LoanAccountsService,
-  ) { }
+  ) {}
 
   /** Prisma client 在 migrate 后需执行 generate；此处兼容 generate 尚未刷新的环境 */
   private get operationLogDelegate(): {
@@ -502,33 +506,36 @@ export class RepaymentSchedulesService {
       paid_at: schedule.paid_at ? schedule.paid_at : undefined,
       loan_account: schedule.loan_account
         ? {
-          id: schedule.loan_account.id,
-          user_id: schedule.loan_account.user_id,
-          loan_amount: Number(schedule.loan_account.loan_amount),
-          period_capital: Number(schedule.loan_account.period_capital),
-          period_interest: Number(schedule.loan_account.period_interest),
-          due_start_date: schedule.loan_account.due_start_date,
-          due_end_date: schedule.loan_account.due_end_date,
-          status: schedule.loan_account.status,
-          handling_fee: Number(schedule.loan_account.handling_fee),
-          total_periods: schedule.loan_account.total_periods,
-          repaid_periods: schedule.loan_account.repaid_periods,
-          daily_repayment: Number(schedule.loan_account.daily_repayment),
-          risk_controller:
-            schedule.loan_account.risk_controller?.nickname || '',
-          collector: schedule.loan_account.collector?.nickname || '',
-          creator: schedule.loan_account.creator?.nickname || schedule.loan_account.creator?.username || '',
-          lender: '', // Not in this schema
-          user: schedule.loan_account.user
-            ? {
-              id: schedule.loan_account.user.id,
-              username: schedule.loan_account.user.username,
-              overtime: schedule.loan_account.user.overtime,
-              overdue_time: schedule.loan_account.user.overdue_time,
-              is_high_risk: schedule.loan_account.user.is_high_risk,
-            }
-            : undefined,
-        }
+            id: schedule.loan_account.id,
+            user_id: schedule.loan_account.user_id,
+            loan_amount: Number(schedule.loan_account.loan_amount),
+            period_capital: Number(schedule.loan_account.period_capital),
+            period_interest: Number(schedule.loan_account.period_interest),
+            due_start_date: schedule.loan_account.due_start_date,
+            due_end_date: schedule.loan_account.due_end_date,
+            status: schedule.loan_account.status,
+            handling_fee: Number(schedule.loan_account.handling_fee),
+            total_periods: schedule.loan_account.total_periods,
+            repaid_periods: schedule.loan_account.repaid_periods,
+            daily_repayment: Number(schedule.loan_account.daily_repayment),
+            risk_controller:
+              schedule.loan_account.risk_controller?.nickname || '',
+            collector: schedule.loan_account.collector?.nickname || '',
+            creator:
+              schedule.loan_account.creator?.nickname ||
+              schedule.loan_account.creator?.username ||
+              '',
+            lender: '', // Not in this schema
+            user: schedule.loan_account.user
+              ? {
+                  id: schedule.loan_account.user.id,
+                  username: schedule.loan_account.user.username,
+                  overtime: schedule.loan_account.user.overtime,
+                  overdue_time: schedule.loan_account.user.overdue_time,
+                  is_high_risk: schedule.loan_account.user.is_high_risk,
+                }
+              : undefined,
+          }
         : undefined,
     };
   }
