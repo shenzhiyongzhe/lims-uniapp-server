@@ -41,23 +41,37 @@ export class ArchivesCleanupService {
         const photos = (archive.photos as string[]) || [];
         if (photos.length === 0) continue;
 
-        const prefix = extractChinesePrefix(archive.name);
-        const candidateLoans = await this.prisma.loanAccount.findMany({
-          where: {
-            created_at: {
-              gte: archive.createdAt,
+        let matchingLoan = null as { id: number } | null;
+
+        if (archive.user_id) {
+          matchingLoan = await this.prisma.loanAccount.findFirst({
+            where: {
+              created_at: { gte: archive.createdAt },
+              user_id: archive.user_id,
             },
-            user: prefix
-              ? { username: { startsWith: prefix } }
-              : { username: archive.name },
-          },
-          include: {
-            user: { select: { username: true } },
-          },
-        });
-        const matchingLoan = candidateLoans.find((loan) =>
-          isSamePerson(loan.user?.username || '', archive.name),
-        );
+            select: { id: true },
+          });
+        }
+
+        if (!matchingLoan) {
+          const prefix = extractChinesePrefix(archive.name);
+          const candidateLoans = await this.prisma.loanAccount.findMany({
+            where: {
+              created_at: {
+                gte: archive.createdAt,
+              },
+              user: prefix
+                ? { username: { startsWith: prefix } }
+                : { username: archive.name },
+            },
+            include: {
+              user: { select: { username: true } },
+            },
+          });
+          matchingLoan = candidateLoans.find((loan) =>
+            isSamePerson(loan.user?.username || '', archive.name),
+          ) || null;
+        }
 
         // 如果没有匹配的方案，则清理照片
         if (!matchingLoan) {

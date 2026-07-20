@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -6,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ManagementRoles } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
 import { CreateArchiveDto } from './dto/create-archive.dto';
 import { UpdateArchiveDto } from './dto/update-archive.dto';
 import {
@@ -24,11 +26,19 @@ export type ArchivePermissions = {
   can_delete: boolean;
 };
 
+export type ArchiveIdentity = {
+  name: string;
+  user_id: number | null;
+};
+
 @Injectable()
 export class ArchivesService {
   private readonly logger = new Logger(ArchivesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usersService: UsersService,
+  ) {}
 
   private isPlatformAdmin(role: string): boolean {
     const r = String(role || '').toUpperCase();
@@ -36,11 +46,10 @@ export class ArchivesService {
   }
 
   /**
-   * 档案与方案按客户姓名（archive.name ≈ user.username）关联。
-   * 风控仅在「本人负责且未锁定」的方案存在时可编辑。
+   * 档案与方案按 user_id 关联；无 user_id 时回退姓名模糊匹配。
    */
   async resolvePermissions(
-    archiveName: string,
+    archive: ArchiveIdentity,
     operator: ArchiveOperator,
   ): Promise<ArchivePermissions> {
     const role = String(operator.role || '').toUpperCase();
@@ -50,17 +59,8 @@ export class ArchivesService {
     }
 
     if (role === ManagementRoles.RISK_CONTROLLER) {
-      const prefix = extractChinesePrefix(archiveName);
-      const users = await this.prisma.user.findMany({
-        where: prefix
-          ? { username: { startsWith: prefix } }
-          : { username: sanitizePersonName(archiveName) },
-        select: { id: true, username: true },
-      });
-      const matchingUserIds = users
-        .filter((u) => isSamePerson(u.username, archiveName))
-        .map((u) => u.id);
-      if (!matchingUserIds.length) {
+      const userIds = await this.resolveUserIdsForArchive(archive);
+      if (!userIds.length) {
         return { can_edit: false, can_delete: false };
       }
 
@@ -68,28 +68,44 @@ export class ArchivesService {
         where: {
           is_locked: false,
           risk_controller_id: operator.id,
-          user_id: { in: matchingUserIds },
+          user_id: { in: userIds },
         },
         select: { id: true },
       });
       return { can_edit: !!unlockedLoan, can_delete: false };
     }
 
-    // ADMIN_LIMITED 及其他角色：只读
     return { can_edit: false, can_delete: false };
+  }
+
+  private async resolveUserIdsForArchive(archive: ArchiveIdentity): Promise<number[]> {
+    if (archive.user_id) {
+      return [archive.user_id];
+    }
+
+    const prefix = extractChinesePrefix(archive.name);
+    const users = await this.prisma.user.findMany({
+      where: prefix
+        ? { username: { startsWith: prefix } }
+        : { username: sanitizePersonName(archive.name) },
+      select: { id: true, username: true },
+    });
+    return users
+      .filter((u) => isSamePerson(u.username, archive.name))
+      .map((u) => u.id);
   }
 
   async assertCanEdit(id: number, operator: ArchiveOperator): Promise<void> {
     const archive = await this.findOne(id);
-    const permissions = await this.resolvePermissions(archive.name, operator);
+    const permissions = await this.resolvePermissions(
+      { name: archive.name, user_id: archive.user_id },
+      operator,
+    );
     if (!permissions.can_edit) {
       throw new ForbiddenException('无权编辑该档案');
     }
   }
 
-  /**
-   * 保存并压缩图片
-   */
   async saveCompressedImage(file: Express.Multer.File): Promise<string> {
     const uploadDir = path.join(process.cwd(), 'uploads', 'archives');
     if (!fs.existsSync(uploadDir)) {
@@ -104,7 +120,7 @@ export class ArchivesService {
         .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 80 })
         .toFile(outputPath);
-      
+
       return `/uploads/archives/${filename}`;
     } catch (error) {
       this.logger.error(`图片压缩保存失败: ${(error as Error).message}`);
@@ -112,13 +128,9 @@ export class ArchivesService {
     }
   }
 
-  /**
-   * 删除物理图片文件
-   */
   deleteLocalFiles(photos: string[]) {
     for (const photo of photos) {
       if (!photo || !photo.startsWith('/uploads/')) continue;
-      // 拼出绝对路径
       const absolutePath = path.join(process.cwd(), photo);
       try {
         if (fs.existsSync(absolutePath)) {
@@ -131,9 +143,13 @@ export class ArchivesService {
     }
   }
 
-  /**
-   * 按姓名模糊匹配查找档案（中文名相同且尾号后四位相同）
-   */
+  async findByUserId(userId: number) {
+    return this.prisma.archive.findUnique({
+      where: { user_id: userId },
+      select: { id: true, name: true, user_id: true },
+    });
+  }
+
   async findMatchingArchive(name: string) {
     const normalized = sanitizePersonName(name);
     if (!normalized) return null;
@@ -143,37 +159,48 @@ export class ArchivesService {
       where: prefix
         ? { name: { startsWith: prefix } }
         : { name: normalized },
-      select: { id: true, name: true },
+      select: { id: true, name: true, user_id: true },
       take: 50,
     });
 
     return candidates.find((item) => isSamePerson(item.name, normalized)) || null;
   }
 
-  /**
-   * 按姓名查找档案（用于唯一性校验，含模糊匹配）
-   */
   async findByExactName(name: string) {
     return this.findMatchingArchive(name);
   }
 
-  /**
-   * 创建档案
-   */
   async create(creatorId: number, dto: CreateArchiveDto) {
-    const name = sanitizePersonName(dto.name);
-    const existing = await this.findMatchingArchive(name);
+    let userId = dto.user_id;
+    let name = sanitizePersonName(dto.name);
+
+    if (userId) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        throw new NotFoundException('客户不存在');
+      }
+      name = user.username;
+    } else if (name) {
+      const user = await this.usersService.findOrCreateByName(name);
+      userId = user.id;
+      name = user.username;
+    } else {
+      throw new BadRequestException('请提供客户姓名或 user_id');
+    }
+
+    const existing = await this.findByUserId(userId);
     if (existing) {
       return { conflict: true as const, existingId: existing.id };
     }
 
-    const { date, photos, ...rest } = dto;
+    const { date, photos, user_id: _uid, name: _dtoName, ...rest } = dto;
     const parsedDate = date ? new Date(date) : null;
 
     const archive = await this.prisma.archive.create({
       data: {
         ...rest,
         name,
+        user_id: userId,
         creator_id: creatorId,
         date: parsedDate,
         photos: photos || [],
@@ -182,13 +209,10 @@ export class ArchivesService {
     return { conflict: false as const, archive };
   }
 
-  /**
-   * 查询档案列表
-   */
   async findAll(keyword = '', page = 1, pageSize = 20) {
     const skip = (page - 1) * pageSize;
-    const where: any = {};
-    
+    const where: Record<string, unknown> = {};
+
     if (keyword.trim()) {
       where.name = {
         contains: keyword.trim(),
@@ -209,9 +233,6 @@ export class ArchivesService {
     return { total, items };
   }
 
-  /**
-   * 查询单条档案详情
-   */
   async findOne(id: number) {
     const archive = await this.prisma.archive.findUnique({
       where: { id },
@@ -222,9 +243,6 @@ export class ArchivesService {
     return archive;
   }
 
-  /**
-   * 更新档案
-   */
   async update(id: number, dto: UpdateArchiveDto) {
     const archive = await this.findOne(id);
 
@@ -241,12 +259,11 @@ export class ArchivesService {
 
     const { date, photos, ...rest } = dto;
     const parsedDate = date !== undefined ? (date ? new Date(date) : null) : undefined;
-    
-    // 如果有传入新的照片列表，对比并清理失效的物理文件
+
     if (photos !== undefined) {
       const oldPhotos = (archive.photos as string[]) || [];
       const newPhotosSet = new Set(photos);
-      const removedPhotos = oldPhotos.filter(p => !newPhotosSet.has(p));
+      const removedPhotos = oldPhotos.filter((p) => !newPhotosSet.has(p));
       this.deleteLocalFiles(removedPhotos);
     }
 
@@ -262,13 +279,8 @@ export class ArchivesService {
     return { conflict: false as const, archive: updated };
   }
 
-  /**
-   * 删除档案
-   */
   async remove(id: number) {
     const archive = await this.findOne(id);
-    
-    // 清理所有物理照片文件
     const photos = (archive.photos as string[]) || [];
     this.deleteLocalFiles(photos);
 
@@ -279,22 +291,27 @@ export class ArchivesService {
     return { success: true };
   }
 
-  /**
-   * 按姓名删除档案（与贷款客户 username 对齐）。
-   * 无匹配档案时静默跳过。
-   */
+  async removeByUserId(userId: number) {
+    const archive = await this.findByUserId(userId);
+    if (!archive) return { deleted: false };
+
+    return this.remove(archive.id).then(() => ({
+      deleted: true,
+      id: archive.id,
+    }));
+  }
+
   async removeByName(name: string) {
     const archive = await this.findMatchingArchive(name);
     if (!archive) return { deleted: false };
 
-    const full = await this.findOne(archive.id);
-    const photos = (full.photos as string[]) || [];
-    this.deleteLocalFiles(photos);
+    if (archive.user_id) {
+      return this.removeByUserId(archive.user_id);
+    }
 
-    await this.prisma.archive.delete({
-      where: { id: archive.id },
-    });
-
-    return { deleted: true, id: archive.id };
+    return this.remove(archive.id).then(() => ({
+      deleted: true,
+      id: archive.id,
+    }));
   }
 }

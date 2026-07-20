@@ -21,6 +21,7 @@
     "db:check-orphans": "prisma db execute --file deploy/postgresql/check-orphan-fks.sql",
     "db:add-constraints": "prisma db execute --file deploy/postgresql/add-constraints-after-import.sql",
     "db:reset-sequences": "prisma db execute --file deploy/postgresql/reset-sequences.sql",
+    "backfill:archive-user-id": "tsx scripts/backfill-archive-user-id.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

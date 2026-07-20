@@ -1,6 +1,5 @@
 import {
   IsString,
-  IsNotEmpty,
   IsOptional,
   IsInt,
   Min,
@@ -9,10 +8,14 @@ import {
 } from 'class-validator';
 
 export class CreateArchiveDto {
+  @IsOptional()
+  @IsInt()
+  user_id?: number;
+
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
   @MaxLength(128)
-  name: string;
+  name?: string;
 
   @IsString()
   @IsOptional()

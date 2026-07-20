@@ -1205,15 +1205,14 @@ export class LoanAccountsService {
       await tx.loanAccount.delete({ where: { id } });
     });
 
-    // 档案按客户姓名关联；该客户已无其他方案时同步删除同名档案
-    const username = fullLoan.user?.username?.trim();
-    if (username) {
+    // 档案按客户 user_id 关联；该客户已无其他方案时同步删除档案
+    if (fullLoan.user_id) {
       const remainingLoans = await this.prisma.loanAccount.count({
-        where: { user: { username } },
+        where: { user_id: fullLoan.user_id },
       });
       if (remainingLoans === 0) {
         try {
-          await this.archivesService.removeByName(username);
+          await this.archivesService.removeByUserId(fullLoan.user_id);
         } catch (error) {
           console.error('同步删除档案失败:', error);
         }

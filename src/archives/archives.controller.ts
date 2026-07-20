@@ -82,6 +82,22 @@ export class ArchivesController {
   }
 
   /**
+   * 按客户 user_id 查询档案
+   */
+  @Get('by-user')
+  async findByUser(@Query('user_id') userId?: string) {
+    const id = userId ? parseInt(userId, 10) : NaN;
+    if (!userId || Number.isNaN(id)) {
+      throw new BadRequestException('user_id 无效');
+    }
+    const archive = await this.archivesService.findByUserId(id);
+    return ResponseHelper.success(
+      archive ? { id: archive.id, name: archive.name, user_id: archive.user_id } : null,
+      '查询完成',
+    );
+  }
+
+  /**
    * 按姓名精确查询（用于创建前重名校验）
    */
   @Get('by-name')
@@ -103,7 +119,7 @@ export class ArchivesController {
   ) {
     const archive = await this.archivesService.findOne(id);
     const permissions = await this.archivesService.resolvePermissions(
-      archive.name,
+      { name: archive.name, user_id: archive.user_id },
       user,
     );
     return ResponseHelper.success(

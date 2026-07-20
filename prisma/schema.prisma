@@ -16,6 +16,7 @@ model User {
   updatedAt        DateTime?         @updatedAt
   loanAccounts     LoanAccount[]
   repaymentRecords RepaymentRecord[]
+  archives         Archive[]
 
   @@map("users")
 }
@@ -438,7 +439,8 @@ model Feedback {
 model Archive {
   id         Int       @id @default(autoincrement())
   creator_id Int
-  name       String    @unique @db.VarChar(128)
+  user_id    Int?      @unique @map("user_id")
+  name       String    @db.VarChar(128)
   phone      String    @default("") @db.VarChar(32)
   address    String    @default("") @db.VarChar(256)
   amount     Int       @default(0)
@@ -453,8 +455,10 @@ model Archive {
   updatedAt  DateTime  @updatedAt @map("updated_at")
 
   creator    Staff     @relation("CreatorArchives", fields: [creator_id], references: [id])
+  user       User?     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([creator_id])
+  @@index([name])
   @@map("archives")
 }
 
