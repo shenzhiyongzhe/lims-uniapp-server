@@ -22,6 +22,7 @@ import {
   getShanghaiBusinessTodayAndYesterday,
   getBusinessDayTimestampRange,
 } from '../common/business-date';
+import { sanitizePersonName } from '../common/person-name-match';
 import {
   ensureOverdueRecordsForLoan,
   reconcileOverdueRecordsForLoan,
@@ -602,7 +603,7 @@ export class LoanAccountsService {
       let newUsername: string | null = null;
       let reassignedUserId: number | null = null;
       if (data.username !== undefined) {
-        const trimmed = data.username.trim();
+        const trimmed = sanitizePersonName(data.username);
         const currentUsername = oldLoan.user?.username ?? '';
         if (trimmed !== currentUsername) {
           if (!trimmed) {

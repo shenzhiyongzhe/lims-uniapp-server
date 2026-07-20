@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { User } from '@prisma/client';
+import { sanitizePersonName } from '../common/person-name-match';
 
 @Injectable()
 export class UsersService {
@@ -18,21 +19,23 @@ export class UsersService {
   }
 
   async create(username: string): Promise<User> {
+    const normalized = sanitizePersonName(username);
     const existing = await this.prisma.user.findFirst({
-      where: { username },
+      where: { username: normalized },
     });
     if (existing) return existing;
 
     return this.prisma.user.create({
       data: {
-        username,
+        username: normalized,
       },
     });
   }
 
   async getLoanCount(username: string): Promise<number> {
+    const normalized = sanitizePersonName(username);
     const user = await this.prisma.user.findFirst({
-      where: { username },
+      where: { username: normalized },
     });
     if (!user) {
       return 0;

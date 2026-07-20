@@ -8,6 +8,11 @@ import { ManagementRoles } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateArchiveDto } from './dto/create-archive.dto';
 import { UpdateArchiveDto } from './dto/update-archive.dto';
+import {
+  extractChinesePrefix,
+  isSamePerson,
+  sanitizePersonName,
+} from '../common/person-name-match';
 import * as fs from 'fs';
 import * as path from 'path';
 import sharp from 'sharp';
@@ -45,11 +50,25 @@ export class ArchivesService {
     }
 
     if (role === ManagementRoles.RISK_CONTROLLER) {
+      const prefix = extractChinesePrefix(archiveName);
+      const users = await this.prisma.user.findMany({
+        where: prefix
+          ? { username: { startsWith: prefix } }
+          : { username: sanitizePersonName(archiveName) },
+        select: { id: true, username: true },
+      });
+      const matchingUserIds = users
+        .filter((u) => isSamePerson(u.username, archiveName))
+        .map((u) => u.id);
+      if (!matchingUserIds.length) {
+        return { can_edit: false, can_delete: false };
+      }
+
       const unlockedLoan = await this.prisma.loanAccount.findFirst({
         where: {
           is_locked: false,
           risk_controller_id: operator.id,
-          user: { username: archiveName },
+          user_id: { in: matchingUserIds },
         },
         select: { id: true },
       });
@@ -113,23 +132,37 @@ export class ArchivesService {
   }
 
   /**
-   * 按姓名精确查找档案（用于唯一性校验）
+   * 按姓名模糊匹配查找档案（中文名相同且尾号后四位相同）
+   */
+  async findMatchingArchive(name: string) {
+    const normalized = sanitizePersonName(name);
+    if (!normalized) return null;
+
+    const prefix = extractChinesePrefix(normalized);
+    const candidates = await this.prisma.archive.findMany({
+      where: prefix
+        ? { name: { startsWith: prefix } }
+        : { name: normalized },
+      select: { id: true, name: true },
+      take: 50,
+    });
+
+    return candidates.find((item) => isSamePerson(item.name, normalized)) || null;
+  }
+
+  /**
+   * 按姓名查找档案（用于唯一性校验，含模糊匹配）
    */
   async findByExactName(name: string) {
-    const trimmed = (name || '').trim();
-    if (!trimmed) return null;
-    return this.prisma.archive.findFirst({
-      where: { name: trimmed },
-      select: { id: true, name: true },
-    });
+    return this.findMatchingArchive(name);
   }
 
   /**
    * 创建档案
    */
   async create(creatorId: number, dto: CreateArchiveDto) {
-    const name = (dto.name || '').trim();
-    const existing = await this.findByExactName(name);
+    const name = sanitizePersonName(dto.name);
+    const existing = await this.findMatchingArchive(name);
     if (existing) {
       return { conflict: true as const, existingId: existing.id };
     }
@@ -196,9 +229,9 @@ export class ArchivesService {
     const archive = await this.findOne(id);
 
     if (dto.name !== undefined) {
-      const nextName = dto.name.trim();
+      const nextName = sanitizePersonName(dto.name);
       if (nextName !== archive.name) {
-        const existing = await this.findByExactName(nextName);
+        const existing = await this.findMatchingArchive(nextName);
         if (existing && existing.id !== id) {
           return { conflict: true as const, existingId: existing.id };
         }
@@ -251,15 +284,11 @@ export class ArchivesService {
    * 无匹配档案时静默跳过。
    */
   async removeByName(name: string) {
-    const trimmed = (name || '').trim();
-    if (!trimmed) return { deleted: false };
-
-    const archive = await this.prisma.archive.findFirst({
-      where: { name: trimmed },
-    });
+    const archive = await this.findMatchingArchive(name);
     if (!archive) return { deleted: false };
 
-    const photos = (archive.photos as string[]) || [];
+    const full = await this.findOne(archive.id);
+    const photos = (full.photos as string[]) || [];
     this.deleteLocalFiles(photos);
 
     await this.prisma.archive.delete({

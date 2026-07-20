@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  extractChinesePrefix,
+  isSamePerson,
+} from '../common/person-name-match';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -37,17 +41,23 @@ export class ArchivesCleanupService {
         const photos = (archive.photos as string[]) || [];
         if (photos.length === 0) continue;
 
-        // 检查在此档案创建时间之后，是否有同名用户的新增方案
-        const matchingLoan = await this.prisma.loanAccount.findFirst({
+        const prefix = extractChinesePrefix(archive.name);
+        const candidateLoans = await this.prisma.loanAccount.findMany({
           where: {
             created_at: {
               gte: archive.createdAt,
             },
-            user: {
-              username: archive.name,
-            },
+            user: prefix
+              ? { username: { startsWith: prefix } }
+              : { username: archive.name },
+          },
+          include: {
+            user: { select: { username: true } },
           },
         });
+        const matchingLoan = candidateLoans.find((loan) =>
+          isSamePerson(loan.user?.username || '', archive.name),
+        );
 
         // 如果没有匹配的方案，则清理照片
         if (!matchingLoan) {
