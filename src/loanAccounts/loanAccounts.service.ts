@@ -17,6 +17,7 @@ import { UpdateLoanAccountStatusDto } from './dto/update-loan-account-status.dto
 
 import { LoanPredictionService } from '../loan-prediction/loan-prediction.service';
 import { AssetManagementService } from '../asset-management/asset-management.service';
+import { ArchivesService } from '../archives/archives.service';
 import {
   getShanghaiBusinessTodayAndYesterday,
   getBusinessDayTimestampRange,
@@ -37,6 +38,7 @@ export class LoanAccountsService {
     private readonly loanPredictionService: LoanPredictionService,
     private readonly assetManagementService: AssetManagementService,
     private readonly accessScopeService: AccessScopeService,
+    private readonly archivesService: ArchivesService,
     private readonly config: ConfigService,
   ) { }
 
@@ -1201,6 +1203,21 @@ export class LoanAccountsService {
       await tx.repaymentRecord.deleteMany({ where: { loan_id: id } });
       await tx.loanAccount.delete({ where: { id } });
     });
+
+    // 档案按客户姓名关联；该客户已无其他方案时同步删除同名档案
+    const username = fullLoan.user?.username?.trim();
+    if (username) {
+      const remainingLoans = await this.prisma.loanAccount.count({
+        where: { user: { username } },
+      });
+      if (remainingLoans === 0) {
+        try {
+          await this.archivesService.removeByName(username);
+        } catch (error) {
+          console.error('同步删除档案失败:', error);
+        }
+      }
+    }
 
     try {
       await this.assetManagementService.updateCollectorAssetFromLoanAccount(

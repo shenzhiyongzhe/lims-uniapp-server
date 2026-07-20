@@ -245,4 +245,27 @@ export class ArchivesService {
 
     return { success: true };
   }
+
+  /**
+   * 按姓名删除档案（与贷款客户 username 对齐）。
+   * 无匹配档案时静默跳过。
+   */
+  async removeByName(name: string) {
+    const trimmed = (name || '').trim();
+    if (!trimmed) return { deleted: false };
+
+    const archive = await this.prisma.archive.findFirst({
+      where: { name: trimmed },
+    });
+    if (!archive) return { deleted: false };
+
+    const photos = (archive.photos as string[]) || [];
+    this.deleteLocalFiles(photos);
+
+    await this.prisma.archive.delete({
+      where: { id: archive.id },
+    });
+
+    return { deleted: true, id: archive.id };
+  }
 }
