@@ -54,7 +54,6 @@ export class UpdateArchiveDto {
 
   @IsString()
   @IsOptional()
-  @MaxLength(2000)
   detail?: string;
 
   @IsArray()
