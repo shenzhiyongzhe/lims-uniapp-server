@@ -126,7 +126,12 @@ export class ArchivesController {
   ) {
     const archive = await this.archivesService.findOne(id);
     const permissions = await this.archivesService.resolvePermissions(
-      { name: archive.name, user_id: archive.user_id },
+      {
+        name: archive.name,
+        user_id: archive.user_id,
+        creator_id: archive.creator_id,
+        createdAt: archive.createdAt,
+      },
       user,
     );
     return ResponseHelper.success(

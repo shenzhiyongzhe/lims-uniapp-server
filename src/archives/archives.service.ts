@@ -28,6 +28,8 @@ export type ArchivePermissions = {
 export type ArchiveIdentity = {
   name: string;
   user_id: number | null;
+  creator_id?: number | null;
+  createdAt?: Date | string | null;
 };
 
 type UploadedArchiveFile = {
@@ -51,6 +53,10 @@ export class ArchivesService {
 
   /**
    * 档案与方案按 user_id 关联；无 user_id 时回退姓名模糊匹配。
+   * 编辑权限规则：
+   * 1. 超级管理员 / 管理员 始终可编辑；
+   * 2. 创建人在 24 小时内有编辑权限；
+   * 3. 风控角色在关联方案未锁定时有编辑权限。
    */
   async resolvePermissions(
     archive: ArchiveIdentity,
@@ -62,24 +68,38 @@ export class ArchivesService {
       return { can_edit: true, can_delete: true };
     }
 
-    if (role === ManagementRoles.RISK_CONTROLLER) {
-      const userIds = await this.resolveUserIdsForArchive(archive);
-      if (!userIds.length) {
-        return { can_edit: false, can_delete: false };
-      }
+    let canEdit = false;
 
-      const unlockedLoan = await this.prisma.loanAccount.findFirst({
-        where: {
-          is_locked: false,
-          risk_controller_id: operator.id,
-          user_id: { in: userIds },
-        },
-        select: { id: true },
-      });
-      return { can_edit: !!unlockedLoan, can_delete: false };
+    // 创建人在 24 小时内拥有编辑权限
+    if (
+      archive.creator_id &&
+      archive.creator_id === operator.id &&
+      archive.createdAt
+    ) {
+      const createdTime = new Date(archive.createdAt).getTime();
+      const now = Date.now();
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      if (!isNaN(createdTime) && now - createdTime <= TWENTY_FOUR_HOURS) {
+        canEdit = true;
+      }
     }
 
-    return { can_edit: false, can_delete: false };
+    if (!canEdit && role === ManagementRoles.RISK_CONTROLLER) {
+      const userIds = await this.resolveUserIdsForArchive(archive);
+      if (userIds.length > 0) {
+        const unlockedLoan = await this.prisma.loanAccount.findFirst({
+          where: {
+            is_locked: false,
+            risk_controller_id: operator.id,
+            user_id: { in: userIds },
+          },
+          select: { id: true },
+        });
+        canEdit = !!unlockedLoan;
+      }
+    }
+
+    return { can_edit: canEdit, can_delete: false };
   }
 
   private async resolveUserIdsForArchive(
@@ -104,7 +124,12 @@ export class ArchivesService {
   async assertCanEdit(id: number, operator: ArchiveOperator): Promise<void> {
     const archive = await this.findOne(id);
     const permissions = await this.resolvePermissions(
-      { name: archive.name, user_id: archive.user_id },
+      {
+        name: archive.name,
+        user_id: archive.user_id,
+        creator_id: archive.creator_id,
+        createdAt: archive.createdAt,
+      },
       operator,
     );
     if (!permissions.can_edit) {
