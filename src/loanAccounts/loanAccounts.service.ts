@@ -2229,6 +2229,9 @@ export class LoanAccountsService {
           const ai = pinOrder.get(a.loan_id) ?? Number.MAX_SAFE_INTEGER;
           const bi = pinOrder.get(b.loan_id) ?? Number.MAX_SAFE_INTEGER;
           if (ai !== bi) return ai - bi;
+          const statusOrder = (s: string) => (s === 'active' ? 1 : 0);
+          const statusDiff = statusOrder(a.status) - statusOrder(b.status);
+          if (statusDiff !== 0) return statusDiff;
           const dateDiff =
             b.due_start_date.getTime() - a.due_start_date.getTime();
           if (dateDiff !== 0) return dateDiff;
@@ -2237,6 +2240,18 @@ export class LoanAccountsService {
 
         const pinnedCount = pinnedScheduleRows.length;
         let pageScheduleRows: typeof pinnedScheduleRows = [];
+
+        const scheduleOrderBy =
+          tab === 'today_unpaid'
+            ? [
+                { status: 'asc' as const },
+                { due_start_date: 'desc' as const },
+                { period: 'desc' as const },
+              ]
+            : [
+                { due_start_date: 'desc' as const },
+                { period: 'desc' as const },
+              ];
 
         if (skip < pinnedCount) {
           const pinnedSlice = pinnedScheduleRows.slice(skip, skip + pageSize);
@@ -2247,7 +2262,7 @@ export class LoanAccountsService {
               where: restWhere,
               skip: 0,
               take: need,
-              orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+              orderBy: scheduleOrderBy,
               include: scheduleInclude,
             });
             pageScheduleRows = [...pageScheduleRows, ...restRows];
@@ -2257,7 +2272,7 @@ export class LoanAccountsService {
             where: restWhere,
             skip: skip - pinnedCount,
             take: pageSize,
-            orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+            orderBy: scheduleOrderBy,
             include: scheduleInclude,
           });
         }
@@ -2265,11 +2280,23 @@ export class LoanAccountsService {
         data = mapScheduleRows(pageScheduleRows);
         total = countTabTodayUnpaid;
       } else {
+        const scheduleOrderBy =
+          tab === 'today_unpaid'
+            ? [
+                { status: 'asc' as const },
+                { due_start_date: 'desc' as const },
+                { period: 'desc' as const },
+              ]
+            : [
+                { due_start_date: 'desc' as const },
+                { period: 'desc' as const },
+              ];
+
         const scheduleRows = await this.prisma.repaymentSchedule.findMany({
           where: sw,
           skip,
           take: pageSize,
-          orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+          orderBy: scheduleOrderBy,
           include: scheduleInclude,
         });
         data = mapScheduleRows(scheduleRows);
