@@ -7,6 +7,7 @@ import { LoanPredictionModule } from '../loan-prediction/loan-prediction.module'
 import { AssetManagementModule } from '../asset-management/asset-management.module';
 import { AccessScopeModule } from '../access-scope/access-scope.module';
 import { ArchivesModule } from '../archives/archives.module';
+import { StaffConfigModule } from '../staff-config/staff-config.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ArchivesModule } from '../archives/archives.module';
     AssetManagementModule,
     AccessScopeModule,
     ArchivesModule,
+    StaffConfigModule,
   ],
   controllers: [LoanAccountsController],
   providers: [LoanAccountsService],

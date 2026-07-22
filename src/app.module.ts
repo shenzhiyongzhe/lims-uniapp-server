@@ -21,6 +21,7 @@ import { buildPinoParams } from './logger/pino-params.factory';
 import { BackupModule } from './backup/backup.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { ArchivesModule } from './archives/archives.module';
+import { StaffConfigModule } from './staff-config/staff-config.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { ArchivesModule } from './archives/archives.module';
     BackupModule,
     FeedbackModule,
     ArchivesModule,
+    StaffConfigModule,
   ],
   controllers: [AppController],
   providers: [AppService],

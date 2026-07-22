@@ -29,6 +29,7 @@ import {
   removeOverdueRecordsForSchedules,
 } from '../common/sync-overdue-records';
 import { AccessScopeService } from '../access-scope/access-scope.service';
+import { StaffConfigService } from '../staff-config/staff-config.service';
 
 @Injectable()
 export class LoanAccountsService {
@@ -41,6 +42,7 @@ export class LoanAccountsService {
     private readonly accessScopeService: AccessScopeService,
     private readonly archivesService: ArchivesService,
     private readonly config: ConfigService,
+    private readonly staffConfigService: StaffConfigService,
   ) {}
 
   private isPlatformAdmin(role: string): boolean {
@@ -2154,38 +2156,139 @@ export class LoanAccountsService {
       total = countTabOverdue;
     } else {
       const sw = currentScheduleWhere!;
-      const scheduleRows = await this.prisma.repaymentSchedule.findMany({
-        where: sw,
-        skip,
-        take: pageSize,
-        orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
-        include: {
-          ...scheduleWithLatestRecordRemark,
-          loan_account: {
-            include: {
-              ...loanAccountInclude,
-              _count: {
-                select: {
-                  repaymentSchedules: { where: { status: 'overdue' as const } },
-                },
+      const scheduleInclude = {
+        ...scheduleWithLatestRecordRemark,
+        loan_account: {
+          include: {
+            ...loanAccountInclude,
+            _count: {
+              select: {
+                repaymentSchedules: { where: { status: 'overdue' as const } },
               },
             },
           },
         },
-      });
-      data = scheduleRows.map((sch) => {
-        const { _count, ...loan } = sch.loan_account;
-        const isFutureSchedule =
-          loan.due_start_date.getTime() > todayShanghai.getTime();
-        return {
-          ...loan,
-          repaymentSchedules: [sch],
-          overdueScheduleCount: _count?.repaymentSchedules ?? 0,
-          isFutureSchedule,
-          __rowKey: `${loan.id}-${sch.id}`,
+      } as const;
+
+      const mapScheduleRows = (
+        scheduleRows: Array<{
+          id: number;
+          loan_id: number;
+          loan_account: {
+            due_start_date: Date;
+            _count?: { repaymentSchedules: number };
+            [key: string]: unknown;
+          };
+          [key: string]: unknown;
+        }>,
+      ) =>
+        scheduleRows.map((sch) => {
+          const { _count, ...loan } = sch.loan_account as {
+            due_start_date: Date;
+            _count?: { repaymentSchedules: number };
+            id: number;
+            [key: string]: unknown;
+          };
+          const isFutureSchedule =
+            loan.due_start_date.getTime() > todayShanghai.getTime();
+          return {
+            ...loan,
+            repaymentSchedules: [sch],
+            overdueScheduleCount: _count?.repaymentSchedules ?? 0,
+            isFutureSchedule,
+            __rowKey: `${loan.id}-${sch.id}`,
+          };
+        });
+
+      let pinnedLoanIds: number[] = [];
+      if (tab === 'today_unpaid' && currentUser?.id) {
+        pinnedLoanIds = await this.staffConfigService.getPinnedLoanIds(
+          currentUser.id,
+        );
+      }
+
+      if (tab === 'today_unpaid' && pinnedLoanIds.length > 0) {
+        const pinnedWhere = {
+          AND: [sw, { loan_id: { in: pinnedLoanIds } }],
         };
-      });
-      total = tab === 'today_paid' ? countTabTodayPaid : countTabTodayUnpaid;
+        const restWhere = {
+          AND: [sw, { loan_id: { notIn: pinnedLoanIds } }],
+        };
+
+        const pinnedScheduleRows = await this.prisma.repaymentSchedule.findMany(
+          {
+            where: pinnedWhere,
+            include: scheduleInclude,
+          },
+        );
+
+        const pinOrder = new Map(
+          pinnedLoanIds.map((id, index) => [id, index]),
+        );
+        pinnedScheduleRows.sort((a, b) => {
+          const ai = pinOrder.get(a.loan_id) ?? Number.MAX_SAFE_INTEGER;
+          const bi = pinOrder.get(b.loan_id) ?? Number.MAX_SAFE_INTEGER;
+          if (ai !== bi) return ai - bi;
+          const dateDiff =
+            b.due_start_date.getTime() - a.due_start_date.getTime();
+          if (dateDiff !== 0) return dateDiff;
+          return b.period - a.period;
+        });
+
+        const pinnedCount = pinnedScheduleRows.length;
+        let pageScheduleRows: typeof pinnedScheduleRows = [];
+
+        if (skip < pinnedCount) {
+          const pinnedSlice = pinnedScheduleRows.slice(skip, skip + pageSize);
+          pageScheduleRows = pinnedSlice;
+          const need = pageSize - pinnedSlice.length;
+          if (need > 0) {
+            const restRows = await this.prisma.repaymentSchedule.findMany({
+              where: restWhere,
+              skip: 0,
+              take: need,
+              orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+              include: scheduleInclude,
+            });
+            pageScheduleRows = [...pageScheduleRows, ...restRows];
+          }
+        } else {
+          pageScheduleRows = await this.prisma.repaymentSchedule.findMany({
+            where: restWhere,
+            skip: skip - pinnedCount,
+            take: pageSize,
+            orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+            include: scheduleInclude,
+          });
+        }
+
+        data = mapScheduleRows(pageScheduleRows);
+        total = countTabTodayUnpaid;
+      } else {
+        const scheduleRows = await this.prisma.repaymentSchedule.findMany({
+          where: sw,
+          skip,
+          take: pageSize,
+          orderBy: [{ due_start_date: 'desc' }, { period: 'desc' }],
+          include: scheduleInclude,
+        });
+        data = mapScheduleRows(scheduleRows);
+        total = tab === 'today_paid' ? countTabTodayPaid : countTabTodayUnpaid;
+      }
+
+      const dataWithNoteDate = await this.attachNoteUpdatedAt(data);
+      return {
+        data: dataWithNoteDate,
+        total,
+        listFilterCounts: {
+          blacklist: countTabBlacklist,
+          completed: countTabCompleted,
+          overdue: countTabOverdue,
+          today_paid: countTabTodayPaid,
+          today_unpaid: countTabTodayUnpaid,
+        },
+        ...(tab === 'today_unpaid' ? { pinnedLoanIds } : {}),
+      };
     }
 
     const dataWithNoteDate = await this.attachNoteUpdatedAt(data);

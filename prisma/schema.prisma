@@ -54,8 +54,24 @@ model Staff {
   lockedLoanAccounts                LoanAccount[]                        @relation("LockedLoanAccounts")
   feedbacks                         Feedback[]
   archives                          Archive[]                            @relation("CreatorArchives")
+  configs                           StaffConfig[]
 
   @@map("staffs")
+}
+
+/// 通用员工配置（key-value JSON），如待收列表置顶等个人偏好
+model StaffConfig {
+  id         Int       @id @default(autoincrement())
+  staff_id   Int
+  key        String    @db.VarChar(100)
+  value      Json
+  created_at DateTime  @default(now())
+  updated_at DateTime? @updatedAt
+  staff      Staff     @relation(fields: [staff_id], references: [id], onDelete: Cascade)
+
+  @@unique([staff_id, key])
+  @@index([staff_id])
+  @@map("staff_configs")
 }
 
 enum LoanAccountStatus {
