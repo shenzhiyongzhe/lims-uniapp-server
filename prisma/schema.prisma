@@ -55,6 +55,7 @@ model Staff {
   feedbacks                         Feedback[]
   archives                          Archive[]                            @relation("CreatorArchives")
   configs                           StaffConfig[]
+  clientErrorLogs                   ClientErrorLog[]
 
   @@map("staffs")
 }
@@ -476,5 +477,24 @@ model Archive {
   @@index([creator_id])
   @@index([name])
   @@map("archives")
+}
+
+model ClientErrorLog {
+  id          Int      @id @default(autoincrement())
+  staff_id    Int?
+  level       String   @default("error") @db.VarChar(20)
+  type        String   @default("js") @db.VarChar(50)
+  message     String   @db.Text
+  stack       String?  @db.Text
+  page_route  String?  @db.VarChar(255)
+  device_info Json?
+  created_at  DateTime @default(now())
+
+  staff       Staff?   @relation(fields: [staff_id], references: [id], onDelete: SetNull)
+
+  @@index([created_at])
+  @@index([staff_id])
+  @@index([type])
+  @@map("client_error_logs")
 }
 

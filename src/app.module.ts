@@ -22,6 +22,7 @@ import { BackupModule } from './backup/backup.module';
 import { FeedbackModule } from './feedback/feedback.module';
 import { ArchivesModule } from './archives/archives.module';
 import { StaffConfigModule } from './staff-config/staff-config.module';
+import { ErrorLogsModule } from './error-logs/error-logs.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { StaffConfigModule } from './staff-config/staff-config.module';
     FeedbackModule,
     ArchivesModule,
     StaffConfigModule,
+    ErrorLogsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
