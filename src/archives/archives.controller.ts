@@ -38,7 +38,11 @@ export class ArchivesController {
    * 上传档案照片，直接保存前端已压缩后的文件
    */
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
   async uploadFile(@UploadedFile() file?: UploadedArchiveFile) {
     if (!file) {
       throw new BadRequestException('请选择上传的文件');

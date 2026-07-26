@@ -37,6 +37,46 @@ type UploadedArchiveFile = {
   buffer: Buffer;
 };
 
+const PNG_SIGNATURE = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+]);
+/** PNG IEND chunk: length(0) + "IEND" + CRC */
+const PNG_IEND = Buffer.from([
+  0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+]);
+
+/**
+ * 校验图片 buffer 是否完整（防截断 JPEG/PNG 落盘）。
+ * 返回规范化扩展名（含点号）。
+ */
+export function assertCompleteImageBuffer(buffer?: Buffer): '.jpg' | '.png' {
+  if (!buffer || buffer.length < 24) {
+    throw new BadRequestException('图片损坏或为空');
+  }
+
+  // JPEG: SOI FF D8 … EOI FF D9
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) {
+    if (
+      buffer[buffer.length - 2] !== 0xff ||
+      buffer[buffer.length - 1] !== 0xd9
+    ) {
+      throw new BadRequestException('图片损坏或不完整');
+    }
+    return '.jpg';
+  }
+
+  // PNG: signature … IEND
+  if (
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(PNG_SIGNATURE) &&
+    buffer.subarray(-12).equals(PNG_IEND)
+  ) {
+    return '.png';
+  }
+
+  throw new BadRequestException('仅支持 JPEG/PNG 图片');
+}
+
 @Injectable()
 export class ArchivesService {
   private readonly logger = new Logger(ArchivesService.name);
@@ -138,19 +178,18 @@ export class ArchivesService {
   }
 
   async saveUploadedImage(file: UploadedArchiveFile): Promise<string> {
+    const ext = assertCompleteImageBuffer(file.buffer);
+
     const uploadDir = path.join(process.cwd(), 'uploads', 'archives');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
 
-    const originalExt = path.extname(file.originalname || '').toLowerCase();
-    const ext = originalExt || '.jpg';
     const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}${ext}`;
     const outputPath = path.join(uploadDir, filename);
 
     try {
       await fs.promises.writeFile(outputPath, file.buffer);
-
       return `/uploads/archives/${filename}`;
     } catch (error) {
       this.logger.error(`图片保存失败: ${(error as Error).message}`);

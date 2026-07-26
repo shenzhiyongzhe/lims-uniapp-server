@@ -1,4 +1,8 @@
-import { ArchivesService } from './archives.service';
+import { BadRequestException } from '@nestjs/common';
+import {
+  ArchivesService,
+  assertCompleteImageBuffer,
+} from './archives.service';
 import { ManagementRoles } from '@prisma/client';
 
 describe('ArchivesService - resolvePermissions', () => {
@@ -85,5 +89,48 @@ describe('ArchivesService - resolvePermissions', () => {
 
     expect(result.can_edit).toBe(true);
     expect(result.can_delete).toBe(false);
+  });
+});
+
+describe('assertCompleteImageBuffer', () => {
+  it('accepts a complete minimal JPEG (SOI…EOI)', () => {
+    const jpeg = Buffer.alloc(32, 0);
+    jpeg[0] = 0xff;
+    jpeg[1] = 0xd8;
+    jpeg[30] = 0xff;
+    jpeg[31] = 0xd9;
+    expect(assertCompleteImageBuffer(jpeg)).toBe('.jpg');
+  });
+
+  it('rejects truncated JPEG missing EOI', () => {
+    const jpeg = Buffer.alloc(32, 0);
+    jpeg[0] = 0xff;
+    jpeg[1] = 0xd8;
+    expect(() => assertCompleteImageBuffer(jpeg)).toThrow(BadRequestException);
+    expect(() => assertCompleteImageBuffer(jpeg)).toThrow(/损坏或不完整/);
+  });
+
+  it('rejects empty or tiny buffers', () => {
+    expect(() => assertCompleteImageBuffer(undefined)).toThrow(
+      BadRequestException,
+    );
+    expect(() => assertCompleteImageBuffer(Buffer.alloc(8))).toThrow(
+      /损坏或为空/,
+    );
+  });
+
+  it('accepts a complete minimal PNG', () => {
+    const png = Buffer.alloc(32, 0);
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+    Buffer.from([
+      0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ]).copy(png, 20);
+    expect(assertCompleteImageBuffer(png)).toBe('.png');
+  });
+
+  it('rejects non-image bytes', () => {
+    expect(() => assertCompleteImageBuffer(Buffer.alloc(32, 0x41))).toThrow(
+      /仅支持/,
+    );
   });
 });
