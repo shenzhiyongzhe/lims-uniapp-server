@@ -65,13 +65,18 @@ export class ChangelogsService implements OnApplicationBootstrap {
 
   /**
    * 程序启动时读取本地 CHANGELOG.md 文件并自动同步至数据库
+   *
+   * 路径说明（按优先级）：
+   * 1. __dirname/CHANGELOG.md — 生产：nest assets 拷到 dist/src/changelogs/
+   * 2. cwd/src/changelogs/… — 本地 nest start / 源码旁运行
+   * 3. cwd/CHANGELOG.md — 兜底
    */
   async syncChangelogsFromLocal() {
     const mdPaths = [
-      path.join(process.cwd(), 'src/changelogs/CHANGELOG.md'),
       path.join(__dirname, 'CHANGELOG.md'),
+      path.join(process.cwd(), 'src', 'changelogs', 'CHANGELOG.md'),
+      path.join(process.cwd(), 'dist', 'src', 'changelogs', 'CHANGELOG.md'),
       path.join(process.cwd(), 'CHANGELOG.md'),
-      path.join(process.cwd(), 'src/changelogs/changelogs.md'),
     ];
 
     let logsToSync: ChangelogItem[] = [];
