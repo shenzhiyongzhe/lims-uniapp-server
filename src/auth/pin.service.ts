@@ -240,6 +240,33 @@ export class PinService {
   }
 
   /**
+   * 是否视为「全局 PIN 已开启」：库中存在任意 pin_enabled=true 的 staff
+   *（与 toggleGlobalPin 的 updateMany 策略一致；无独立全局配置表）
+   */
+  async isGlobalPinEnabled(): Promise<boolean> {
+    const count = await this.prisma.staff.count({
+      where: { pin_enabled: true },
+    });
+    return count > 0;
+  }
+
+  /**
+   * 新用户注册时：若全局 PIN 已开，则初始化默认密码字段
+   */
+  async buildNewStaffPinFields(): Promise<{
+    pin_enabled: boolean;
+    pin_hash: string;
+    is_default_pin: boolean;
+  } | null> {
+    if (!(await this.isGlobalPinEnabled())) return null;
+    return {
+      pin_enabled: true,
+      pin_hash: await this.hashPin(DEFAULT_PIN),
+      is_default_pin: true,
+    };
+  }
+
+  /**
    * 管理员重置指定 staff 的密码为默认值 1234
    */
   async resetStaffPin(staffId: number) {
@@ -254,6 +281,7 @@ export class PinService {
       where: { id: staffId },
       data: {
         pin_hash: defaultHash,
+        pin_enabled: true,
         is_default_pin: true,
         failed_login_attempts: 0,
         locked_until: null,
