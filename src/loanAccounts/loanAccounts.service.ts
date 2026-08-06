@@ -1571,7 +1571,7 @@ export class LoanAccountsService {
 
     let overdueWhere = customWhereOverdueLoans;
     if (!overdueWhere) {
-      const { yesterday: yesterdayShanghai } =
+      const { today: todayShanghai, yesterday: yesterdayShanghai } =
         getShanghaiBusinessTodayAndYesterday();
       const activeLoanStatusFilter = {
         status: {
@@ -1614,8 +1614,34 @@ export class LoanAccountsService {
         ],
       };
 
+      const whereOverdueFinalExpired = {
+        AND: [
+          loanAccountWhereForScheduleTabs,
+          {
+            due_end_date: { lt: todayShanghai },
+          },
+          {
+            repaymentSchedules: {
+              some: {
+                status: {
+                  in: [
+                    'overdue',
+                    'pending',
+                    'active',
+                  ] satisfies RepaymentScheduleStatus[],
+                },
+              },
+            },
+          },
+        ],
+      };
+
       overdueWhere = {
-        OR: [whereOverdueNegotiated, whereOverdueBySchedule],
+        OR: [
+          whereOverdueNegotiated,
+          whereOverdueBySchedule,
+          whereOverdueFinalExpired,
+        ],
       };
     }
 
@@ -1851,8 +1877,34 @@ export class LoanAccountsService {
       ],
     };
 
+    const whereOverdueFinalExpired = {
+      AND: [
+        loanAccountWhereForScheduleTabs,
+        {
+          due_end_date: { lt: todayShanghai },
+        },
+        {
+          repaymentSchedules: {
+            some: {
+              status: {
+                in: [
+                  'overdue',
+                  'pending',
+                  'active',
+                ] satisfies RepaymentScheduleStatus[],
+              },
+            },
+          },
+        },
+      ],
+    };
+
     const whereOverdueLoans = {
-      OR: [whereOverdueNegotiated, whereOverdueBySchedule],
+      OR: [
+        whereOverdueNegotiated,
+        whereOverdueBySchedule,
+        whereOverdueFinalExpired,
+      ],
     };
 
     const todayRange = getBusinessDayTimestampRange(todayShanghai);
