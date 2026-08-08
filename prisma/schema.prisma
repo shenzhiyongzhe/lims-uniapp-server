@@ -18,6 +18,7 @@ model User {
   repaymentRecords RepaymentRecord[]
   archives         Archive[]
 
+  @@index([username])
   @@map("users")
 }
 
@@ -136,6 +137,9 @@ model LoanAccount {
   @@index([risk_controller_id])
   @@index([user_id])
   @@index([auto_relock_at])
+  @@index([status, due_start_date, due_end_date])
+  @@index([due_start_date, status])
+  @@index([status, created_at])
   @@map("loan_accounts")
 }
 
@@ -162,6 +166,9 @@ model RepaymentSchedule {
   loan_account        LoanAccount             @relation(fields: [loan_id], references: [id], onDelete: Cascade)
 
   @@index([loan_id])
+  @@index([due_start_date, status, loan_id])
+  @@index([status, due_start_date])
+  @@index([loan_id, status, period])
   @@map("repayment_schedules")
 }
 

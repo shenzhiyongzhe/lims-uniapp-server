@@ -34,6 +34,14 @@ import { StaffConfigService } from '../staff-config/staff-config.service';
 @Injectable()
 export class LoanAccountsService {
   private static readonly SETTLED_RELOCK_DELAY_MS = 60 * 60 * 1000;
+  private readonly filterCountsCache = new Map<
+    string,
+    {
+      counts: [number, number, number, number, number];
+      ts: number;
+    }
+  >();
+  private readonly COUNTS_CACHE_TTL_MS = 5000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -2146,19 +2154,48 @@ export class LoanAccountsService {
           : null
       : null;
 
-    const [
-      countTabBlacklist,
-      countTabCompleted,
-      countTabOverdue,
-      countTabTodayPaid,
-      countTabTodayUnpaid,
-    ] = await Promise.all([
-      this.prisma.loanAccount.count({ where: whereBlacklist }),
-      this.prisma.loanAccount.count({ where: whereCompleted }),
-      this.prisma.loanAccount.count({ where: whereOverdueLoans }),
-      this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
-      this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
-    ]);
+    const cacheKey = `${currentUser?.id ?? 0}_${query.collectorId ?? ''}_${query.riskControllerId ?? ''}_${query.username ?? ''}_${query.id ?? ''}`;
+    const cachedCounts = this.filterCountsCache.get(cacheKey);
+
+    let countTabBlacklist: number;
+    let countTabCompleted: number;
+    let countTabOverdue: number;
+    let countTabTodayPaid: number;
+    let countTabTodayUnpaid: number;
+
+    if (cachedCounts && Date.now() - cachedCounts.ts <= this.COUNTS_CACHE_TTL_MS) {
+      [
+        countTabBlacklist,
+        countTabCompleted,
+        countTabOverdue,
+        countTabTodayPaid,
+        countTabTodayUnpaid,
+      ] = cachedCounts.counts;
+    } else {
+      [
+        countTabBlacklist,
+        countTabCompleted,
+        countTabOverdue,
+        countTabTodayPaid,
+        countTabTodayUnpaid,
+      ] = await Promise.all([
+        this.prisma.loanAccount.count({ where: whereBlacklist }),
+        this.prisma.loanAccount.count({ where: whereCompleted }),
+        this.prisma.loanAccount.count({ where: whereOverdueLoans }),
+        this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayPaid }),
+        this.prisma.repaymentSchedule.count({ where: scheduleWhereTodayUnpaid }),
+      ]);
+      this.filterCountsCache.set(cacheKey, {
+        counts: [
+          countTabBlacklist,
+          countTabCompleted,
+          countTabOverdue,
+          countTabTodayPaid,
+          countTabTodayUnpaid,
+        ],
+        ts: Date.now(),
+      });
+    }
 
     let data: Array<
       Record<string, any> & {
