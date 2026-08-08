@@ -1771,14 +1771,32 @@ export class LoanAccountsService {
       listFilter?: string;
       collectorId?: string;
       riskControllerId?: string;
+      username?: string;
+      id?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
-    const { status, listFilter, collectorId, riskControllerId } = query;
+    const { status, listFilter, collectorId, riskControllerId, username, id } =
+      query;
 
     const baseAndParts: Record<string, unknown>[] = [];
     if (status) {
       baseAndParts.push({ status });
+    }
+
+    const idTrim = id?.trim();
+    if (idTrim) {
+      const loanId = parseInt(idTrim, 10);
+      if (!Number.isNaN(loanId)) {
+        baseAndParts.push({ id: loanId });
+      }
+    }
+
+    const usernameTrim = username?.trim();
+    if (usernameTrim) {
+      baseAndParts.push({
+        user: { username: { contains: usernameTrim } },
+      });
     }
 
     const collectorIdNum = collectorId ? parseInt(collectorId, 10) : NaN;
@@ -2086,6 +2104,8 @@ export class LoanAccountsService {
       listFilter?: string;
       collectorId?: string;
       riskControllerId?: string;
+      username?: string;
+      id?: string;
     },
     currentUser?: { id: number; role: string },
   ) {
@@ -2391,6 +2411,8 @@ export class LoanAccountsService {
       listFilter?: string;
       collectorId?: string;
       riskControllerId?: string;
+      username?: string;
+      id?: string;
     },
     currentUser?: { id: number; role: string },
   ) {

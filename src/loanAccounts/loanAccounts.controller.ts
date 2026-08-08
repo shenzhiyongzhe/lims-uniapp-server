@@ -94,6 +94,8 @@ export class LoanAccountsController {
     @Query('listFilter') listFilter?: string,
     @Query('collectorId') collectorId?: string,
     @Query('riskControllerId') riskControllerId?: string,
+    @Query('username') username?: string,
+    @Query('id') id?: string,
     @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findGroupedByUser(
@@ -104,6 +106,8 @@ export class LoanAccountsController {
         listFilter,
         collectorId,
         riskControllerId,
+        username,
+        id,
       },
       currentUser,
     );
@@ -117,6 +121,8 @@ export class LoanAccountsController {
     @Query('status') status?: string,
     @Query('collectorId') collectorId?: string,
     @Query('riskControllerId') riskControllerId?: string,
+    @Query('username') username?: string,
+    @Query('id') id?: string,
     @CurrentUser() currentUser?: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const result = await this.loanAccountsService.findListStats(
@@ -125,6 +131,8 @@ export class LoanAccountsController {
         status,
         collectorId,
         riskControllerId,
+        username,
+        id,
       },
       currentUser,
     );
