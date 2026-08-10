@@ -674,8 +674,18 @@ export class AssetManagementService implements OnModuleInit {
         create: { admin_id: userId },
       });
 
+      const repaymentsAggregate = await tx.repaymentRecord.aggregate({
+        where: {
+          loan_account: { collector_id: userId },
+        },
+        _sum: { paid_amount: true },
+      });
+      const totalRepaid = Number(repaymentsAggregate._sum.paid_amount || 0);
+
       const oldDeposit = Number(existing.deposit || 0);
-      if (amount > oldDeposit) {
+      const currentDeposit = totalRepaid + oldDeposit;
+
+      if (amount > currentDeposit) {
         throw new BadRequestException('划账金额不能大于当前存款');
       }
       const newDeposit = oldDeposit - amount;
