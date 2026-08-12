@@ -24,7 +24,10 @@ import {
   getShanghaiBusinessDate,
   utcMidnightFromYmd,
 } from '../common/business-date';
-import { calcLoanDisbursementDelta } from '../common/loan-account-math';
+import {
+  calcLoanDisbursementDelta,
+  calcLoanDisbursementDeltaTotal,
+} from '../common/loan-account-math';
 
 type AssetOperator = { id: number; role?: string };
 
@@ -861,14 +864,39 @@ export class AssetManagementService implements OnModuleInit {
 
   // ─── 管理员增减 ────────────────────────────────────────────────────────
 
-  /** 获取管理员增减总额（全局单行，id=1，不存在则初始化为 0） */
-  async getAdminAdjustTotal(): Promise<{ total: number }> {
+  /** 获取管理员增减总额及昨日借出总额 */
+  async getAdminAdjustTotal(): Promise<{
+    total: number;
+    yesterday_loan_total: number;
+  }> {
     const row = await this.prisma.adminAdjustment.upsert({
       where: { id: 1 },
       update: {},
       create: { id: 1, total: 0 },
     });
-    return { total: Number(row.total) };
+
+    const today = getShanghaiBusinessDate();
+    const yesterdayBusinessDate = new Date(
+      today.getTime() - 24 * 60 * 60 * 1000,
+    );
+    const { start: dayStart, end: dayEnd } =
+      getBusinessDayTimestampRange(yesterdayBusinessDate);
+
+    const loans = await this.prisma.loanAccount.findMany({
+      where: {
+        created_at: { gte: dayStart, lt: dayEnd },
+      },
+      select: {
+        company_cost: true,
+        handling_fee: true,
+      },
+    });
+    const yesterday_loan_total = calcLoanDisbursementDeltaTotal(loans);
+
+    return {
+      total: Number(row.total),
+      yesterday_loan_total,
+    };
   }
 
   /** 管理员增减：delta 可正可负，事务写历史 */
