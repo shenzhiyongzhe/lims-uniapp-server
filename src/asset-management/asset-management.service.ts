@@ -24,6 +24,7 @@ import {
   getShanghaiBusinessDate,
   utcMidnightFromYmd,
 } from '../common/business-date';
+import { calcLoanDisbursementDelta } from '../common/loan-account-math';
 
 type AssetOperator = { id: number; role?: string };
 
@@ -914,31 +915,112 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
-  /** 管理员增减历史记录（分页，最新在前） */
+  /** 管理员增减历史记录（包含：管理员增减、负责人划账记录、每天借出总额，按时间倒序组合分页） */
   async getAdminAdjustHistory(page = 1, pageSize = 100) {
-    const skip = (page - 1) * pageSize;
-    const [data, total] = await Promise.all([
+    const [adminAdjRows, transferRows, loanRows] = await Promise.all([
       this.prisma.adminAdjustmentHistory.findMany({
         orderBy: { created_at: 'desc' },
-        skip,
-        take: pageSize,
       }),
-      this.prisma.adminAdjustmentHistory.count(),
+      this.prisma.assetReductionHistory.findMany({
+        where: {
+          asset_type: 'collector',
+          field_name: 'transfer',
+        },
+        include: {
+          admin: { select: { username: true, nickname: true } },
+        },
+        orderBy: { created_at: 'desc' },
+      }),
+      this.prisma.loanAccount.findMany({
+        select: {
+          created_at: true,
+          company_cost: true,
+          handling_fee: true,
+        },
+        orderBy: { created_at: 'desc' },
+      }),
     ]);
+
+    // 1. 管理员增减项
+    const adminAdjItems = adminAdjRows.map((r) => ({
+      id: `adj_${r.id}`,
+      type: 'admin_adjust',
+      delta: Number(r.delta),
+      old_total: Number(r.old_total),
+      new_total: Number(r.new_total),
+      updated_by_admin_id: r.updated_by_admin_id,
+      updated_by_admin_username: r.updated_by_admin_username,
+      remark: r.remark,
+      created_at: r.created_at,
+    }));
+
+    // 2. 负责人划账项
+    const transferItems = transferRows.map((r) => ({
+      id: `tr_${r.id}`,
+      type: 'transfer',
+      delta: Number(r.input_value),
+      collector_id: r.admin_id,
+      collector_name:
+        r.admin?.nickname || r.admin?.username || `ID:${r.admin_id}`,
+      updated_by_admin_id: r.updated_by_admin_id,
+      updated_by_admin_username: r.updated_by_admin_username,
+      remark: r.remark,
+      created_at: r.created_at,
+    }));
+
+    // 3. 每天借出总额项（按营业日分组，借出公式计算 handling_fee - company_cost）
+    const dailyLoanMap = new Map<
+      string,
+      { total: number; latestCreatedAt: Date }
+    >();
+    for (const loan of loanRows) {
+      const bDate = getShanghaiBusinessDate(loan.created_at);
+      const key = bDate.toISOString().slice(0, 10);
+      const delta = calcLoanDisbursementDelta(loan);
+      const existing = dailyLoanMap.get(key);
+      if (existing) {
+        existing.total += delta;
+        if (loan.created_at > existing.latestCreatedAt) {
+          existing.latestCreatedAt = loan.created_at;
+        }
+      } else {
+        dailyLoanMap.set(key, {
+          total: delta,
+          latestCreatedAt: loan.created_at,
+        });
+      }
+    }
+
+    const dailyLoanItems = Array.from(dailyLoanMap.entries()).map(
+      ([dateStr, val]) => ({
+        id: `loan_${dateStr}`,
+        type: 'daily_loan',
+        date: dateStr,
+        delta: val.total,
+        created_at: val.latestCreatedAt,
+      }),
+    );
+
+    // 合并三类记录并按 created_at 倒序排列
+    const combined = [
+      ...adminAdjItems,
+      ...transferItems,
+      ...dailyLoanItems,
+    ].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
+    const total = combined.length;
+    const skip = (page - 1) * pageSize;
+    const data = combined.slice(skip, skip + pageSize);
+
     return {
-      data: data.map((r) => ({
-        id: r.id,
-        delta: Number(r.delta),
-        old_total: Number(r.old_total),
-        new_total: Number(r.new_total),
-        updated_by_admin_id: r.updated_by_admin_id,
-        updated_by_admin_username: r.updated_by_admin_username,
-        remark: r.remark,
-        created_at: r.created_at,
-      })),
+      data,
       total,
       page,
       pageSize,
     };
   }
 }
+
