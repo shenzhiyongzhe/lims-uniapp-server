@@ -943,9 +943,28 @@ export class AssetManagementService implements OnModuleInit {
     });
   }
 
-  /** 管理员增减历史记录（包含：管理员增减、负责人划账记录、每天借出总额，按时间倒序组合分页） */
-  async getAdminAdjustHistory(page = 1, pageSize = 100) {
-    const [adminAdjRows, transferRows, loanRows] = await Promise.all([
+  /** 管理员增减历史记录（包含：管理员增减、负责人划账记录、每天借出总额，按时间倒序组合分页并支持日期过滤与日历汇总） */
+  async getAdminAdjustHistory(
+    page = 1,
+    pageSize = 100,
+    date?: string,
+    month?: string,
+  ) {
+    const today = getShanghaiBusinessDate();
+    const yesterdayBusinessDate = new Date(
+      today.getTime() - 24 * 60 * 60 * 1000,
+    );
+    const { start: dayStart, end: dayEnd } =
+      getBusinessDayTimestampRange(yesterdayBusinessDate);
+
+    const [
+      adminAdjRows,
+      transferRows,
+      loanRows,
+      transferAgg,
+      adminAdjRow,
+      yesterdayLoans,
+    ] = await Promise.all([
       this.prisma.adminAdjustmentHistory.findMany({
         orderBy: { created_at: 'desc' },
       }),
@@ -967,34 +986,72 @@ export class AssetManagementService implements OnModuleInit {
         },
         orderBy: { created_at: 'desc' },
       }),
+      this.prisma.assetReductionHistory.aggregate({
+        where: {
+          asset_type: 'collector',
+          field_name: 'transfer',
+        },
+        _sum: {
+          input_value: true,
+        },
+      }),
+      this.prisma.adminAdjustment.findUnique({
+        where: { id: 1 },
+      }),
+      this.prisma.loanAccount.findMany({
+        where: {
+          created_at: { gte: dayStart, lt: dayEnd },
+        },
+        select: {
+          company_cost: true,
+          handling_fee: true,
+        },
+      }),
     ]);
 
+    // 计算当前真实的最新在账总金额作为推导基准
+    const totalCollectorTransfer = Number(transferAgg._sum.input_value || 0);
+    const adminAdjustTotal = Number(adminAdjRow?.total || 0);
+    const yesterdayLoanTotal = calcLoanDisbursementDeltaTotal(yesterdayLoans);
+    const currentTotal =
+      totalCollectorTransfer + adminAdjustTotal + yesterdayLoanTotal;
+
     // 1. 管理员增减项
-    const adminAdjItems = adminAdjRows.map((r) => ({
-      id: `adj_${r.id}`,
-      type: 'admin_adjust',
-      delta: Number(r.delta),
-      old_total: Number(r.old_total),
-      new_total: Number(r.new_total),
-      updated_by_admin_id: r.updated_by_admin_id,
-      updated_by_admin_username: r.updated_by_admin_username,
-      remark: r.remark,
-      created_at: r.created_at,
-    }));
+    const adminAdjItems = adminAdjRows.map((r) => {
+      const bDate = getShanghaiBusinessDate(r.created_at);
+      const dateStr = bDate.toISOString().slice(0, 10);
+      return {
+        id: `adj_${r.id}`,
+        type: 'admin_adjust',
+        delta: Number(r.delta),
+        old_total: Number(r.old_total),
+        new_total: Number(r.new_total),
+        updated_by_admin_id: r.updated_by_admin_id,
+        updated_by_admin_username: r.updated_by_admin_username,
+        remark: r.remark,
+        created_at: r.created_at,
+        date: dateStr,
+      };
+    });
 
     // 2. 负责人划账项
-    const transferItems = transferRows.map((r) => ({
-      id: `tr_${r.id}`,
-      type: 'transfer',
-      delta: Number(r.input_value),
-      collector_id: r.admin_id,
-      collector_name:
-        r.admin?.nickname || r.admin?.username || `ID:${r.admin_id}`,
-      updated_by_admin_id: r.updated_by_admin_id,
-      updated_by_admin_username: r.updated_by_admin_username,
-      remark: r.remark,
-      created_at: r.created_at,
-    }));
+    const transferItems = transferRows.map((r) => {
+      const bDate = getShanghaiBusinessDate(r.created_at);
+      const dateStr = bDate.toISOString().slice(0, 10);
+      return {
+        id: `tr_${r.id}`,
+        type: 'transfer',
+        delta: Number(r.input_value),
+        collector_id: r.admin_id,
+        collector_name:
+          r.admin?.nickname || r.admin?.username || `ID:${r.admin_id}`,
+        updated_by_admin_id: r.updated_by_admin_id,
+        updated_by_admin_username: r.updated_by_admin_username,
+        remark: r.remark,
+        created_at: r.created_at,
+        date: dateStr,
+      };
+    });
 
     // 3. 每天借出总额项（按营业日分组，借出公式计算 handling_fee - company_cost）
     const dailyLoanMap = new Map<
@@ -1029,8 +1086,8 @@ export class AssetManagementService implements OnModuleInit {
       }),
     );
 
-    // 合并三类记录并按 created_at 倒序排列
-    const combined = [
+    // 倒序排列：以当前最新总金额为基准，向前逆推每笔变动后的实时总金额
+    const descCombined = [
       ...adminAdjItems,
       ...transferItems,
       ...dailyLoanItems,
@@ -1039,15 +1096,52 @@ export class AssetManagementService implements OnModuleInit {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
-    const total = combined.length;
+    let rollingTotal = currentTotal;
+    for (const item of descCombined) {
+      (item as any).total_after = rollingTotal;
+      (item as any).total_before = rollingTotal - item.delta;
+      rollingTotal = (item as any).total_before;
+    }
+
+    // 按业务日汇总各日变动总额（包含：负责人划账 + 管理员增减，用于日历展示）
+    const dailyDeltaMap = new Map<string, number>();
+    for (const item of descCombined) {
+      if (
+        item.date &&
+        (item.type === 'transfer' || item.type === 'admin_adjust')
+      ) {
+        if (!month || item.date.startsWith(month)) {
+          dailyDeltaMap.set(
+            item.date,
+            (dailyDeltaMap.get(item.date) || 0) + item.delta,
+          );
+        }
+      }
+    }
+
+    const dailySummary = Array.from(dailyDeltaMap.entries()).map(
+      ([dateKey, totalPaidAmount]) => ({
+        date: dateKey,
+        totalPaidAmount,
+      }),
+    );
+
+    // 若指定了具体日期，进行单日过滤
+    let filteredList = descCombined;
+    if (date) {
+      filteredList = filteredList.filter((item) => item.date === date);
+    }
+
+    const total = filteredList.length;
     const skip = (page - 1) * pageSize;
-    const data = combined.slice(skip, skip + pageSize);
+    const data = filteredList.slice(skip, skip + pageSize);
 
     return {
       data,
       total,
       page,
       pageSize,
+      daily_summary: dailySummary,
     };
   }
 }

@@ -28,10 +28,10 @@ import { QueryDepositDailySummaryDto } from './dto/query-deposit-daily-summary.d
 import { QueryDepositRecordsDto } from './dto/query-deposit-records.dto';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AdminAdjustDto } from './dto/admin-adjust.dto';
-import { IsInt, IsOptional, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class QueryPageDto {
+class QueryAdminAdjustHistoryDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -43,6 +43,14 @@ class QueryPageDto {
   @IsInt()
   @Min(1)
   pageSize?: number;
+
+  @IsOptional()
+  @IsString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  month?: string;
 }
 
 @Controller('asset-management')
@@ -342,10 +350,12 @@ export class AssetManagementController {
     ManagementRoles.ADMIN,
     ManagementRoles.ADMIN_LIMITED,
   )
-  async getAdminAdjustHistory(@Query() query: QueryPageDto) {
+  async getAdminAdjustHistory(@Query() query: QueryAdminAdjustHistoryDto) {
     const data = await this.assetManagementService.getAdminAdjustHistory(
       query.page ?? 1,
       query.pageSize ?? 100,
+      query.date,
+      query.month,
     );
     return ResponseHelper.success(data, '获取管理员增减历史成功');
   }
