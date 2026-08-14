@@ -1044,7 +1044,7 @@ export class AssetManagementService implements OnModuleInit {
         delta: Number(r.input_value),
         collector_id: r.admin_id,
         collector_name:
-          r.admin?.nickname || r.admin?.username || `ID:${r.admin_id}`,
+          r.admin?.username || r.admin?.nickname || `ID:${r.admin_id}`,
         updated_by_admin_id: r.updated_by_admin_id,
         updated_by_admin_username: r.updated_by_admin_username,
         remark: r.remark,
