@@ -1096,10 +1096,20 @@ export class AssetManagementService implements OnModuleInit {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
+    const yesterdayDateStr = yesterdayBusinessDate.toISOString().slice(0, 10);
+
     let rollingTotal = currentTotal;
     for (const item of descCombined) {
       (item as any).total_after = rollingTotal;
-      (item as any).total_before = rollingTotal - item.delta;
+      if (item.type === 'daily_loan') {
+        if (item.date === yesterdayDateStr) {
+          (item as any).total_before = rollingTotal - item.delta;
+        } else {
+          (item as any).total_before = rollingTotal;
+        }
+      } else {
+        (item as any).total_before = rollingTotal - item.delta;
+      }
       rollingTotal = (item as any).total_before;
     }
 
