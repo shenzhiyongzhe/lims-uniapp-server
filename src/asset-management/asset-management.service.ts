@@ -864,10 +864,10 @@ export class AssetManagementService implements OnModuleInit {
 
   // ─── 管理员增减 ────────────────────────────────────────────────────────
 
-  /** 获取管理员增减总额及昨日借出总额 */
+  /** 获取管理员增减总额及总借出总额（从2026-08-17营业日起算） */
   async getAdminAdjustTotal(): Promise<{
     total: number;
-    yesterday_loan_total: number;
+    total_loan_total: number;
   }> {
     const row = await this.prisma.adminAdjustment.upsert({
       where: { id: 1 },
@@ -875,27 +875,24 @@ export class AssetManagementService implements OnModuleInit {
       create: { id: 1, total: 0 },
     });
 
-    const today = getShanghaiBusinessDate();
-    const yesterdayBusinessDate = new Date(
-      today.getTime() - 24 * 60 * 60 * 1000,
-    );
-    const { start: dayStart, end: dayEnd } =
-      getBusinessDayTimestampRange(yesterdayBusinessDate);
+    const startBusinessDate = new Date(Date.UTC(2026, 7, 17));
+    const { start: dayStart } =
+      getBusinessDayTimestampRange(startBusinessDate);
 
     const loans = await this.prisma.loanAccount.findMany({
       where: {
-        created_at: { gte: dayStart, lt: dayEnd },
+        created_at: { gte: dayStart },
       },
       select: {
         company_cost: true,
         handling_fee: true,
       },
     });
-    const yesterday_loan_total = calcLoanDisbursementDeltaTotal(loans);
+    const total_loan_total = calcLoanDisbursementDeltaTotal(loans);
 
     return {
       total: Number(row.total),
-      yesterday_loan_total,
+      total_loan_total,
     };
   }
 
@@ -950,12 +947,10 @@ export class AssetManagementService implements OnModuleInit {
     date?: string,
     month?: string,
   ) {
-    const today = getShanghaiBusinessDate();
-    const yesterdayBusinessDate = new Date(
-      today.getTime() - 24 * 60 * 60 * 1000,
-    );
-    const { start: dayStart, end: dayEnd } =
-      getBusinessDayTimestampRange(yesterdayBusinessDate);
+    const startBusinessDate = new Date(Date.UTC(2026, 7, 17));
+    const { start: dayStart } =
+      getBusinessDayTimestampRange(startBusinessDate);
+    const startDateStr = '2026-08-17';
 
     const [
       adminAdjRows,
@@ -963,7 +958,7 @@ export class AssetManagementService implements OnModuleInit {
       loanRows,
       transferAgg,
       adminAdjRow,
-      yesterdayLoans,
+      totalLoans,
     ] = await Promise.all([
       this.prisma.adminAdjustmentHistory.findMany({
         orderBy: { created_at: 'desc' },
@@ -1000,7 +995,7 @@ export class AssetManagementService implements OnModuleInit {
       }),
       this.prisma.loanAccount.findMany({
         where: {
-          created_at: { gte: dayStart, lt: dayEnd },
+          created_at: { gte: dayStart },
         },
         select: {
           company_cost: true,
@@ -1012,9 +1007,9 @@ export class AssetManagementService implements OnModuleInit {
     // 计算当前真实的最新在账总金额作为推导基准
     const totalCollectorTransfer = Number(transferAgg._sum.input_value || 0);
     const adminAdjustTotal = Number(adminAdjRow?.total || 0);
-    const yesterdayLoanTotal = calcLoanDisbursementDeltaTotal(yesterdayLoans);
+    const totalLoanTotal = calcLoanDisbursementDeltaTotal(totalLoans);
     const currentTotal =
-      totalCollectorTransfer + adminAdjustTotal + yesterdayLoanTotal;
+      totalCollectorTransfer + adminAdjustTotal + totalLoanTotal;
 
     // 1. 管理员增减项
     const adminAdjItems = adminAdjRows.map((r) => {
@@ -1096,13 +1091,11 @@ export class AssetManagementService implements OnModuleInit {
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
-    const yesterdayDateStr = yesterdayBusinessDate.toISOString().slice(0, 10);
-
     let rollingTotal = currentTotal;
     for (const item of descCombined) {
       (item as any).total_after = rollingTotal;
       if (item.type === 'daily_loan') {
-        if (item.date === yesterdayDateStr) {
+        if (item.date >= startDateStr) {
           (item as any).total_before = rollingTotal - item.delta;
         } else {
           (item as any).total_before = rollingTotal;
