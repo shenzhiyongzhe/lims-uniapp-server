@@ -111,12 +111,20 @@ export class AssetManagementService implements OnModuleInit {
     const { reduced_fines, reduced_handling_fee, reduced_by_risk_controller } =
       await this.getCollectorReductions(userId);
 
+    const todayBusinessDate = getShanghaiBusinessDate();
+    const { start: todayStart, end: todayEnd } =
+      getBusinessDayTimestampRange(todayBusinessDate);
+
     const transferAggregate = await this.prisma.assetReductionHistory.aggregate(
       {
         where: {
           admin_id: userId,
           asset_type: 'collector',
           field_name: 'transfer',
+          created_at: {
+            gte: todayStart,
+            lt: todayEnd,
+          },
         },
         _sum: {
           input_value: true,
@@ -864,35 +872,63 @@ export class AssetManagementService implements OnModuleInit {
 
   // ─── 管理员增减 ────────────────────────────────────────────────────────
 
-  /** 获取管理员增减总额及总借出总额（从2026-08-17营业日起算） */
+  /** 获取今日管理员增减、今日划账及今日借出总额（从当天06:00起算） */
   async getAdminAdjustTotal(): Promise<{
     total: number;
+    admin_adjust_total: number;
+    today_transfer_total: number;
+    today_loan_total: number;
     total_loan_total: number;
   }> {
-    const row = await this.prisma.adminAdjustment.upsert({
-      where: { id: 1 },
-      update: {},
-      create: { id: 1, total: 0 },
-    });
+    const todayBusinessDate = getShanghaiBusinessDate();
+    const { start: todayStart, end: todayEnd } =
+      getBusinessDayTimestampRange(todayBusinessDate);
 
-    const startBusinessDate = new Date(Date.UTC(2026, 7, 17));
-    const { start: dayStart } =
-      getBusinessDayTimestampRange(startBusinessDate);
+    const [todayAdminAdjAgg, todayTransferAgg, todayLoans] = await Promise.all([
+      this.prisma.adminAdjustmentHistory.aggregate({
+        where: {
+          created_at: {
+            gte: todayStart,
+            lt: todayEnd,
+          },
+        },
+        _sum: { delta: true },
+      }),
+      this.prisma.assetReductionHistory.aggregate({
+        where: {
+          asset_type: 'collector',
+          field_name: 'transfer',
+          created_at: {
+            gte: todayStart,
+            lt: todayEnd,
+          },
+        },
+        _sum: { input_value: true },
+      }),
+      this.prisma.loanAccount.findMany({
+        where: {
+          created_at: {
+            gte: todayStart,
+            lt: todayEnd,
+          },
+        },
+        select: {
+          company_cost: true,
+          handling_fee: true,
+        },
+      }),
+    ]);
 
-    const loans = await this.prisma.loanAccount.findMany({
-      where: {
-        created_at: { gte: dayStart },
-      },
-      select: {
-        company_cost: true,
-        handling_fee: true,
-      },
-    });
-    const total_loan_total = calcLoanDisbursementDeltaTotal(loans);
+    const today_admin_adjust_total = Number(todayAdminAdjAgg._sum.delta || 0);
+    const today_transfer_total = Number(todayTransferAgg._sum.input_value || 0);
+    const today_loan_total = calcLoanDisbursementDeltaTotal(todayLoans);
 
     return {
-      total: Number(row.total),
-      total_loan_total,
+      total: today_admin_adjust_total,
+      admin_adjust_total: today_admin_adjust_total,
+      today_transfer_total,
+      today_loan_total,
+      total_loan_total: today_loan_total,
     };
   }
 
