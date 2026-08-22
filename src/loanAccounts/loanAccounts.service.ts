@@ -1770,7 +1770,11 @@ export class LoanAccountsService {
     if (loanStatus === 'negotiated') {
       return schedules.find((s) => s.status === 'pending') ?? schedules[0];
     }
-    return schedules.find((s) => s.status === 'overdue') ?? schedules[0];
+    return (
+      schedules.find((s) => s.status === 'active') ??
+      schedules.find((s) => s.status === 'overdue') ??
+      schedules[0]
+    );
   }
 
   private async buildListWhereConditions(
@@ -2221,13 +2225,33 @@ export class LoanAccountsService {
       }));
       total = tab === 'blacklist' ? countTabBlacklist : countTabCompleted;
     } else if (tab === 'overdue') {
+      const activeCondition = {
+        AND: [
+          { status: { not: 'negotiated' as LoanAccountStatus } },
+          {
+            OR: [
+              { status: 'active' as LoanAccountStatus },
+              {
+                repaymentSchedules: {
+                  some: {
+                    status: 'active' as RepaymentScheduleStatus,
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      };
+
       const whereActiveOverdue = {
-        AND: [whereOverdueLoans, { status: 'active' as LoanAccountStatus }],
+        AND: [whereOverdueLoans, activeCondition],
       };
       const whereOtherOverdue = {
         AND: [
           whereOverdueLoans,
-          { status: { not: 'active' as LoanAccountStatus } },
+          {
+            NOT: activeCondition,
+          },
         ],
       };
 
