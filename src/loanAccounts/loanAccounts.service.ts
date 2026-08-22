@@ -2221,34 +2221,77 @@ export class LoanAccountsService {
       }));
       total = tab === 'blacklist' ? countTabBlacklist : countTabCompleted;
     } else if (tab === 'overdue') {
-      const loanRows = await this.prisma.loanAccount.findMany({
-        where: whereOverdueLoans,
-        skip,
-        take: pageSize,
-        orderBy: { created_at: 'desc' },
-        include: {
-          ...loanAccountInclude,
-          repaymentSchedules: {
-            where: {
-              status: {
-                in: [
-                  'overdue',
-                  'pending',
-                  'active',
-                ] satisfies RepaymentScheduleStatus[],
-              },
+      const whereActiveOverdue = {
+        AND: [whereOverdueLoans, { status: 'active' as LoanAccountStatus }],
+      };
+      const whereOtherOverdue = {
+        AND: [
+          whereOverdueLoans,
+          { status: { not: 'active' as LoanAccountStatus } },
+        ],
+      };
+
+      const countActiveOverdue = await this.prisma.loanAccount.count({
+        where: whereActiveOverdue,
+      });
+
+      const overdueInclude = {
+        ...loanAccountInclude,
+        repaymentSchedules: {
+          where: {
+            status: {
+              in: [
+                'overdue',
+                'pending',
+                'active',
+              ] satisfies RepaymentScheduleStatus[],
             },
-            orderBy: [{ due_start_date: 'asc' }, { period: 'asc' }],
-            take: 5,
-            include: scheduleWithLatestRecordRemark,
           },
-          _count: {
-            select: {
-              repaymentSchedules: { where: { status: 'overdue' } },
-            },
+          orderBy: [
+            { due_start_date: 'asc' as const },
+            { period: 'asc' as const },
+          ],
+          take: 5,
+          include: scheduleWithLatestRecordRemark,
+        },
+        _count: {
+          select: {
+            repaymentSchedules: { where: { status: 'overdue' as const } },
           },
         },
-      });
+      };
+
+      let loanRows: any[] = [];
+      if (skip < countActiveOverdue) {
+        const activeRows = await this.prisma.loanAccount.findMany({
+          where: whereActiveOverdue,
+          skip,
+          take: pageSize,
+          orderBy: { created_at: 'desc' },
+          include: overdueInclude,
+        });
+        loanRows = activeRows;
+        const need = pageSize - activeRows.length;
+        if (need > 0) {
+          const otherRows = await this.prisma.loanAccount.findMany({
+            where: whereOtherOverdue,
+            skip: 0,
+            take: need,
+            orderBy: { created_at: 'desc' },
+            include: overdueInclude,
+          });
+          loanRows = [...loanRows, ...otherRows];
+        }
+      } else {
+        loanRows = await this.prisma.loanAccount.findMany({
+          where: whereOtherOverdue,
+          skip: skip - countActiveOverdue,
+          take: pageSize,
+          orderBy: { created_at: 'desc' },
+          include: overdueInclude,
+        });
+      }
+
       data = loanRows.map((loan) => {
         const { _count, repaymentSchedules, ...rest } = loan;
         const picked = this.pickOverdueTabSchedule(
