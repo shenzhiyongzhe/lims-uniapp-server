@@ -488,6 +488,15 @@ export class RepaymentSchedulesService {
         },
       });
 
+      const dateStr = newDate.toISOString().split('T')[0];
+      await this.loanAccountsService.logOperation(
+        tx,
+        loanId,
+        operator?.id,
+        'add_schedule',
+        `添加第 ${newPeriod} 期还款计划，应还本金: ¥${capital}，应还利息: ¥${interest}，应还总额: ¥${dueAmount}，到期日: ${dateStr}`,
+      );
+
       return newSchedule;
     });
   }

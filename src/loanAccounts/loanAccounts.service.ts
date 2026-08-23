@@ -194,7 +194,7 @@ export class LoanAccountsService {
     });
   }
 
-  private async logOperation(
+  async logOperation(
     tx: any,
     loanId: number,
     operatorAdminId: number | undefined,
