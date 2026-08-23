@@ -56,37 +56,42 @@ export class RepaymentSchedulesController {
     ManagementRoles.RISK_CONTROLLER,
   )
   async create(
-    @Body() data: { loan_id: number | string },
+    @Body() data: { loan_id: number | string; count?: number | string },
     @CurrentUser() user: { id: number; role: string },
   ): Promise<ApiResponseDto> {
     const loanId = Number(data.loan_id);
     if (!Number.isFinite(loanId)) {
       throw new NotFoundException('缺少或无效的 loan_id 参数');
     }
+    const count = data.count ? Number(data.count) : undefined;
 
     try {
-      const newSchedule = await this.repaymentSchedulesService.create(
+      const createdSchedules = await this.repaymentSchedulesService.create(
         loanId,
         user,
+        count,
       );
 
-      const responseData = {
-        id: newSchedule.id,
-        loan_id: newSchedule.loan_id,
-        period: newSchedule.period,
-        due_start_date: newSchedule.due_start_date,
-        due_amount: newSchedule.due_amount,
-        capital: newSchedule.capital,
-        interest: newSchedule.interest,
-        paid_capital: newSchedule.paid_capital,
-        paid_interest: newSchedule.paid_interest,
-        fines: newSchedule.fines,
-        status: newSchedule.status,
-        paid_amount: newSchedule.paid_amount,
-        paid_at: newSchedule.paid_at,
-      };
+      const responseData = createdSchedules.map((s) => ({
+        id: s.id,
+        loan_id: s.loan_id,
+        period: s.period,
+        due_start_date: s.due_start_date,
+        due_amount: s.due_amount,
+        capital: s.capital,
+        interest: s.interest,
+        paid_capital: s.paid_capital,
+        paid_interest: s.paid_interest,
+        fines: s.fines,
+        status: s.status,
+        paid_amount: s.paid_amount,
+        paid_at: s.paid_at,
+      }));
 
-      return ResponseHelper.success(responseData, '创建还款计划成功');
+      return ResponseHelper.success(
+        responseData,
+        `成功创建 ${createdSchedules.length} 期还款计划`,
+      );
     } catch (error: any) {
       if (error instanceof ForbiddenException) {
         return ResponseHelper.error(error.message, 403);

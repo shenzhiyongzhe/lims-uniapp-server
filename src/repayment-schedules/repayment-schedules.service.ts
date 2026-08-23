@@ -409,7 +409,8 @@ export class RepaymentSchedulesService {
   async create(
     loanId: number,
     operator?: { id: number; role: string },
-  ): Promise<RepaymentSchedule> {
+    count?: number,
+  ): Promise<RepaymentSchedule[]> {
     if (operator?.role) {
       await this.loanAccountsService.assertLoanAccountEditable(
         loanId,
@@ -423,16 +424,22 @@ export class RepaymentSchedulesService {
           loan_id: loanId,
         },
         orderBy: {
-          period: 'desc',
+          period: 'asc',
         },
-        take: 1,
       });
 
       if (allSchedules.length === 0) {
         throw new NotFoundException('该贷款账户没有还款计划，无法添加新期数');
       }
 
-      const lastSchedule = allSchedules[0];
+      const unpaidSchedules = allSchedules.filter(
+        (s) => s.status !== 'paid' && s.status !== 'terminated',
+      );
+
+      const countToAdd =
+        count && count > 0 ? count : unpaidSchedules.length <= 2 ? 10 : 1;
+
+      const lastSchedule = allSchedules[allSchedules.length - 1];
 
       const loanAccount = await tx.loanAccount.findUnique({
         where: { id: loanId },
@@ -447,16 +454,6 @@ export class RepaymentSchedulesService {
         throw new NotFoundException('贷款账户不存在');
       }
 
-      const newPeriod = lastSchedule.period + 1;
-      const lastDate = new Date(lastSchedule.due_start_date);
-      const newDate = new Date(
-        Date.UTC(
-          lastDate.getUTCFullYear(),
-          lastDate.getUTCMonth(),
-          lastDate.getUTCDate() + 1,
-        ),
-      );
-
       const toNumber = (value?: any) =>
         value !== null && value !== undefined ? Number(value) : 0;
 
@@ -464,40 +461,70 @@ export class RepaymentSchedulesService {
       const interest = toNumber(loanAccount.period_interest);
       const dueAmount = capital + interest;
 
-      const newSchedule = await tx.repaymentSchedule.create({
-        data: {
-          loan_id: loanId,
-          period: newPeriod,
-          due_start_date: newDate,
-          due_amount: dueAmount,
-          capital: capital,
-          interest: interest,
-          paid_capital: 0,
-          paid_interest: 0,
-          fines: 0,
-          status: 'pending',
-          paid_amount: 0,
-        },
-      });
+      const lastDate = new Date(lastSchedule.due_start_date);
+      const createdSchedules: RepaymentSchedule[] = [];
+
+      for (let i = 1; i <= countToAdd; i++) {
+        const newPeriod = lastSchedule.period + i;
+        const newDate = new Date(
+          Date.UTC(
+            lastDate.getUTCFullYear(),
+            lastDate.getUTCMonth(),
+            lastDate.getUTCDate() + i,
+          ),
+        );
+
+        const newSchedule = await tx.repaymentSchedule.create({
+          data: {
+            loan_id: loanId,
+            period: newPeriod,
+            due_start_date: newDate,
+            due_amount: dueAmount,
+            capital: capital,
+            interest: interest,
+            paid_capital: 0,
+            paid_interest: 0,
+            fines: 0,
+            status: 'pending',
+            paid_amount: 0,
+          },
+        });
+        createdSchedules.push(newSchedule);
+      }
+
+      const finalSchedule = createdSchedules[createdSchedules.length - 1];
 
       await tx.loanAccount.update({
         where: { id: loanId },
         data: {
-          total_periods: loanAccount.total_periods + 1,
-          due_end_date: newDate,
+          total_periods: loanAccount.total_periods + countToAdd,
+          due_end_date: finalSchedule.due_start_date,
         },
       });
 
-      const dateStr = newDate.toISOString().split('T')[0];
+      const startPeriod = createdSchedules[0].period;
+      const endPeriod = finalSchedule.period;
+      const firstDateStr = new Date(createdSchedules[0].due_start_date)
+        .toISOString()
+        .split('T')[0];
+      const lastDateStr = new Date(finalSchedule.due_start_date)
+        .toISOString()
+        .split('T')[0];
+
+      const logContent =
+        countToAdd === 1
+          ? `添加第 ${startPeriod} 期还款计划，应还本金: ¥${capital}，应还利息: ¥${interest}，应还总额: ¥${dueAmount}，到期日: ${firstDateStr}`
+          : `添加第 ${startPeriod} 至 ${endPeriod} 期还款计划（共 ${countToAdd} 期），每期本金: ¥${capital}，每期利息: ¥${interest}，每期总额: ¥${dueAmount}，到期日至: ${lastDateStr}`;
+
       await this.loanAccountsService.logOperation(
         tx,
         loanId,
         operator?.id,
         'add_schedule',
-        `添加第 ${newPeriod} 期还款计划，应还本金: ¥${capital}，应还利息: ¥${interest}，应还总额: ¥${dueAmount}，到期日: ${dateStr}`,
+        logContent,
       );
 
-      return newSchedule;
+      return createdSchedules;
     });
   }
 
