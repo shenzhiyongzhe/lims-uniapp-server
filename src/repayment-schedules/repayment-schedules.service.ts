@@ -161,6 +161,7 @@ export class RepaymentSchedulesService {
         where: { id: data.id },
         select: {
           loan_id: true,
+          period: true,
           capital: true,
           interest: true,
           paid_capital: true,
@@ -181,11 +182,26 @@ export class RepaymentSchedulesService {
         value !== null && value !== undefined ? Number(value) : 0;
 
       // 前端传入的 pay_capital / pay_interest 代表「本期已还总金额」
-      const inputCapital = Number(data.pay_capital) || 0;
-      const inputInterest = Number(data.pay_interest) || 0;
+      const inputCapital =
+        data.pay_capital !== undefined
+          ? Number(data.pay_capital) || 0
+          : toNumber(currentSchedule.paid_capital);
+      const inputInterest =
+        data.pay_interest !== undefined
+          ? Number(data.pay_interest) || 0
+          : toNumber(currentSchedule.paid_interest);
 
-      const baseCapital = toNumber(currentSchedule.capital);
-      const baseInterest = toNumber(currentSchedule.interest);
+      const nextCapital =
+        data.capital !== undefined
+          ? toNumber(data.capital)
+          : toNumber(currentSchedule.capital);
+      const nextInterest =
+        data.interest !== undefined
+          ? toNumber(data.interest)
+          : toNumber(currentSchedule.interest);
+
+      const baseCapital = nextCapital;
+      const baseInterest = nextInterest;
 
       const actionType: ScheduleOperationType =
         data.action_type === 'collect' ? 'collect' : 'edit';
@@ -194,6 +210,9 @@ export class RepaymentSchedulesService {
         data;
       const updatePayload: any = {
         ...restData,
+        capital: nextCapital,
+        interest: nextInterest,
+        due_amount: nextCapital + nextInterest,
         paid_capital: inputCapital,
         paid_interest: inputInterest,
       };
@@ -258,6 +277,23 @@ export class RepaymentSchedulesService {
           remark: remark || null,
         },
       });
+
+      const capitalChanged =
+        data.capital !== undefined &&
+        nextCapital !== toNumber(currentSchedule.capital);
+      const interestChanged =
+        data.interest !== undefined &&
+        nextInterest !== toNumber(currentSchedule.interest);
+
+      if (capitalChanged || interestChanged) {
+        await this.loanAccountsService.logOperation(
+          tx,
+          currentSchedule.loan_id,
+          operator?.id,
+          'update',
+          `修改第 ${currentSchedule.period} 期应还计划：本金 ¥${toNumber(currentSchedule.capital)} -> ¥${nextCapital}，利息 ¥${toNumber(currentSchedule.interest)} -> ¥${nextInterest}，应还总额 ¥${toNumber(currentSchedule.capital) + toNumber(currentSchedule.interest)} -> ¥${nextCapital + nextInterest}`,
+        );
+      }
 
       // 2. 更新还款计划
       const updatedSchedule = await tx.repaymentSchedule.update({
