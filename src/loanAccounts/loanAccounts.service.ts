@@ -1751,6 +1751,7 @@ export class LoanAccountsService {
     const data = await this.attachNoteUpdatedAt(
       rows.map((loan) => ({
         ...loan,
+        username: loan.user?.username || '',
         __rowKey: String(loan.id),
       })),
     );

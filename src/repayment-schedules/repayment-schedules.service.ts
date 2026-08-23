@@ -438,6 +438,8 @@ export class RepaymentSchedulesService {
         where: { id: loanId },
         select: {
           total_periods: true,
+          period_capital: true,
+          period_interest: true,
         },
       });
 
@@ -458,8 +460,8 @@ export class RepaymentSchedulesService {
       const toNumber = (value?: any) =>
         value !== null && value !== undefined ? Number(value) : 0;
 
-      const capital = toNumber(lastSchedule.capital);
-      const interest = toNumber(lastSchedule.interest);
+      const capital = toNumber(loanAccount.period_capital);
+      const interest = toNumber(loanAccount.period_interest);
       const dueAmount = capital + interest;
 
       const newSchedule = await tx.repaymentSchedule.create({
@@ -482,6 +484,7 @@ export class RepaymentSchedulesService {
         where: { id: loanId },
         data: {
           total_periods: loanAccount.total_periods + 1,
+          due_end_date: newDate,
         },
       });
 
