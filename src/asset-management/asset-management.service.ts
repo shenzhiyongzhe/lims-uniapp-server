@@ -150,30 +150,39 @@ export class AssetManagementService implements OnModuleInit {
     const { start: todayStart, end: todayEnd } =
       getBusinessDayTimestampRange(todayBusinessDate);
 
-    const [todayDepositAgg, todayTransferAgg] = await Promise.all([
-      this.prisma.assetReductionHistory.aggregate({
-        where: {
-          admin_id: userId,
-          asset_type: 'collector',
-          field_name: 'deposit',
-          created_at: { gte: todayStart, lt: todayEnd },
-        },
-        _sum: { input_value: true },
-      }),
-      this.prisma.assetReductionHistory.aggregate({
-        where: {
-          admin_id: userId,
-          asset_type: 'collector',
-          field_name: 'transfer',
-          created_at: { gte: todayStart, lt: todayEnd },
-        },
-        _sum: { input_value: true },
-      }),
-    ]);
+    const [todayDepositAgg, todayTransferAgg, todayRepaymentsAggregate] =
+      await Promise.all([
+        this.prisma.assetReductionHistory.aggregate({
+          where: {
+            admin_id: userId,
+            asset_type: 'collector',
+            field_name: 'deposit',
+            created_at: { gte: todayStart, lt: todayEnd },
+          },
+          _sum: { input_value: true },
+        }),
+        this.prisma.assetReductionHistory.aggregate({
+          where: {
+            admin_id: userId,
+            asset_type: 'collector',
+            field_name: 'transfer',
+            created_at: { gte: todayStart, lt: todayEnd },
+          },
+          _sum: { input_value: true },
+        }),
+        this.prisma.repaymentRecord.aggregate({
+          where: {
+            loan_account: { collector_id: userId },
+            paid_at: { gte: todayStart, lt: todayEnd },
+          },
+          _sum: { paid_amount: true },
+        }),
+      ]);
 
     const today_deposit_in = Number(todayDepositAgg._sum.input_value || 0);
     const today_deposit_out = Number(todayTransferAgg._sum.input_value || 0);
     const today_deposit = today_deposit_in - today_deposit_out;
+    const today_received = Number(todayRepaymentsAggregate._sum.paid_amount || 0);
 
     const reduction_by_counterparty = (
       await this.findReductionCounterpartySummary({
@@ -197,6 +206,7 @@ export class AssetManagementService implements OnModuleInit {
       reduced_by_risk_controller,
       total_amount,
       total_received: totalRepaid,
+      today_received,
       reduction_by_counterparty,
       transfer_amount,
     };
@@ -582,26 +592,87 @@ export class AssetManagementService implements OnModuleInit {
       query.month,
     );
 
-    const rows = await this.prisma.assetReductionHistory.findMany({
-      where: {
-        admin_id: userId,
-        asset_type: 'collector',
-        field_name: { in: ['deposit', 'transfer'] },
-        created_at: { gte: monthStartTs, lt: nextMonthStartTs },
-      },
-      select: {
-        input_value: true,
-        created_at: true,
-      },
-      orderBy: { created_at: 'asc' },
+    const [depositRows, repaymentRows] = await Promise.all([
+      this.prisma.assetReductionHistory.findMany({
+        where: {
+          admin_id: userId,
+          asset_type: 'collector',
+          field_name: { in: ['deposit', 'transfer'] },
+          created_at: { gte: monthStartTs, lt: nextMonthStartTs },
+        },
+        select: {
+          field_name: true,
+          input_value: true,
+          created_at: true,
+        },
+        orderBy: { created_at: 'asc' },
+      }),
+      this.prisma.repaymentRecord.findMany({
+        where: {
+          loan_account: { collector_id: userId },
+          paid_at: { gte: monthStartTs, lt: nextMonthStartTs },
+        },
+        select: {
+          paid_amount: true,
+          paid_at: true,
+        },
+        orderBy: { paid_at: 'asc' },
+      }),
+    ]);
+
+    const dayMap = new Map<
+      string,
+      {
+        totalPaidAmount: number;
+        depositAmount: number;
+        repaymentAmount: number;
+        count: number;
+      }
+    >();
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+    depositRows.forEach((row) => {
+      const businessTs = new Date(row.created_at.getTime() + TWO_HOURS_MS);
+      const date = businessTs.toISOString().slice(0, 10);
+      const entry = dayMap.get(date) || {
+        totalPaidAmount: 0,
+        depositAmount: 0,
+        repaymentAmount: 0,
+        count: 0,
+      };
+      const v = Number(row.input_value ?? 0);
+      if (row.field_name === 'transfer') {
+        entry.depositAmount -= v;
+      } else {
+        entry.depositAmount += v;
+      }
+      entry.totalPaidAmount = Math.abs(entry.depositAmount);
+      entry.count += 1;
+      dayMap.set(date, entry);
     });
 
-    return this.aggregateRowsToDailySummary(
-      rows.map((row) => ({
-        amount: Math.abs(Number(row.input_value ?? 0)),
-        created_at: row.created_at,
-      })),
-    );
+    repaymentRows.forEach((row) => {
+      const businessTs = new Date(row.paid_at.getTime() + TWO_HOURS_MS);
+      const date = businessTs.toISOString().slice(0, 10);
+      const entry = dayMap.get(date) || {
+        totalPaidAmount: 0,
+        depositAmount: 0,
+        repaymentAmount: 0,
+        count: 0,
+      };
+      entry.repaymentAmount += Number(row.paid_amount ?? 0);
+      dayMap.set(date, entry);
+    });
+
+    return Array.from(dayMap.entries())
+      .map(([date, value]) => ({
+        date,
+        totalPaidAmount: value.totalPaidAmount,
+        depositAmount: value.depositAmount,
+        repaymentAmount: value.repaymentAmount,
+        count: value.count,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   /** 存出款明细 */
