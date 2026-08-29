@@ -146,6 +146,35 @@ export class AssetManagementService implements OnModuleInit {
 
     const total_amount = totalLent + totalRepaid;
 
+    const todayBusinessDate = getShanghaiBusinessDate();
+    const { start: todayStart, end: todayEnd } =
+      getBusinessDayTimestampRange(todayBusinessDate);
+
+    const [todayDepositAgg, todayTransferAgg] = await Promise.all([
+      this.prisma.assetReductionHistory.aggregate({
+        where: {
+          admin_id: userId,
+          asset_type: 'collector',
+          field_name: 'deposit',
+          created_at: { gte: todayStart, lt: todayEnd },
+        },
+        _sum: { input_value: true },
+      }),
+      this.prisma.assetReductionHistory.aggregate({
+        where: {
+          admin_id: userId,
+          asset_type: 'collector',
+          field_name: 'transfer',
+          created_at: { gte: todayStart, lt: todayEnd },
+        },
+        _sum: { input_value: true },
+      }),
+    ]);
+
+    const today_deposit_in = Number(todayDepositAgg._sum.input_value || 0);
+    const today_deposit_out = Number(todayTransferAgg._sum.input_value || 0);
+    const today_deposit = today_deposit_in - today_deposit_out;
+
     const reduction_by_counterparty = (
       await this.findReductionCounterpartySummary({
         perspective: ReductionPerspective.collector,
@@ -162,6 +191,9 @@ export class AssetManagementService implements OnModuleInit {
       reduced_handling_fee,
       reduced_fines,
       deposit,
+      today_deposit,
+      today_deposit_in,
+      today_deposit_out,
       reduced_by_risk_controller,
       total_amount,
       total_received: totalRepaid,
