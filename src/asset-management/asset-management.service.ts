@@ -605,19 +605,48 @@ export class AssetManagementService implements OnModuleInit {
       this.prisma.assetReductionHistory.count({ where }),
     ]);
 
+    const operatorIds = Array.from(
+      new Set(
+        data
+          .map((row) => row.updated_by_admin_id)
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    );
+
+    const operators =
+      operatorIds.length > 0
+        ? await this.prisma.staff.findMany({
+            where: { id: { in: operatorIds } },
+            select: { id: true, username: true, nickname: true },
+          })
+        : [];
+
+    const operatorMap = new Map<number, { username?: string | null; nickname?: string | null }>();
+    operators.forEach((op) => operatorMap.set(op.id, op));
+
     return {
-      data: data.map((row) => ({
-        id: row.id,
-        admin_id: row.admin_id,
-        field_name: row.field_name,
-        input_value: Number(row.input_value),
-        old_value: Number(row.old_value),
-        new_value: Number(row.new_value),
-        updated_by_admin_id: row.updated_by_admin_id,
-        updated_by_admin_username: row.updated_by_admin_username,
-        remark: row.remark,
-        created_at: row.created_at,
-      })),
+      data: data.map((row) => {
+        const op = row.updated_by_admin_id ? operatorMap.get(row.updated_by_admin_id) : undefined;
+        const operatorName =
+          row.updated_by_admin_username ||
+          op?.nickname ||
+          op?.username ||
+          null;
+
+        return {
+          id: row.id,
+          admin_id: row.admin_id,
+          field_name: row.field_name,
+          input_value: Number(row.input_value),
+          old_value: Number(row.old_value),
+          new_value: Number(row.new_value),
+          updated_by_admin_id: row.updated_by_admin_id,
+          updated_by_admin_username: operatorName,
+          operator_username: operatorName,
+          remark: row.remark,
+          created_at: row.created_at,
+        };
+      }),
       total,
       page,
       pageSize,
@@ -756,20 +785,49 @@ export class AssetManagementService implements OnModuleInit {
       this.prisma.assetReductionHistory.count({ where }),
     ]);
 
+    const operatorIds = Array.from(
+      new Set(
+        data
+          .map((row) => row.updated_by_admin_id)
+          .filter((id): id is number => id !== null && id !== undefined),
+      ),
+    );
+
+    const operators =
+      operatorIds.length > 0
+        ? await this.prisma.staff.findMany({
+            where: { id: { in: operatorIds } },
+            select: { id: true, username: true, nickname: true },
+          })
+        : [];
+
+    const operatorMap = new Map<number, { username?: string | null; nickname?: string | null }>();
+    operators.forEach((op) => operatorMap.set(op.id, op));
+
     return {
-      data: data.map((row) => ({
-        id: row.id,
-        admin_id: row.admin_id,
-        asset_type: row.asset_type,
-        field_name: row.field_name,
-        old_value: Number(row.old_value),
-        input_value: Number(row.input_value),
-        new_value: Number(row.new_value),
-        updated_by_admin_id: row.updated_by_admin_id,
-        updated_by_admin_username: row.updated_by_admin_username,
-        remark: row.remark,
-        created_at: row.created_at,
-      })),
+      data: data.map((row) => {
+        const op = row.updated_by_admin_id ? operatorMap.get(row.updated_by_admin_id) : undefined;
+        const operatorName =
+          row.updated_by_admin_username ||
+          op?.nickname ||
+          op?.username ||
+          null;
+
+        return {
+          id: row.id,
+          admin_id: row.admin_id,
+          asset_type: row.asset_type,
+          field_name: row.field_name,
+          old_value: Number(row.old_value),
+          input_value: Number(row.input_value),
+          new_value: Number(row.new_value),
+          updated_by_admin_id: row.updated_by_admin_id,
+          updated_by_admin_username: operatorName,
+          operator_username: operatorName,
+          remark: row.remark,
+          created_at: row.created_at,
+        };
+      }),
       total,
       page,
       pageSize,
@@ -821,9 +879,9 @@ export class AssetManagementService implements OnModuleInit {
     if (params.operator?.id) {
       const op = await tx.staff.findUnique({
         where: { id: params.operator.id },
-        select: { username: true },
+        select: { username: true, nickname: true },
       });
-      operatorUsername = op?.username ?? null;
+      operatorUsername = op?.nickname || op?.username || null;
     }
 
     await tx.assetReductionHistory.create({
