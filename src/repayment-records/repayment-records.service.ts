@@ -87,6 +87,7 @@ export class RepaymentRecordsService {
 
     const where: any = {
       loan_account: scope.whereClause,
+      paid_amount: { gt: 0 },
     };
     if (userId) where.user_id = userId;
     if (loanId) {
@@ -174,6 +175,7 @@ export class RepaymentRecordsService {
     ]);
     const baseWhere: any = {
       loan_account: scope.whereClause,
+      paid_amount: { gt: 0 },
     };
 
     // Determine collectorId for deposit process (only for COLLECTOR role)
@@ -296,6 +298,7 @@ export class RepaymentRecordsService {
     const repaymentWhere: any = {
       loan_account: scope.whereClause,
       paid_at: { gte: dayStart, lte: dayEnd },
+      paid_amount: { gt: 0 },
     };
 
     let previousTotal = 0;
@@ -318,6 +321,7 @@ export class RepaymentRecordsService {
           where: {
             loan_account: scope.whereClause,
             paid_at: { lt: dayStart },
+            paid_amount: { gt: 0 },
           },
           _sum: {
             paid_amount: true,
@@ -495,6 +499,7 @@ export class RepaymentRecordsService {
     const where: any = {
       paid_at: { gte: monthStartTs, lt: nextMonthStartTs },
       loan_account: scope.whereClause,
+      paid_amount: { gt: 0 },
     };
 
     const rows = await this.prisma.repaymentRecord.findMany({
@@ -650,6 +655,7 @@ export class RepaymentRecordsService {
                 risk_controller_id: rcId,
               },
               paid_at: { gte: dayStart, lt: dayEnd },
+              paid_amount: { gt: 0 },
             },
             _sum: { paid_amount: true },
           });

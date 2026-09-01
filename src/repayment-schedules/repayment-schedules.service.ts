@@ -388,20 +388,26 @@ export class RepaymentSchedulesService {
           const updatedFines =
             Number(todayRecord.paid_fines || 0) + deltaFines;
 
-          await tx.repaymentRecord.update({
-            where: { id: todayRecord.id },
-            data: {
-              paid_amount: updatedAmount,
-              paid_capital: updatedCapital,
-              paid_interest: updatedInterest,
-              paid_fines: updatedFines,
-              actual_collector_id:
-                operator?.id ?? todayRecord.actual_collector_id,
-              remark: remark !== undefined ? remark || null : todayRecord.remark,
-            },
-          });
-        } else {
-          // 跨天修改或今天首次操作：创建今天的新还款记录（增量为正或负，不删除历史记录）
+          if (updatedAmount <= 0) {
+            await tx.repaymentRecord.delete({
+              where: { id: todayRecord.id },
+            });
+          } else {
+            await tx.repaymentRecord.update({
+              where: { id: todayRecord.id },
+              data: {
+                paid_amount: updatedAmount,
+                paid_capital: updatedCapital,
+                paid_interest: updatedInterest,
+                paid_fines: updatedFines,
+                actual_collector_id:
+                  operator?.id ?? todayRecord.actual_collector_id,
+                remark: remark !== undefined ? remark || null : todayRecord.remark,
+              },
+            });
+          }
+        } else if (deltaPaidTotal > 0) {
+          // 跨天修改或今天首次操作：创建今天的新还款记录（仅在增量大于0时创建）
           await tx.repaymentRecord.create({
             data: {
               loan_id: loanId,
