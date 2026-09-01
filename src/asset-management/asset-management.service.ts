@@ -102,7 +102,7 @@ export class AssetManagementService implements OnModuleInit {
         userId,
         'collector',
       );
-    const { total_handling_fee, total_fines } =
+    const { total_handling_fee, total_fines, blacklist_handling_fee } =
       await this.calculateTotalAmounts(loanAccountIds);
 
     const deposit = asset ? Number(asset.deposit || 0) : 0;
@@ -209,6 +209,7 @@ export class AssetManagementService implements OnModuleInit {
       today_received,
       reduction_by_counterparty,
       transfer_amount,
+      blacklist_handling_fee,
     };
   }
 
@@ -1004,11 +1005,15 @@ export class AssetManagementService implements OnModuleInit {
 
   private async calculateTotalAmounts(loanAccountIds: number[]) {
     if (loanAccountIds.length === 0)
-      return { total_handling_fee: 0, total_fines: 0 };
+      return {
+        total_handling_fee: 0,
+        total_fines: 0,
+        blacklist_handling_fee: 0,
+      };
 
     const accounts = await this.prisma.loanAccount.findMany({
       where: { id: { in: loanAccountIds } },
-      select: { handling_fee: true, total_fines: true },
+      select: { handling_fee: true, total_fines: true, status: true },
     });
 
     return {
@@ -1016,6 +1021,9 @@ export class AssetManagementService implements OnModuleInit {
         (sum, a) => sum + Number(a.handling_fee || 0),
         0,
       ),
+      blacklist_handling_fee: accounts
+        .filter((a) => a.status === 'blacklist')
+        .reduce((sum, a) => sum + Number(a.handling_fee || 0), 0),
       total_fines: accounts.reduce(
         (sum, a) => sum + Number(a.total_fines || 0),
         0,
