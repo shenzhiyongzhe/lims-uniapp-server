@@ -301,53 +301,38 @@ export class RepaymentRecordsService {
       paid_amount: { gt: 0 },
     };
 
-    let previousTotal = 0;
-    let previousRow: any = null;
-
-    if (collectorId || riskControllerId || scope.isAllAccessible) {
-      // 交集模式或 admin 全量模式下，动态算出之前的累计余额（避免读取陈旧归档）
-      const [loansBefore, repaymentsBefore] = await Promise.all([
-        this.prisma.loanAccount.aggregate({
-          where: {
-            ...scope.whereClause,
-            created_at: { lt: dayStart },
-          },
-          _sum: {
-            company_cost: true,
-            handling_fee: true,
-          },
-        }),
-        this.prisma.repaymentRecord.aggregate({
-          where: {
-            loan_account: scope.whereClause,
-            paid_at: { lt: dayStart },
-            paid_amount: { gt: 0 },
-          },
-          _sum: {
-            paid_amount: true,
-          },
-        }),
-      ]);
-      const totalLentBefore = calcLoanDisbursementDelta({
-        company_cost: loansBefore._sum.company_cost,
-        handling_fee: loansBefore._sum.handling_fee,
-      });
-      const totalRepaidBefore = calcPaidAmountTotal([
-        { paid_amount: repaymentsBefore._sum.paid_amount },
-      ]);
-
-      previousTotal = totalLentBefore + totalRepaidBefore;
-    } else {
-      // 单用户模式下，从数据库归档表获取前一日的今日合计
-      previousRow = await this.prisma.dailyLoanBalance.findFirst({
+    // 统一采用实时动态计算，对数据库历史借贷及收款记录进行聚合，避免读取陈旧归档快照产生对账偏差
+    const [loansBefore, repaymentsBefore] = await Promise.all([
+      this.prisma.loanAccount.aggregate({
         where: {
-          admin_id: scopedBalanceUserId,
-          date: { lt: businessDate },
+          ...scope.whereClause,
+          created_at: { lt: dayStart },
         },
-        orderBy: { date: 'desc' },
-      });
-      previousTotal = Number(previousRow?.today_total ?? 0);
-    }
+        _sum: {
+          company_cost: true,
+          handling_fee: true,
+        },
+      }),
+      this.prisma.repaymentRecord.aggregate({
+        where: {
+          loan_account: scope.whereClause,
+          paid_at: { lt: dayStart },
+          paid_amount: { gt: 0 },
+        },
+        _sum: {
+          paid_amount: true,
+        },
+      }),
+    ]);
+    const totalLentBefore = calcLoanDisbursementDelta({
+      company_cost: loansBefore._sum.company_cost,
+      handling_fee: loansBefore._sum.handling_fee,
+    });
+    const totalRepaidBefore = calcPaidAmountTotal([
+      { paid_amount: repaymentsBefore._sum.paid_amount },
+    ]);
+
+    const previousTotal = totalLentBefore + totalRepaidBefore;
 
     const [todayLoans, todayRepayments] = await Promise.all([
       this.prisma.loanAccount.findMany({
