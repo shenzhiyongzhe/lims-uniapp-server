@@ -158,7 +158,7 @@ export class RepaymentSchedulesService {
         operator.role,
       );
 
-      // 非管理员/超级管理员角色（如 COLLECTOR / 负责人），仅允许修改当天的还款计划
+      // 非管理员/超级管理员角色（如 COLLECTOR / 负责人），允许修改今天及以后的还款计划，不能修改过去的还款计划
       const isPlatformAdmin =
         operator.role === 'SUPER_ADMIN' || operator.role === 'ADMIN';
       if (!isPlatformAdmin) {
@@ -170,10 +170,10 @@ export class RepaymentSchedulesService {
         });
         if (
           !sched ||
-          sched.due_start_date.toISOString().slice(0, 10) !==
+          sched.due_start_date.toISOString().slice(0, 10) <
             shanghaiTodayStart.toISOString().slice(0, 10)
         ) {
-          throw new ForbiddenException('负责人仅能修改当天的还款计划');
+          throw new ForbiddenException('负责人不能修改过去的还款计划');
         }
       }
     }
