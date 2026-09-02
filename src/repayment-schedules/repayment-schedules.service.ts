@@ -157,6 +157,25 @@ export class RepaymentSchedulesService {
         scheduleRef.loan_id,
         operator.role,
       );
+
+      // 非管理员/超级管理员角色（如 COLLECTOR / 负责人），仅允许修改当天的还款计划
+      const isPlatformAdmin =
+        operator.role === 'SUPER_ADMIN' || operator.role === 'ADMIN';
+      if (!isPlatformAdmin) {
+        const { today: shanghaiTodayStart } =
+          getShanghaiBusinessTodayAndYesterday();
+        const sched = await this.prisma.repaymentSchedule.findUnique({
+          where: { id: data.id },
+          select: { due_start_date: true },
+        });
+        if (
+          !sched ||
+          sched.due_start_date.toISOString().slice(0, 10) !==
+            shanghaiTodayStart.toISOString().slice(0, 10)
+        ) {
+          throw new ForbiddenException('负责人仅能修改当天的还款计划');
+        }
+      }
     }
 
     return await this.prisma.$transaction(async (tx) => {
@@ -361,69 +380,57 @@ export class RepaymentSchedulesService {
         },
       });
 
-      if (loan && deltaPaidTotal !== 0) {
-        const businessDate = getShanghaiBusinessDate();
-        const { start: todayStart, end: todayEnd } =
-          getBusinessDayTimestampRange(businessDate);
+      // 3. 同步还款记录：每期计划唯一对应一条还款记录，就地修改；金额为 0 时删除，负数或正数正常保存
+      if (loan) {
         const { today: shanghaiTodayStart } =
           getShanghaiBusinessTodayAndYesterday();
-
-        // 查找当前业务日（今天）是否已经存在该还款计划的还款记录
-        const todayRecord = await tx.repaymentRecord.findFirst({
+        const existingRecord = await tx.repaymentRecord.findFirst({
           where: {
             repayment_schedule_id: data.id,
-            paid_at: { gte: todayStart, lt: todayEnd },
           },
           orderBy: { id: 'desc' },
         });
 
-        if (todayRecord) {
-          // 同一天内多次修改/还款：更新并累加当天的还款记录
-          const updatedAmount =
-            Number(todayRecord.paid_amount || 0) + deltaPaidTotal;
-          const updatedCapital =
-            Number(todayRecord.paid_capital || 0) + deltaCapital;
-          const updatedInterest =
-            Number(todayRecord.paid_interest || 0) + deltaInterest;
-          const updatedFines =
-            Number(todayRecord.paid_fines || 0) + deltaFines;
+        if (nextPaid !== 0) {
+          const recordPayload = {
+            paid_amount: nextPaid,
+            paid_capital: inputCapital,
+            paid_interest: inputInterest,
+            paid_fines: finesValue,
+            actual_collector_id:
+              operator?.id ?? existingRecord?.actual_collector_id ?? null,
+            remark:
+              remark !== undefined
+                ? remark || null
+                : existingRecord?.remark || null,
+            due_date: currentSchedule.due_start_date,
+            is_overdue_repaid:
+              currentSchedule.due_start_date < shanghaiTodayStart,
+          };
 
-          if (updatedAmount <= 0) {
-            await tx.repaymentRecord.delete({
-              where: { id: todayRecord.id },
+          if (existingRecord) {
+            await tx.repaymentRecord.update({
+              where: { id: existingRecord.id },
+              data: {
+                ...recordPayload,
+                paid_at: new Date(),
+              },
             });
           } else {
-            await tx.repaymentRecord.update({
-              where: { id: todayRecord.id },
+            await tx.repaymentRecord.create({
               data: {
-                paid_amount: updatedAmount,
-                paid_capital: updatedCapital,
-                paid_interest: updatedInterest,
-                paid_fines: updatedFines,
-                actual_collector_id:
-                  operator?.id ?? todayRecord.actual_collector_id,
-                remark: remark !== undefined ? remark || null : todayRecord.remark,
+                loan_id: loanId,
+                user_id: loan.user_id,
+                repayment_schedule_id: data.id,
+                paid_at: new Date(),
+                ...recordPayload,
               },
             });
           }
-        } else if (deltaPaidTotal > 0) {
-          // 跨天修改或今天首次操作：创建今天的新还款记录（仅在增量大于0时创建）
-          await tx.repaymentRecord.create({
-            data: {
-              loan_id: loanId,
-              user_id: loan.user_id,
-              paid_amount: deltaPaidTotal,
-              paid_at: new Date(),
-              paid_capital: deltaCapital,
-              paid_interest: deltaInterest,
-              paid_fines: deltaFines,
-              repayment_schedule_id: data.id,
-              actual_collector_id: operator?.id ?? null,
-              remark: remark || null,
-              due_date: currentSchedule.due_start_date,
-              is_overdue_repaid:
-                currentSchedule.due_start_date < shanghaiTodayStart,
-            },
+        } else if (existingRecord) {
+          // 金额为 0 时清除还款记录
+          await tx.repaymentRecord.delete({
+            where: { id: existingRecord.id },
           });
         }
       }

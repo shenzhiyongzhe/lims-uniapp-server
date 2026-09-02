@@ -87,7 +87,7 @@ export class RepaymentRecordsService {
 
     const where: any = {
       loan_account: scope.whereClause,
-      paid_amount: { gt: 0 },
+      paid_amount: { not: 0 },
     };
     if (userId) where.user_id = userId;
     if (loanId) {
@@ -175,7 +175,7 @@ export class RepaymentRecordsService {
     ]);
     const baseWhere: any = {
       loan_account: scope.whereClause,
-      paid_amount: { gt: 0 },
+      paid_amount: { not: 0 },
     };
 
     // Determine collectorId for deposit process (only for COLLECTOR role)
@@ -298,7 +298,7 @@ export class RepaymentRecordsService {
     const repaymentWhere: any = {
       loan_account: scope.whereClause,
       paid_at: { gte: dayStart, lte: dayEnd },
-      paid_amount: { gt: 0 },
+      paid_amount: { not: 0 },
     };
 
     // 统一采用实时动态计算，对数据库历史借贷及收款记录进行聚合，避免读取陈旧归档快照产生对账偏差
@@ -317,7 +317,7 @@ export class RepaymentRecordsService {
         where: {
           loan_account: scope.whereClause,
           paid_at: { lt: dayStart },
-          paid_amount: { gt: 0 },
+          paid_amount: { not: 0 },
         },
         _sum: {
           paid_amount: true,
@@ -484,7 +484,7 @@ export class RepaymentRecordsService {
     const where: any = {
       paid_at: { gte: monthStartTs, lt: nextMonthStartTs },
       loan_account: scope.whereClause,
-      paid_amount: { gt: 0 },
+      paid_amount: { not: 0 },
     };
 
     const rows = await this.prisma.repaymentRecord.findMany({
@@ -640,7 +640,7 @@ export class RepaymentRecordsService {
                 risk_controller_id: rcId,
               },
               paid_at: { gte: dayStart, lt: dayEnd },
-              paid_amount: { gt: 0 },
+              paid_amount: { not: 0 },
             },
             _sum: { paid_amount: true },
           });
