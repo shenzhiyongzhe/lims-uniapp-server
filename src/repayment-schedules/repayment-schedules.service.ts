@@ -194,6 +194,7 @@ export class RepaymentSchedulesService {
           paid_amount: true,
           operator_admin_name: true,
           due_start_date: true,
+          paid_at: true,
         },
       });
 
@@ -276,7 +277,12 @@ export class RepaymentSchedulesService {
         derivedStatus = 'pending';
       }
       updatePayload.status = derivedStatus;
-      updatePayload.paid_at = new Date();
+      if (derivedStatus === 'pending' || nextPaid === 0) {
+        updatePayload.paid_at = null;
+      } else {
+        // 保留原有的 paid_at 时间，如果不存在则使用当前时间
+        updatePayload.paid_at = currentSchedule.paid_at || new Date();
+      }
 
       await (
         tx as unknown as {
@@ -413,7 +419,8 @@ export class RepaymentSchedulesService {
               where: { id: existingRecord.id },
               data: {
                 ...recordPayload,
-                paid_at: new Date(),
+                // 保留原有的收款时间，不覆盖更新为当前时间
+                paid_at: existingRecord.paid_at || new Date(),
               },
             });
           } else {
