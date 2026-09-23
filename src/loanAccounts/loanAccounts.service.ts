@@ -2957,8 +2957,16 @@ export class LoanAccountsService {
         lt: lastMonthStart,
       };
     }
-    // 'all' 无时间限制
-    return undefined;
+    // 'all' 或默认：全部已结清（三天前），排除近3天内（今天、昨天、前天）完结的方案，保障日对账平账与业务缓冲
+    const { today } = getShanghaiBusinessTodayAndYesterday(now);
+    const twoDaysAgoBusinessDay = new Date(
+      today.getTime() - 2 * 24 * 60 * 60 * 1000,
+    );
+    const threeDaysAgoCutoff =
+      getBusinessDayTimestampRange(twoDaysAgoBusinessDay).start;
+    return {
+      lt: threeDaysAgoCutoff,
+    };
   }
 
   private buildSettledCleanupWhere(rangeType: string): any {
@@ -2995,8 +3003,115 @@ export class LoanAccountsService {
     };
   }
 
-  async getSettledCleanupPreview(rangeType: string = 'all') {
-    const where = this.buildSettledCleanupWhere(rangeType);
+  async getSettledLoansList(params: { page?: number; pageSize?: number }) {
+    const page = Math.max(1, Number(params.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(params.pageSize) || 20));
+    const skip = (page - 1) * pageSize;
+
+    const where: any = {
+      status: 'settled',
+      is_stub: false,
+    };
+
+    const [total, loans] = await Promise.all([
+      this.prisma.loanAccount.count({ where }),
+      this.prisma.loanAccount.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: [{ status_changed_at: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          user_id: true,
+          loan_amount: true,
+          receiving_amount: true,
+          handling_fee: true,
+          company_cost: true,
+          total_fines: true,
+          created_at: true,
+          due_end_date: true,
+          status_changed_at: true,
+          user: {
+            select: {
+              id: true,
+              username: true,
+              archives: {
+                select: {
+                  name: true,
+                },
+                take: 1,
+              },
+            },
+          },
+          collector: {
+            select: {
+              id: true,
+              username: true,
+              nickname: true,
+            },
+          },
+          risk_controller: {
+            select: {
+              id: true,
+              username: true,
+              nickname: true,
+            },
+          },
+          repaymentRecords: {
+            select: {
+              paid_amount: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const items = loans.map((loan) => {
+      const totalRepaid = loan.repaymentRecords.reduce(
+        (sum, r) => sum + Number(r.paid_amount || 0),
+        0,
+      );
+      const customerName =
+        loan.user?.archives?.[0]?.name || loan.user?.username || `客户#${loan.user_id}`;
+      return {
+        id: loan.id,
+        userId: loan.user_id,
+        customerName,
+        loanAmount: Number(loan.loan_amount || 0),
+        receivingAmount: Number(loan.receiving_amount || 0),
+        handlingFee: Number(loan.handling_fee || 0),
+        companyCost: Number(loan.company_cost || 0),
+        totalFines: Number(loan.total_fines || 0),
+        totalRepaidAmount: totalRepaid,
+        createdAt: loan.created_at,
+        dueEndDate: loan.due_end_date,
+        statusChangedAt: loan.status_changed_at,
+        collectorName: loan.collector?.nickname || loan.collector?.username || '-',
+        riskControllerName:
+          loan.risk_controller?.nickname || loan.risk_controller?.username || '-',
+      };
+    });
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      hasMore: skip + loans.length < total,
+    };
+  }
+
+  async getSettledCleanupPreview(rangeType: string = 'all', loanIds?: number[]) {
+    let where: any;
+    if (loanIds && Array.isArray(loanIds) && loanIds.length > 0) {
+      where = {
+        id: { in: loanIds },
+        status: 'settled',
+        is_stub: false,
+      };
+    } else {
+      where = this.buildSettledCleanupWhere(rangeType);
+    }
     const loans = await this.prisma.loanAccount.findMany({
       where,
       select: {
@@ -3063,8 +3178,21 @@ export class LoanAccountsService {
     };
   }
 
-  async batchDeleteSettledLoans(rangeType: string = 'all', adminId?: number) {
-    const where = this.buildSettledCleanupWhere(rangeType);
+  async batchDeleteSettledLoans(
+    rangeType: string = 'all',
+    adminId?: number,
+    loanIds?: number[],
+  ) {
+    let where: any;
+    if (loanIds && Array.isArray(loanIds) && loanIds.length > 0) {
+      where = {
+        id: { in: loanIds },
+        status: 'settled',
+        is_stub: false,
+      };
+    } else {
+      where = this.buildSettledCleanupWhere(rangeType);
+    }
     const fullLoans = await this.prisma.loanAccount.findMany({
       where,
       include: {

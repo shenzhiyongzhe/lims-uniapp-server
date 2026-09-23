@@ -96,6 +96,21 @@ describe('LoanAccountsService - Settled Cleanup', () => {
       expect(preview.totalHandlingFee).toBe(3000);
       expect(preview.totalCompanyCost).toBe(25500);
       expect(preview.totalRepaidAmount).toBe(33000);
+
+      expect(prisma.loanAccount.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              { status: 'settled', is_stub: false },
+              expect.objectContaining({
+                OR: expect.arrayContaining([
+                  { status_changed_at: expect.objectContaining({ lt: expect.any(Date) }) },
+                ]),
+              }),
+            ]),
+          }),
+        }),
+      );
     });
 
     it('should return zeros when no settled loans match', async () => {
@@ -200,6 +215,56 @@ describe('LoanAccountsService - Settled Cleanup', () => {
       // Verify archive and user physical cleanup
       expect(archivesService.removeByUserId).toHaveBeenCalledWith(10);
       expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: 10 } });
+    });
+
+    it('should delete specified loanIds when loanIds array is provided', async () => {
+      prisma.loanAccount.findMany.mockResolvedValue([]);
+
+      const res = await service.batchDeleteSettledLoans('custom_list', 1, [101, 102]);
+
+      expect(prisma.loanAccount.findMany).toHaveBeenCalledWith({
+        where: { id: { in: [101, 102] }, status: 'settled', is_stub: false },
+        include: { repaymentRecords: true },
+      });
+      expect(res.count).toBe(0);
+    });
+  });
+
+  describe('getSettledLoansList', () => {
+    it('should query paginated settled loans correctly', async () => {
+      prisma.loanAccount.count.mockResolvedValue(1);
+      prisma.loanAccount.findMany.mockResolvedValue([
+        {
+          id: 50,
+          user_id: 12,
+          loan_amount: 5000,
+          receiving_amount: 4500,
+          handling_fee: 500,
+          company_cost: 4000,
+          total_fines: 0,
+          created_at: new Date('2026-08-01'),
+          due_end_date: new Date('2026-08-10'),
+          status_changed_at: new Date('2026-08-10'),
+          user: {
+            id: 12,
+            username: 'testuser',
+            archives: [{ name: '张三' }],
+          },
+          collector: { id: 2, username: 'col1', nickname: '催收A' },
+          risk_controller: { id: 3, username: 'rc1', nickname: '风控B' },
+          repaymentRecords: [{ paid_amount: 5000 }],
+        },
+      ]);
+
+      const res = await service.getSettledLoansList({ page: 1, pageSize: 10 });
+
+      expect(res.total).toBe(1);
+      expect(res.items.length).toBe(1);
+      expect(res.items[0].customerName).toBe('张三');
+      expect(res.items[0].collectorName).toBe('催收A');
+      expect(res.items[0].riskControllerName).toBe('风控B');
+      expect(res.items[0].totalRepaidAmount).toBe(5000);
+      expect(res.hasMore).toBe(false);
     });
   });
 });

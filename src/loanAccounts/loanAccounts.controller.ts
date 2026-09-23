@@ -226,13 +226,39 @@ export class LoanAccountsController {
 
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(ManagementRoles.SUPER_ADMIN)
+  @Get('settled/list')
+  async getSettledLoansList(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ): Promise<ApiResponseDto> {
+    try {
+      const data = await this.loanAccountsService.getSettledLoansList({
+        page: page ? parseInt(page, 10) : 1,
+        pageSize: pageSize ? parseInt(pageSize, 10) : 20,
+      });
+      return ResponseHelper.success(data, '获取已完结方案列表成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`获取已完结方案列表失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN)
   @Get('settled/clean-preview')
   async getSettledCleanupPreview(
     @Query('rangeType') rangeType?: string,
+    @Query('loanIds') loanIdsStr?: string,
   ): Promise<ApiResponseDto> {
     try {
+      const loanIds = loanIdsStr
+        ? loanIdsStr
+            .split(',')
+            .map((id) => parseInt(id.trim(), 10))
+            .filter((id) => !isNaN(id))
+        : undefined;
       const data = await this.loanAccountsService.getSettledCleanupPreview(
         rangeType || 'all',
+        loanIds,
       );
       return ResponseHelper.success(data, '获取完结方案清理预览成功');
     } catch (error: any) {
@@ -245,12 +271,14 @@ export class LoanAccountsController {
   @Post('settled/batch-delete')
   async batchDeleteSettledLoans(
     @Body('rangeType') rangeType: string,
+    @Body('loanIds') loanIds: number[],
     @CurrentUser() user: { id: number },
   ): Promise<ApiResponseDto> {
     try {
       const result = await this.loanAccountsService.batchDeleteSettledLoans(
         rangeType || 'all',
         user.id,
+        loanIds,
       );
       return ResponseHelper.success(result, result.message);
     } catch (error: any) {
