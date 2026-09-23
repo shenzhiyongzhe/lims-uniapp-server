@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -21,6 +22,7 @@ import { ArchivesService } from '../archives/archives.service';
 import {
   getShanghaiBusinessTodayAndYesterday,
   getBusinessDayTimestampRange,
+  getShanghaiYmdParts,
 } from '../common/business-date';
 import { sanitizePersonName } from '../common/person-name-match';
 import {
@@ -33,6 +35,7 @@ import { StaffConfigService } from '../staff-config/staff-config.service';
 
 @Injectable()
 export class LoanAccountsService {
+  private readonly logger = new Logger(LoanAccountsService.name);
   private static readonly SETTLED_RELOCK_DELAY_MS = 60 * 60 * 1000;
   private readonly filterCountsCache = new Map<
     string,
@@ -1273,7 +1276,7 @@ export class LoanAccountsService {
         },
       },
     });
-    if (!loan) {
+    if (!loan || loan.is_stub) {
       return null;
     }
     return {
@@ -1517,6 +1520,7 @@ export class LoanAccountsService {
 
   async findAll(): Promise<LoanAccount[]> {
     return this.prisma.loanAccount.findMany({
+      where: { is_stub: false },
       include: { user: true },
     });
   }
@@ -1525,7 +1529,7 @@ export class LoanAccountsService {
     query: { username?: string; id?: string },
     currentUser?: { id: number; role: string },
   ) {
-    const baseAndParts: Record<string, unknown>[] = [];
+    const baseAndParts: Record<string, unknown>[] = [{ is_stub: false }];
 
     if (currentUser?.id) {
       const scope = await this.accessScopeService.resolveLoanAccountScope(
@@ -1792,7 +1796,7 @@ export class LoanAccountsService {
     const { status, listFilter, collectorId, riskControllerId, username, id } =
       query;
 
-    const baseAndParts: Record<string, unknown>[] = [];
+    const baseAndParts: Record<string, unknown>[] = [{ is_stub: false }];
     if (status) {
       baseAndParts.push({ status });
     }
@@ -2923,5 +2927,328 @@ export class LoanAccountsService {
     const total =
       typeof body.result?.total === 'number' ? body.result.total : list.length;
     return { list, total };
+  }
+
+  // ─── 已完结方案清理与统计桩合并 ────────────────────────────────────────────────
+
+  private getSettledCleanupDateFilter(rangeType: string): { gte?: Date; lt?: Date } | undefined {
+    const now = new Date();
+    const shanghaiParts = getShanghaiYmdParts(now);
+    const thisMonthStart = new Date(
+      Date.UTC(shanghaiParts.y, shanghaiParts.m - 1, 1) - 2 * 3600 * 1000,
+    );
+    let lastMonthY = shanghaiParts.y;
+    let lastMonthM = shanghaiParts.m - 1;
+    if (lastMonthM === 0) {
+      lastMonthM = 12;
+      lastMonthY -= 1;
+    }
+    const lastMonthStart = new Date(
+      Date.UTC(lastMonthY, lastMonthM - 1, 1) - 2 * 3600 * 1000,
+    );
+
+    if (rangeType === 'last_1_month') {
+      return {
+        gte: lastMonthStart,
+        lt: thisMonthStart,
+      };
+    } else if (rangeType === 'last_2_months_and_prior') {
+      return {
+        lt: lastMonthStart,
+      };
+    }
+    // 'all' 无时间限制
+    return undefined;
+  }
+
+  private buildSettledCleanupWhere(rangeType: string): any {
+    const dateRange = this.getSettledCleanupDateFilter(rangeType);
+    const baseWhere: any = {
+      status: 'settled',
+      is_stub: false,
+    };
+
+    if (!dateRange) {
+      return baseWhere;
+    }
+
+    return {
+      AND: [
+        baseWhere,
+        {
+          OR: [
+            { status_changed_at: dateRange },
+            {
+              AND: [
+                { status_changed_at: null },
+                {
+                  OR: [
+                    { due_end_date: dateRange },
+                    { created_at: dateRange },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  async getSettledCleanupPreview(rangeType: string = 'all') {
+    const where = this.buildSettledCleanupWhere(rangeType);
+    const loans = await this.prisma.loanAccount.findMany({
+      where,
+      select: {
+        id: true,
+        user_id: true,
+        loan_amount: true,
+        receiving_amount: true,
+        handling_fee: true,
+        company_cost: true,
+        repaymentRecords: {
+          select: { paid_amount: true },
+        },
+      },
+    });
+
+    const count = loans.length;
+    let totalLoanAmount = 0;
+    let totalReceivingAmount = 0;
+    let totalHandlingFee = 0;
+    let totalCompanyCost = 0;
+    let totalRepaidAmount = 0;
+
+    const userIds = new Set<number>();
+    for (const loan of loans) {
+      totalLoanAmount += Number(loan.loan_amount || 0);
+      totalReceivingAmount += Number(loan.receiving_amount || 0);
+      totalHandlingFee += Number(loan.handling_fee || 0);
+      totalCompanyCost += Number(loan.company_cost || 0);
+      for (const r of loan.repaymentRecords) {
+        totalRepaidAmount += Number(r.paid_amount || 0);
+      }
+      if (loan.user_id) {
+        userIds.add(loan.user_id);
+      }
+    }
+
+    let cleanableArchiveCount = 0;
+    if (userIds.size > 0) {
+      const loanIdsToDelete = loans.map((l) => l.id);
+      const remainingLoansGroup = await this.prisma.loanAccount.groupBy({
+        by: ['user_id'],
+        where: {
+          user_id: { in: Array.from(userIds) },
+          id: { notIn: loanIdsToDelete },
+        },
+        _count: { id: true },
+      });
+      const usersWithOtherLoans = new Set(remainingLoansGroup.map((g) => g.user_id));
+      for (const uid of userIds) {
+        if (!usersWithOtherLoans.has(uid)) {
+          cleanableArchiveCount++;
+        }
+      }
+    }
+
+    return {
+      count,
+      archiveCount: cleanableArchiveCount,
+      totalLoanAmount,
+      totalReceivingAmount,
+      totalHandlingFee,
+      totalCompanyCost,
+      totalRepaidAmount,
+    };
+  }
+
+  async batchDeleteSettledLoans(rangeType: string = 'all', adminId?: number) {
+    const where = this.buildSettledCleanupWhere(rangeType);
+    const fullLoans = await this.prisma.loanAccount.findMany({
+      where,
+      include: {
+        repaymentRecords: true,
+      },
+    });
+
+    if (fullLoans.length === 0) {
+      return { success: true, count: 0, archiveCount: 0, message: '没有符合条件的已完结方案' };
+    }
+
+    let deletedArchiveCount = 0;
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. 确保虚拟归档用户存在
+      let archiveUser = await tx.user.findFirst({
+        where: { username: '系统归档' },
+      });
+      if (!archiveUser) {
+        archiveUser = await tx.user.create({
+          data: { username: '系统归档' },
+        });
+      }
+
+      // 2. 按分组键 (collector_id, risk_controller_id, 结清年月) 归类
+      type GroupKey = string;
+      const groups = new Map<
+        GroupKey,
+        {
+          collector_id: number;
+          risk_controller_id: number;
+          referenceDate: Date;
+          loan_amount: number;
+          receiving_amount: number;
+          handling_fee: number;
+          company_cost: number;
+          total_fines: number;
+          paid_capital: number;
+          paid_interest: number;
+          repaid_records: Array<{
+            paid_amount: number;
+            paid_at: Date;
+            actual_collector_id: number;
+          }>;
+          originalLoanIds: number[];
+        }
+      >();
+
+      for (const loan of fullLoans) {
+        const refDate = loan.status_changed_at || loan.due_end_date || loan.created_at;
+        const shanghaiYmd = getShanghaiYmdParts(refDate);
+        const groupKey = `${loan.collector_id}_${loan.risk_controller_id}_${shanghaiYmd.y}-${String(shanghaiYmd.m).padStart(2, '0')}`;
+
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, {
+            collector_id: loan.collector_id,
+            risk_controller_id: loan.risk_controller_id,
+            referenceDate: refDate,
+            loan_amount: 0,
+            receiving_amount: 0,
+            handling_fee: 0,
+            company_cost: 0,
+            total_fines: 0,
+            paid_capital: 0,
+            paid_interest: 0,
+            repaid_records: [],
+            originalLoanIds: [],
+          });
+        }
+
+        const g = groups.get(groupKey)!;
+        g.loan_amount += Number(loan.loan_amount || 0);
+        g.receiving_amount += Number(loan.receiving_amount || 0);
+        g.handling_fee += Number(loan.handling_fee || 0);
+        g.company_cost += Number(loan.company_cost || 0);
+        g.total_fines += Number(loan.total_fines || 0);
+        g.paid_capital += Number(loan.paid_capital || 0);
+        g.paid_interest += Number(loan.paid_interest || 0);
+        g.originalLoanIds.push(loan.id);
+
+        for (const r of loan.repaymentRecords) {
+          g.repaid_records.push({
+            paid_amount: Number(r.paid_amount || 0),
+            paid_at: r.paid_at,
+            actual_collector_id: r.actual_collector_id ?? loan.collector_id,
+          });
+        }
+      }
+
+      // 3. 为每个分组创建合并统计桩和合并还款记录
+      for (const [, g] of groups) {
+        const stubLoan = await tx.loanAccount.create({
+          data: {
+            user_id: archiveUser.id,
+            collector_id: g.collector_id,
+            risk_controller_id: g.risk_controller_id,
+            created_by: adminId || g.risk_controller_id,
+            loan_amount: g.loan_amount,
+            receiving_amount: g.receiving_amount,
+            period_capital: 0,
+            period_interest: 0,
+            due_start_date: g.referenceDate,
+            due_end_date: g.referenceDate,
+            status: 'settled',
+            handling_fee: g.handling_fee,
+            total_periods: 1,
+            repaid_periods: 1,
+            daily_repayment: 0,
+            company_cost: g.company_cost,
+            total_fines: g.total_fines,
+            paid_capital: g.paid_capital,
+            paid_interest: g.paid_interest,
+            created_at: g.referenceDate,
+            status_changed_at: g.referenceDate,
+            is_locked: true,
+            is_stub: true,
+            note: '历史已完结方案合并统计桩',
+          },
+        });
+
+        const totalPaid = g.repaid_records.reduce((sum, r) => sum + r.paid_amount, 0);
+        if (totalPaid > 0) {
+          await tx.repaymentRecord.create({
+            data: {
+              loan_id: stubLoan.id,
+              user_id: archiveUser.id,
+              actual_collector_id: g.collector_id,
+              paid_amount: totalPaid,
+              paid_capital: g.paid_capital,
+              paid_interest: g.paid_interest,
+              paid_fines: g.total_fines,
+              paid_at: g.referenceDate,
+              remark: '合并归档',
+            },
+          });
+        }
+      }
+
+      // 4. 物理删除明细数据
+      const loanIdsToDelete = fullLoans.map((l) => l.id);
+      await tx.loanAccountOperationLog.deleteMany({
+        where: { loan_id: { in: loanIdsToDelete } },
+      });
+      await tx.repaymentSchedule.deleteMany({
+        where: { loan_id: { in: loanIdsToDelete } },
+      });
+      await tx.repaymentRecord.deleteMany({
+        where: { loan_id: { in: loanIdsToDelete } },
+      });
+      await tx.loanAccount.deleteMany({
+        where: { id: { in: loanIdsToDelete } },
+      });
+
+      // 5. 检查客户，若客户名下已无任何方案，彻底物理删除其档案 Archive 与 User
+      const affectedUserIds = Array.from(new Set(fullLoans.map((l) => l.user_id).filter(Boolean)));
+      for (const userId of affectedUserIds) {
+        const remaining = await tx.loanAccount.count({
+          where: { user_id: userId },
+        });
+        if (remaining === 0) {
+          try {
+            await this.archivesService.removeByUserId(userId);
+            deletedArchiveCount++;
+          } catch (err: any) {
+            this.logger.warn(`清理客户 ${userId} 档案失败: ${err?.message || err}`);
+          }
+          try {
+            await tx.user.delete({ where: { id: userId } });
+          } catch (err: any) {
+            this.logger.warn(`清理客户 ${userId} 用户主体失败: ${err?.message || err}`);
+          }
+        }
+      }
+    });
+
+    this.logger.log(
+      `超级管理员 ${adminId || 0} 执行已完结方案清理：清理方案 ${fullLoans.length} 笔，物理销毁档案 ${deletedArchiveCount} 份`,
+    );
+
+    return {
+      success: true,
+      count: fullLoans.length,
+      archiveCount: deletedArchiveCount,
+      message: `成功清理 ${fullLoans.length} 笔已完结方案，彻底移除 ${deletedArchiveCount} 份客户档案`,
+    };
   }
 }

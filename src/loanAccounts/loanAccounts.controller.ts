@@ -224,6 +224,40 @@ export class LoanAccountsController {
     }
   }
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN)
+  @Get('settled/clean-preview')
+  async getSettledCleanupPreview(
+    @Query('rangeType') rangeType?: string,
+  ): Promise<ApiResponseDto> {
+    try {
+      const data = await this.loanAccountsService.getSettledCleanupPreview(
+        rangeType || 'all',
+      );
+      return ResponseHelper.success(data, '获取完结方案清理预览成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`获取清理预览失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN)
+  @Post('settled/batch-delete')
+  async batchDeleteSettledLoans(
+    @Body('rangeType') rangeType: string,
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
+    try {
+      const result = await this.loanAccountsService.batchDeleteSettledLoans(
+        rangeType || 'all',
+        user.id,
+      );
+      return ResponseHelper.success(result, result.message);
+    } catch (error: any) {
+      return ResponseHelper.error(`清理完结方案失败: ${error.message}`, 500);
+    }
+  }
+
   @UseGuards(AuthGuard)
   @Get(':id')
   async findById(

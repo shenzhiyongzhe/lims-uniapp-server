@@ -144,6 +144,7 @@ export class BackupService {
     ];
 
     const loans = await this.prisma.loanAccount.findMany({
+      where: { is_stub: false },
       include: {
         user: true,
       },

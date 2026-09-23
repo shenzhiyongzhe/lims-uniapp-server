@@ -124,6 +124,7 @@ model LoanAccount {
   locked_at                DateTime?
   locked_by                Int?
   auto_relock_at            DateTime?
+  is_stub                  Boolean             @default(false)
   collector                Staff               @relation("CollectorLoanAccounts", fields: [collector_id], references: [id])
   risk_controller          Staff               @relation("RiskControllerLoanAccounts", fields: [risk_controller_id], references: [id])
   creator                  Staff               @relation("CreatorLoanAccounts", fields: [created_by], references: [id])
@@ -140,6 +141,8 @@ model LoanAccount {
   @@index([status, due_start_date, due_end_date])
   @@index([due_start_date, status])
   @@index([status, created_at])
+  @@index([is_stub])
+  @@index([is_stub, status])
   @@map("loan_accounts")
 }
 
