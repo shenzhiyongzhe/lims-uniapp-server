@@ -92,7 +92,6 @@ describe('LoanAccountsService - Settled Cleanup', () => {
       expect(preview.count).toBe(2);
       expect(preview.archiveCount).toBe(1); // Only user 1 has no other loans
       expect(preview.totalLoanAmount).toBe(30000);
-      expect(preview.totalReceivingAmount).toBe(27000);
       expect(preview.totalHandlingFee).toBe(3000);
       expect(preview.totalCompanyCost).toBe(25500);
       expect(preview.totalRepaidAmount).toBe(33000);

@@ -465,8 +465,6 @@ export class LoanAccountsService {
           apply_times: applyTimes,
           period_capital: Number(period_capital),
           period_interest: Number(period_interest),
-          last_edit_pay_capital: Number(period_capital),
-          last_edit_pay_interest: Number(period_interest),
           status: (data.status as LoanAccountStatus) || 'pending',
           repaid_periods: 0,
           created_by: createdBy,
@@ -2691,14 +2689,6 @@ export class LoanAccountsService {
             loanData.period_interest !== undefined
               ? loanData.period_interest
               : loanData.interest,
-          last_edit_pay_capital:
-            loanData.period_capital !== undefined
-              ? loanData.period_capital
-              : loanData.capital,
-          last_edit_pay_interest:
-            loanData.period_interest !== undefined
-              ? loanData.period_interest
-              : loanData.interest,
           status: loanData.status,
           total_fines: loanData.total_fines,
           paid_capital: loanData.paid_capital,
@@ -3024,7 +3014,6 @@ export class LoanAccountsService {
           id: true,
           user_id: true,
           loan_amount: true,
-          receiving_amount: true,
           handling_fee: true,
           company_cost: true,
           total_fines: true,
@@ -3078,7 +3067,6 @@ export class LoanAccountsService {
         userId: loan.user_id,
         customerName,
         loanAmount: Number(loan.loan_amount || 0),
-        receivingAmount: Number(loan.receiving_amount || 0),
         handlingFee: Number(loan.handling_fee || 0),
         companyCost: Number(loan.company_cost || 0),
         totalFines: Number(loan.total_fines || 0),
@@ -3118,7 +3106,6 @@ export class LoanAccountsService {
         id: true,
         user_id: true,
         loan_amount: true,
-        receiving_amount: true,
         handling_fee: true,
         company_cost: true,
         repaymentRecords: {
@@ -3129,7 +3116,6 @@ export class LoanAccountsService {
 
     const count = loans.length;
     let totalLoanAmount = 0;
-    let totalReceivingAmount = 0;
     let totalHandlingFee = 0;
     let totalCompanyCost = 0;
     let totalRepaidAmount = 0;
@@ -3137,7 +3123,6 @@ export class LoanAccountsService {
     const userIds = new Set<number>();
     for (const loan of loans) {
       totalLoanAmount += Number(loan.loan_amount || 0);
-      totalReceivingAmount += Number(loan.receiving_amount || 0);
       totalHandlingFee += Number(loan.handling_fee || 0);
       totalCompanyCost += Number(loan.company_cost || 0);
       for (const r of loan.repaymentRecords) {
@@ -3171,7 +3156,6 @@ export class LoanAccountsService {
       count,
       archiveCount: cleanableArchiveCount,
       totalLoanAmount,
-      totalReceivingAmount,
       totalHandlingFee,
       totalCompanyCost,
       totalRepaidAmount,

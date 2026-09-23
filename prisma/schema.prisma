@@ -113,9 +113,6 @@ model LoanAccount {
   total_fines              Int                 @default(0)
   paid_interest            Int                 @default(0)
   early_settlement_capital Int?
-  last_edit_fines          Int?
-  last_edit_pay_capital    Int?
-  last_edit_pay_interest   Int?
   note                     String?             @db.VarChar(300)
   overdue_count            Int                 @default(0)
   ownership                String?             @db.VarChar(5)

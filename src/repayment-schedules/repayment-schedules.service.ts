@@ -452,18 +452,13 @@ export class RepaymentSchedulesService {
       const calculatedReceivingAmount =
         calculatedPaidCapital + calculatedPaidInterest + totalFines;
 
-      // 更新 LoanAccount，同时保存上次编辑的输入值
-      const inputFines = data.fines !== undefined ? Number(data.fines) : null;
+      // 更新 LoanAccount
       const updateLoanData: any = {
         receiving_amount: calculatedReceivingAmount,
         paid_capital: calculatedPaidCapital,
         paid_interest: calculatedPaidInterest,
         repaid_periods: repaidPeriods,
         total_fines: totalFines,
-        // 保存本次编辑的输入值，下次打开收款弹窗时自动填充
-        last_edit_pay_capital: inputCapital,
-        last_edit_pay_interest: inputInterest,
-        last_edit_fines: inputFines !== null ? inputFines : finesValue,
       };
 
       if (repaidPeriods === loan?.total_periods) {
