@@ -3374,8 +3374,49 @@ export class LoanAccountsService {
     const settledDaysAgo =
       params.settledDaysAgo !== undefined ? Number(params.settledDaysAgo) : 5;
 
-    const staff = await this.prisma.staff.findFirst();
-    const staffId = staff?.id || adminId || 1;
+    // 确保负责（催收）和风控不是同一个人
+    const staffs = await this.prisma.staff.findMany({
+      take: 5,
+      orderBy: { id: 'asc' },
+    });
+
+    let collectorId: number;
+    let riskControllerId: number;
+
+    if (staffs.length >= 2) {
+      collectorId = staffs[0].id;
+      riskControllerId = staffs[1].id;
+    } else if (staffs.length === 1) {
+      collectorId = staffs[0].id;
+      if (adminId && adminId !== collectorId) {
+        riskControllerId = adminId;
+      } else {
+        const mockRisk = await this.prisma.staff.findFirst({
+          where: { id: { not: collectorId } },
+        });
+        if (mockRisk) {
+          riskControllerId = mockRisk.id;
+        } else {
+          const createdRisk = await this.prisma.staff.create({
+            data: {
+              username: '测试风控',
+              nickname: '测试风控',
+              role: 'SUPER_ADMIN',
+            },
+          });
+          riskControllerId = createdRisk.id;
+        }
+      }
+    } else {
+      const s1 = await this.prisma.staff.create({
+        data: { username: '测试催收', nickname: '测试催收', role: 'SUPER_ADMIN' },
+      });
+      const s2 = await this.prisma.staff.create({
+        data: { username: '测试风控', nickname: '测试风控', role: 'SUPER_ADMIN' },
+      });
+      collectorId = s1.id;
+      riskControllerId = s2.id;
+    }
 
     const generatedLoanIds: number[] = [];
     const now = new Date();
@@ -3397,7 +3438,7 @@ export class LoanAccountsService {
 
         await tx.archive.create({
           data: {
-            creator_id: staffId,
+            creator_id: collectorId,
             user_id: user.id,
             name: customerName,
             phone: `138${stamp}888`,
@@ -3411,9 +3452,9 @@ export class LoanAccountsService {
         const loan = await tx.loanAccount.create({
           data: {
             user_id: user.id,
-            collector_id: staffId,
-            risk_controller_id: staffId,
-            created_by: adminId || staffId,
+            collector_id: collectorId,
+            risk_controller_id: riskControllerId,
+            created_by: adminId || collectorId,
             loan_amount: loanAmount,
             receiving_amount: loanAmount,
             company_cost: companyCost,
@@ -3442,7 +3483,7 @@ export class LoanAccountsService {
             {
               loan_id: loan.id,
               user_id: user.id,
-              actual_collector_id: staffId,
+              actual_collector_id: collectorId,
               paid_amount: 2500,
               paid_capital: 2500,
               paid_interest: 0,
@@ -3453,7 +3494,7 @@ export class LoanAccountsService {
             {
               loan_id: loan.id,
               user_id: user.id,
-              actual_collector_id: staffId,
+              actual_collector_id: collectorId,
               paid_amount: 2500,
               paid_capital: 2500,
               paid_interest: 0,
