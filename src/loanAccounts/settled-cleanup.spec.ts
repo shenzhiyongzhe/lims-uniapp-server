@@ -278,7 +278,9 @@ describe('LoanAccountsService - Settled Cleanup', () => {
 
   describe('generateSettledMockLoans', () => {
     it('should generate mock settled loan, archive and repayment records with different staff', async () => {
-      prisma.staff.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      prisma.staff.findFirst
+        .mockResolvedValueOnce({ id: 1, role: 'COLLECTOR' })
+        .mockResolvedValueOnce({ id: 2, role: 'RISK_CONTROLLER' });
       prisma.user.create.mockResolvedValue({ id: 88 });
       prisma.archive.create.mockResolvedValue({ id: 99 });
       prisma.loanAccount.create.mockResolvedValue({ id: 777 });

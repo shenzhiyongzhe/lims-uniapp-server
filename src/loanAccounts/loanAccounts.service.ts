@@ -3374,49 +3374,40 @@ export class LoanAccountsService {
     const settledDaysAgo =
       params.settledDaysAgo !== undefined ? Number(params.settledDaysAgo) : 5;
 
-    // 确保负责（催收）和风控不是同一个人
-    const staffs = await this.prisma.staff.findMany({
-      take: 5,
+    // 负责人为 staff 角色是 COLLECTOR 的第一人，风控为 staff 角色是 RISK_CONTROLLER 的第一人
+    let collector = await this.prisma.staff.findFirst({
+      where: { role: ManagementRoles.COLLECTOR },
       orderBy: { id: 'asc' },
     });
 
-    let collectorId: number;
-    let riskControllerId: number;
+    let riskController = await this.prisma.staff.findFirst({
+      where: { role: ManagementRoles.RISK_CONTROLLER },
+      orderBy: { id: 'asc' },
+    });
 
-    if (staffs.length >= 2) {
-      collectorId = staffs[0].id;
-      riskControllerId = staffs[1].id;
-    } else if (staffs.length === 1) {
-      collectorId = staffs[0].id;
-      if (adminId && adminId !== collectorId) {
-        riskControllerId = adminId;
-      } else {
-        const mockRisk = await this.prisma.staff.findFirst({
-          where: { id: { not: collectorId } },
-        });
-        if (mockRisk) {
-          riskControllerId = mockRisk.id;
-        } else {
-          const createdRisk = await this.prisma.staff.create({
-            data: {
-              username: '测试风控',
-              nickname: '测试风控',
-              role: 'SUPER_ADMIN',
-            },
-          });
-          riskControllerId = createdRisk.id;
-        }
-      }
-    } else {
-      const s1 = await this.prisma.staff.create({
-        data: { username: '测试催收', nickname: '测试催收', role: 'SUPER_ADMIN' },
+    // 若当前数据库无对应角色，自动补充默认测试角色以保证脚本正常生成
+    if (!collector) {
+      collector = await this.prisma.staff.create({
+        data: {
+          username: '测试催收',
+          nickname: '测试催收',
+          role: ManagementRoles.COLLECTOR,
+        },
       });
-      const s2 = await this.prisma.staff.create({
-        data: { username: '测试风控', nickname: '测试风控', role: 'SUPER_ADMIN' },
-      });
-      collectorId = s1.id;
-      riskControllerId = s2.id;
     }
+
+    if (!riskController) {
+      riskController = await this.prisma.staff.create({
+        data: {
+          username: '测试风控',
+          nickname: '测试风控',
+          role: ManagementRoles.RISK_CONTROLLER,
+        },
+      });
+    }
+
+    const collectorId = collector.id;
+    const riskControllerId = riskController.id;
 
     const generatedLoanIds: number[] = [];
     const now = new Date();
