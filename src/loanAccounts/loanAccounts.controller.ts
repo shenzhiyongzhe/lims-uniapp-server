@@ -286,6 +286,54 @@ export class LoanAccountsController {
     }
   }
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN)
+  @Post('settled/generate-mock')
+  async generateSettledMockLoans(
+    @Body() body: { count?: number; settledDaysAgo?: number },
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
+    try {
+      const result = await this.loanAccountsService.generateSettledMockLoans(
+        body,
+        user.id,
+      );
+      return ResponseHelper.success(result, result.message);
+    } catch (error: any) {
+      return ResponseHelper.error(`生成测试方案失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN)
+  @Get('settled/stubs')
+  async getSettledStubsList(): Promise<ApiResponseDto> {
+    try {
+      const data = await this.loanAccountsService.getSettledStubsList();
+      return ResponseHelper.success(data, '获取统计桩列表成功');
+    } catch (error: any) {
+      return ResponseHelper.error(`获取统计桩列表失败: ${error.message}`, 500);
+    }
+  }
+
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(ManagementRoles.SUPER_ADMIN)
+  @Post('settled/delete-stubs')
+  async deleteSettledStubs(
+    @Body('stubIds') stubIds: number[],
+    @CurrentUser() user: { id: number },
+  ): Promise<ApiResponseDto> {
+    try {
+      const result = await this.loanAccountsService.deleteSettledStubs(
+        stubIds,
+        user.id,
+      );
+      return ResponseHelper.success(result, result.message);
+    } catch (error: any) {
+      return ResponseHelper.error(`删除统计桩失败: ${error.message}`, 500);
+    }
+  }
+
   @UseGuards(AuthGuard)
   @Get(':id')
   async findById(

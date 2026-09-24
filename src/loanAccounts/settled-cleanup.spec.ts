@@ -24,6 +24,7 @@ describe('LoanAccountsService - Settled Cleanup', () => {
       },
       repaymentRecord: {
         create: jest.fn(),
+        createMany: jest.fn(),
         deleteMany: jest.fn(),
       },
       repaymentSchedule: {
@@ -36,6 +37,12 @@ describe('LoanAccountsService - Settled Cleanup', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         delete: jest.fn(),
+      },
+      staff: {
+        findFirst: jest.fn(),
+      },
+      archive: {
+        create: jest.fn(),
       },
       $transaction: jest.fn(async (cb) => cb(prisma)),
     };
@@ -264,6 +271,75 @@ describe('LoanAccountsService - Settled Cleanup', () => {
       expect(res.items[0].riskControllerName).toBe('风控B');
       expect(res.items[0].totalRepaidAmount).toBe(5000);
       expect(res.hasMore).toBe(false);
+    });
+  });
+
+  describe('generateSettledMockLoans', () => {
+    it('should generate mock settled loan, archive and repayment records', async () => {
+      prisma.staff.findFirst.mockResolvedValue({ id: 1 });
+      prisma.user.create.mockResolvedValue({ id: 88 });
+      prisma.archive.create.mockResolvedValue({ id: 99 });
+      prisma.loanAccount.create.mockResolvedValue({ id: 777 });
+
+      const res = await service.generateSettledMockLoans({ count: 1, settledDaysAgo: 5 }, 1);
+
+      expect(res.success).toBe(true);
+      expect(res.count).toBe(1);
+      expect(res.generatedLoanIds).toEqual([777]);
+      expect(prisma.loanAccount.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'settled',
+            is_stub: false,
+            loan_amount: 5000,
+          }),
+        }),
+      );
+      expect(prisma.repaymentRecord.createMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({ paid_amount: 2500 }),
+          ]),
+        }),
+      );
+    });
+  });
+
+  describe('getSettledStubsList and deleteSettledStubs', () => {
+    it('should list all stubs with repayment totals', async () => {
+      prisma.loanAccount.findMany.mockResolvedValue([
+        {
+          id: 9999,
+          loan_amount: 10000,
+          company_cost: 8000,
+          handling_fee: 1000,
+          created_at: new Date(),
+          status_changed_at: new Date(),
+          note: '统计桩测试',
+          collector: { nickname: '催收A' },
+          risk_controller: { nickname: '风控B' },
+          repaymentRecords: [{ paid_amount: 10000 }],
+        },
+      ]);
+
+      const list = await service.getSettledStubsList();
+      expect(list.length).toBe(1);
+      expect(list[0].id).toBe(9999);
+      expect(list[0].totalRepaidAmount).toBe(10000);
+    });
+
+    it('should physically delete target stub and related records', async () => {
+      prisma.loanAccount.findMany.mockResolvedValue([{ id: 9999 }]);
+
+      const res = await service.deleteSettledStubs([9999], 1);
+      expect(res.success).toBe(true);
+      expect(res.count).toBe(1);
+      expect(prisma.loanAccount.deleteMany).toHaveBeenCalledWith({
+        where: { id: { in: [9999] } },
+      });
+      expect(prisma.repaymentRecord.deleteMany).toHaveBeenCalledWith({
+        where: { loan_id: { in: [9999] } },
+      });
     });
   });
 });

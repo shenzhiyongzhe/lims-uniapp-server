@@ -3363,4 +3363,211 @@ export class LoanAccountsService {
       message: `成功清理 ${fullLoans.length} 笔已完结方案，彻底移除 ${deletedArchiveCount} 份客户档案`,
     };
   }
+
+  // ─── 测试数据生成与统计桩管理 ───────────────────────────────────────────────
+
+  async generateSettledMockLoans(
+    params: { count?: number; settledDaysAgo?: number },
+    adminId?: number,
+  ) {
+    const count = Math.min(5, Math.max(1, Number(params.count) || 1));
+    const settledDaysAgo =
+      params.settledDaysAgo !== undefined ? Number(params.settledDaysAgo) : 5;
+
+    const staff = await this.prisma.staff.findFirst();
+    const staffId = staff?.id || adminId || 1;
+
+    const generatedLoanIds: number[] = [];
+    const now = new Date();
+    const settledDate = new Date(
+      now.getTime() - settledDaysAgo * 24 * 3600 * 1000,
+    );
+    const startDate = new Date(settledDate.getTime() - 10 * 24 * 3600 * 1000);
+
+    for (let i = 0; i < count; i++) {
+      const stamp = Math.floor(1000 + Math.random() * 9000);
+      const customerName = `测试客户_${stamp}`;
+
+      await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            username: customerName,
+          },
+        });
+
+        await tx.archive.create({
+          data: {
+            creator_id: staffId,
+            user_id: user.id,
+            name: customerName,
+            phone: `138${stamp}888`,
+            amount: 5000,
+          },
+        });
+
+        const loanAmount = 5000;
+        const handlingFee = 500;
+        const companyCost = 4000;
+        const loan = await tx.loanAccount.create({
+          data: {
+            user_id: user.id,
+            collector_id: staffId,
+            risk_controller_id: staffId,
+            created_by: adminId || staffId,
+            loan_amount: loanAmount,
+            receiving_amount: loanAmount,
+            company_cost: companyCost,
+            handling_fee: handlingFee,
+            due_start_date: startDate,
+            due_end_date: settledDate,
+            status: 'settled',
+            status_changed_at: settledDate,
+            created_at: startDate,
+            total_periods: 2,
+            repaid_periods: 2,
+            period_capital: 2500,
+            period_interest: 0,
+            daily_repayment: 2500,
+            paid_capital: loanAmount,
+            paid_interest: 0,
+            total_fines: 0,
+            is_stub: false,
+            note: `[测试方案] 自动生成于 ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`,
+          },
+        });
+
+        const midDate = new Date(settledDate.getTime() - 24 * 3600 * 1000);
+        await tx.repaymentRecord.createMany({
+          data: [
+            {
+              loan_id: loan.id,
+              user_id: user.id,
+              actual_collector_id: staffId,
+              paid_amount: 2500,
+              paid_capital: 2500,
+              paid_interest: 0,
+              paid_fines: 0,
+              paid_at: midDate,
+              remark: '测试还款第1期',
+            },
+            {
+              loan_id: loan.id,
+              user_id: user.id,
+              actual_collector_id: staffId,
+              paid_amount: 2500,
+              paid_capital: 2500,
+              paid_interest: 0,
+              paid_fines: 0,
+              paid_at: settledDate,
+              remark: '测试结清还款第2期',
+            },
+          ],
+        });
+
+        generatedLoanIds.push(loan.id);
+      });
+    }
+
+    return {
+      success: true,
+      count: generatedLoanIds.length,
+      generatedLoanIds,
+      message: `成功生成 ${generatedLoanIds.length} 笔已完结测试方案`,
+    };
+  }
+
+  async getSettledStubsList() {
+    const stubs = await this.prisma.loanAccount.findMany({
+      where: { is_stub: true },
+      orderBy: { id: 'desc' },
+      select: {
+        id: true,
+        loan_amount: true,
+        company_cost: true,
+        handling_fee: true,
+        paid_capital: true,
+        paid_interest: true,
+        total_fines: true,
+        created_at: true,
+        status_changed_at: true,
+        note: true,
+        collector: {
+          select: { id: true, username: true, nickname: true },
+        },
+        risk_controller: {
+          select: { id: true, username: true, nickname: true },
+        },
+        repaymentRecords: {
+          select: {
+            id: true,
+            paid_amount: true,
+            paid_at: true,
+            remark: true,
+          },
+        },
+      },
+    });
+
+    return stubs.map((s) => {
+      const totalRepaidAmount = s.repaymentRecords.reduce(
+        (sum, r) => sum + Number(r.paid_amount || 0),
+        0,
+      );
+      return {
+        id: s.id,
+        loanAmount: Number(s.loan_amount || 0),
+        companyCost: Number(s.company_cost || 0),
+        handlingFee: Number(s.handling_fee || 0),
+        totalRepaidAmount,
+        createdAt: s.created_at,
+        statusChangedAt: s.status_changed_at,
+        collectorName: s.collector?.nickname || s.collector?.username || '-',
+        riskControllerName:
+          s.risk_controller?.nickname || s.risk_controller?.username || '-',
+        note: s.note || '',
+        repaymentCount: s.repaymentRecords.length,
+      };
+    });
+  }
+
+  async deleteSettledStubs(stubIds: number[], adminId?: number) {
+    if (!stubIds || !Array.isArray(stubIds) || stubIds.length === 0) {
+      return { success: false, count: 0, message: '请指定要删除的统计桩ID' };
+    }
+
+    const validStubs = await this.prisma.loanAccount.findMany({
+      where: { id: { in: stubIds }, is_stub: true },
+      select: { id: true },
+    });
+
+    const targetIds = validStubs.map((s) => s.id);
+    if (targetIds.length === 0) {
+      return { success: true, count: 0, message: '未找到符合条件的统计桩' };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.repaymentRecord.deleteMany({
+        where: { loan_id: { in: targetIds } },
+      });
+      await tx.repaymentSchedule.deleteMany({
+        where: { loan_id: { in: targetIds } },
+      });
+      await tx.loanAccountOperationLog.deleteMany({
+        where: { loan_id: { in: targetIds } },
+      });
+      await tx.loanAccount.deleteMany({
+        where: { id: { in: targetIds } },
+      });
+    });
+
+    this.logger.log(
+      `超级管理员 ${adminId || 0} 删除了 ${targetIds.length} 个统计桩: ${targetIds.join(',')}`,
+    );
+
+    return {
+      success: true,
+      count: targetIds.length,
+      message: `成功删除 ${targetIds.length} 个统计桩`,
+    };
+  }
 }
